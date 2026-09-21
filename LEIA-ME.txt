@@ -1,0 +1,157 @@
+MAPA RH — Amplitude das contratações por cidade de origem e de atuação
+=======================================================================
+
+COMO ABRIR
+----------
+1. Dê dois cliques no arquivo  index.html  (abre no navegador: Chrome, Edge ou Firefox).
+2. Entre com usuário  admin  e senha  admin .
+3. Troque a senha em "Minha senha" (canto inferior esquerdo).
+
+Não precisa instalar nada. Só é necessária internet para carregar o mapa,
+os gráficos e para buscar cidades desconhecidas.
+
+COMO FUNCIONA
+-------------
+- PROJETO = um ESTADO (UF), com ano opcional. Ex.: "Contratações RS 2024".
+  Crie um projeto por estado/ano para comparar a amplitude entre os anos.
+- CADASTRO = a planilha de contratações do projeto, com 4 colunas:
+
+    MOVEL/LOCAL | CIDADE DE ORIGEM | ESTADO | CIDADE DE ATUAÇÃO
+    LOCAL       | PIRATINI         | RS     | PELOTAS
+    MOVEL       | SANTA MARIA      | RS     | PELOTAS
+    MOVEL       | BAGE             | RS     | MOVEL
+
+  * CIDADE DE ATUAÇÃO = "MOVEL" significa que a pessoa pode atuar em
+    qualquer lugar do estado do projeto.
+  * Nomes em maiúsculas e sem acento são reconhecidos (SAO LUIZ -> São Luís).
+
+PRIMEIROS PASSOS
+----------------
+1. Projetos  ->  "+ Novo projeto": nome, estado (UF) e ano (opcional).
+2. Cidades  ->  "Baixar lista completa": carrega os 5.570 municípios do IBGE com
+   coordenadas (uma vez só). Assim qualquer cidade do Brasil é reconhecida.
+   (Sem a lista, o sistema busca cidades desconhecidas na internet automaticamente.)
+3. Cadastro  ->  escolha o projeto e clique em "Colar / importar planilha":
+   cole as linhas copiadas do Excel (ou escolha um arquivo .xlsx/.csv), clique em
+   "Analisar linhas", confira a situação de cada linha e "Importar linhas válidas".
+   Também dá para digitar linha a linha (Enter adiciona).
+4. Mapa:
+   - ponto azul   = cidade de atuação
+   - ponto roxo   = atuação móvel (todo o estado), no centro do estado
+   - ponto laranja= cidade de origem (tamanho = quantidade)
+   - linhas ligam atuação -> origem (tracejadas quando é "todo o estado")
+   - contorno tracejado = limite do estado do projeto
+   Com muitas contratações o mapa se organiza sozinho: as cidades de origem
+   próximas viram uma bolha só com o total (aproxime o zoom para separar; clique
+   na bolha para ver a lista) e as linhas aparecem apenas para a cidade clicada
+   (em "Linhas atuação → origem" dá para mostrar todas ou nenhuma). As unidades
+   PDR também se agrupam no zoom baixo. O painel "Mostrar no mapa" liga/desliga
+   cada camada; ele e a "Legenda" podem ser recolhidos pelo botão "−".
+   Clique em qualquer cidade do mapa (com ou sem contratação) para abrir a FICHA
+   DA CIDADE: a divisa do município é desenhada e aparecem os dados do IBGE
+   (população estimada e do Censo, área, densidade, % da população ocupada,
+   salário médio, renda, PIB per capita), as contratações como origem/atuação e
+   a agência do SINE da cidade (para o RS, o sistema traz embutida a base das 150
+   Agências FGTAS/Sine: endereço, telefones, e-mail e horário; se a cidade não tem
+   agência, mostra a mais próxima e a distância) e um espaço de ANOTAÇÕES DO RH
+   (telefone e endereço do SINE já vêm preenchidos e podem ser editados; onde
+   divulgar vagas, contatos, observações), que fica salvo e entra no backup.
+   Atalhos: procurar o SINE, a prefeitura e rádios locais no Google, a página das
+   Agências FGTAS/Sine e a página do IBGE Cidades. No painel do mapa dá para ligar
+   a camada "Agências do SINE".
+   Obs.: o IBGE não divulga taxa de desemprego por município; use a % de
+   população ocupada como referência e confirme no SINE. A base das agências foi
+   coletada do site da FGTAS (data no arquivo data/sine_seed.js); confirme por
+   telefone antes de divulgar vagas.
+   Enquanto uma cidade/microrregião está selecionada, o mapa mostra só o que se
+   liga a ela (as outras bolhas, cidades e unidades somem); feche o painel ou
+   clique em "mostrar tudo" para voltar.
+   Na legenda, clique no nome de uma microrregião para ver os números dela
+   (contratações, quantos moram na própria micro, distância média) e filtrar
+   tudo por ela. No painel do mapa
+   dá para localizar uma cidade, trocar o fundo (claro, ruas ou satélite) e abrir
+   em tela cheia. Marque "Mapa de calor" para ver a concentração por origem ou
+   por atuação.
+   Relatórios -> "Contratações por microrregião" e o gráfico no Dashboard mostram
+   local/móvel, quem mora na própria microrregião e a distância média de cada uma.
+5. Dashboard e Relatórios: indicadores de amplitude (cidades e estados de origem,
+   origem fora do estado, atuação em todo o estado, distâncias, por ano), gráficos
+   e tabelas com exportação em CSV e impressão/PDF. Os filtros do topo (Projeto,
+   Distrito, Microrregião, Tipo e Estado de origem) valem para todas as telas:
+   Distrito/Microrregião consideram a cidade de atuação da contratação.
+   O botão ☰ ao lado do título esconde/mostra o menu lateral (bom para o mapa).
+
+DISTRITOS E MICRORREGIÕES (menu Distritos)
+------------------------------------------
+- DISTRITO = uma regional (ex.: "Lagoa Vermelha"), com o estado (UF) das cidades.
+- MICRORREGIÃO = um grupo de cidades dentro do distrito, com uma CIDADE POLO (sede)
+  e as cidades atendidas. Cada cidade pertence a UMA única microrregião; se você
+  incluir uma cidade que já está em outra, o sistema avisa e pergunta se deve mover.
+- O distrito tem UMA cor; as microrregiões recebem TONS dessa cor (do mais escuro
+  ao mais claro, como num mapa de líderes). Ao trocar a cor do distrito em "Editar",
+  marque "Recolorir" para redistribuir os tons. No Mapa, os limites oficiais dos
+  municípios (malha do IBGE) são pintados com o tom da microrregião (a cidade polo
+  tem o mesmo tom; só recebe um ponto e o nome da microrregião). A malha de cada
+  estado é baixada uma única vez e fica guardada no navegador.
+- O distrito "Lagoa Vermelha" (7 microrregiões, 32 cidades) já vem montado
+  (arquivo data/distritos_seed.js). Ele é criado/completado na primeira abertura
+  e depois pode ser editado normalmente.
+- Cadastro rápido: "+ Novo distrito" -> "+ Microrregião": escolha a cidade polo,
+  cole a lista de cidades (uma por linha) e salve. Nomes que não forem encontrados
+  ficam listados para conferir, buscar na internet ou baixar a lista do IBGE na hora.
+- Cadastro em lote: "Importar planilha" aceita uma lista simples — o nome da
+  microrregião na primeira linha e as cidades nas linhas seguintes (separe as
+  microrregiões com uma linha em branco ou escreva o nome em MAIÚSCULAS):
+
+      DAVID CANABARRO
+      David Canabarro
+      Caseiros
+      Ciríaco
+
+      NOVA PRATA
+      Nova Prata
+      Guaporé
+
+  ou uma planilha com as colunas MICRORREGIÃO | CIDADE (opcionais: POLO com
+  "sim"/"x" e DISTRITO para vários distritos de uma vez). A cidade com o nome da
+  microrregião vira a polo. "Exportar CSV" gera o arquivo em colunas, reimportável.
+- No Mapa: filtre por Distrito/Microrregião no topo (o mapa já se aproxima da
+  região) ou clique no nome na legenda; as camadas "Microrregiões (malha)" e
+  "Nomes das microrregiões" podem ser desligadas.
+
+MAPAS PDRs (menu Mapas PDRs)
+----------------------------
+- Importe arquivos KML exportados do Google My Maps com as unidades/silos. Os
+  pontos aparecem no Mapa com a cor da microrregião da cidade onde ficam (cinza =
+  cidade fora das microrregiões cadastradas), com nome, cidade, microrregião e os
+  demais campos do ponto (código, CNPJ etc.).
+- ATENÇÃO ao exportar do Google My Maps (⋮ -> Exportar para KML/KMZ): desmarque
+  "Manter os dados atualizados com KML de link de rede" e marque "Exportar como
+  KML". Se o arquivo vier só com o link (é o que acontece com a opção marcada),
+  o sistema mostra um botão "Baixar o KML completo" e você escolhe o arquivo
+  baixado em seguida.
+- O sistema já vem com o mapa de exemplo "Ct- Distrito Lagoa Vermelha 2026"; ele
+  pode ser excluído e não volta sozinho.
+
+PERFIS DE ACESSO (menu Controle de acesso)
+------------------------------------------
+- Administrador: tudo (usuários, auditoria, backup, todos os projetos).
+- Gestor: cadastra contratações, projetos e cidades — só nos projetos liberados.
+- Visualizador: só consulta (dashboard, mapa, relatórios, distritos e mapas PDRs)
+  dos projetos liberados.
+
+ONDE OS DADOS FICAM
+-------------------
+Os dados são gravados no próprio navegador deste computador (não vão para a internet).
+Faça backups pelo menu "Backup" (gera um arquivo .json, com projetos, contratações,
+distritos, mapas PDR, cidades e usuários) — ele também serve para levar os dados para
+outro computador ("Restaurar backup").
+Atenção: limpar o histórico/dados do navegador apaga os dados do sistema.
+
+Se várias pessoas precisarem usar ao mesmo tempo em computadores diferentes, o próximo
+passo é publicar o sistema em um servidor com banco de dados central.
+
+PASTA
+-----
+index.html          -> a página do sistema (abra este arquivo)
+css/, js/, data/    -> arquivos do sistema (não precisa mexer)

@@ -1,0 +1,1373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Ct- Distrito Lagoa Vermelha 2026</name>
+    <description>Mapa das unidades referente ao distrito de Lagoa Vermelha. Contudo, pode haver dados desatualizados, caso seja necessário, solicite ajuste.</description>
+    <Style id="icon-1541-FBC02D-normal">
+      <IconStyle>
+        <color>ff2dc0fb</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1541-FBC02D-highlight">
+      <IconStyle>
+        <color>ff2dc0fb</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1541-FBC02D">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1541-FBC02D-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1541-FBC02D-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1568-097138-normal">
+      <IconStyle>
+        <color>ff387109</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1568-097138-highlight">
+      <IconStyle>
+        <color>ff387109</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1568-097138">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1568-097138-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1568-097138-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1570-424242-normal">
+      <IconStyle>
+        <color>ff424242</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1570-424242-highlight">
+      <IconStyle>
+        <color>ff424242</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1570-424242">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1570-424242-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1570-424242-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1591-C2185B-normal">
+      <IconStyle>
+        <color>ff5b18c2</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1591-C2185B-highlight">
+      <IconStyle>
+        <color>ff5b18c2</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1591-C2185B">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1591-C2185B-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1591-C2185B-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1603-C2185B-normal">
+      <IconStyle>
+        <color>ff5b18c2</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1603-C2185B-highlight">
+      <IconStyle>
+        <color>ff5b18c2</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1603-C2185B">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1603-C2185B-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1603-C2185B-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1644-9C27B0-normal">
+      <IconStyle>
+        <color>ffb0279c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1644-9C27B0-highlight">
+      <IconStyle>
+        <color>ffb0279c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1644-9C27B0">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1644-9C27B0-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1644-9C27B0-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1657-E65100-normal">
+      <IconStyle>
+        <color>ff0051e6</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1657-E65100-highlight">
+      <IconStyle>
+        <color>ff0051e6</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1657-E65100">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1657-E65100-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1657-E65100-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1721-7CB342-normal">
+      <IconStyle>
+        <color>ff42b37c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1721-7CB342-highlight">
+      <IconStyle>
+        <color>ff42b37c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1721-7CB342">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1721-7CB342-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1721-7CB342-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1721-7CB342-nodesc-normal">
+      <IconStyle>
+        <color>ff42b37c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="icon-1721-7CB342-nodesc-highlight">
+      <IconStyle>
+        <color>ff42b37c</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="icon-1721-7CB342-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1721-7CB342-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1721-7CB342-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Style id="icon-1723-0288D1-normal">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>0</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="icon-1723-0288D1-highlight">
+      <IconStyle>
+        <color>ffd18802</color>
+        <scale>1</scale>
+        <Icon>
+          <href>https://www.gstatic.com/mapspro/images/stock/503-wht-blank_maps.png</href>
+        </Icon>
+      </IconStyle>
+      <LabelStyle>
+        <scale>1</scale>
+      </LabelStyle>
+    </Style>
+    <StyleMap id="icon-1723-0288D1">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#icon-1723-0288D1-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#icon-1723-0288D1-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Folder>
+      <name>Capão Bonito do Sul (7 unidades)</name>
+      <Placemark>
+        <name>Vai ser Olfar - aguardando dados para alterar o sistema</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 192h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.436,-28.293,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Agrozem/0002-64</name>
+        <description><![CDATA[Cidade: Capao Bonito Do Sul<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 310h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.406,-28.132,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0004-08</name>
+        <description><![CDATA[Cidade: Muitos Capoes<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 756h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.388,-28.296,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0075-96</name>
+        <description><![CDATA[Cidade: Capao Bonito Do Sul<br> Microrregião: Capão Bonito do Sul<br> Recomendação: MANTER<br> Módulo: -<br> Horas Alocadas 2026: 380h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.39,-28.132,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0012-29</name>
+        <description><![CDATA[Cidade: Capao Bonito Do Sul<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 380h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.385,-28.132,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0013-00</name>
+        <description><![CDATA[Cidade: Capao Bonito Do Sul<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 364h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.387,-28.242,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Olfar/0034-37</name>
+        <description><![CDATA[Cidade: Capao Bonito Do Sul<br> Microrregião: Capão Bonito do Sul<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 364h]]></description>
+        <styleUrl>#icon-1568-097138</styleUrl>
+        <Point>
+          <coordinates>
+            -51.385,-28.133,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Casca (13 unidades)</name>
+      <Placemark>
+        <name>Agrossat/0001-47</name>
+        <description><![CDATA[Cidade: Serafina Correa<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 204h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.9476437,-28.6892824,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Batistello Com De Cereais/0001-31</name>
+        <description><![CDATA[Cidade: Casca<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 372h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.946,-28.561,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cereais Gollo Epp/0001-53</name>
+        <description><![CDATA[Cidade: Serafina Correa<br> Microrregião: Casca<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 362h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.043,-28.626,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cereais Pagnussat/0007-44</name>
+        <description><![CDATA[Cidade: Casca<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 333h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.093,-28.554,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cerealista Toffoli/0001-46</name>
+        <description><![CDATA[Cidade: Montaury<br> Microrregião: Casca<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 136h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.081,-28.655,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0026-91</name>
+        <description><![CDATA[Cidade: Casca<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 314h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.987,-28.5716,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cooperlate/0008-97</name>
+        <description><![CDATA[Cidade: Uniao Da Serra<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 244h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.019,-28.746,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0126-70</name>
+        <description><![CDATA[Cidade: Itapuca<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 280h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.248,-28.749,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>JVB/0001-72</name>
+        <description><![CDATA[Cidade: Casca<br> Microrregião: Casca<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 83h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.989,-28.571,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Reginatto/0001-60</name>
+        <description><![CDATA[Cidade: Casca<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 268h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.92,-28.549,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Toffoli Eireli/0001-00</name>
+        <description><![CDATA[Cidade: Serafina Correa<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 316h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -52.043,-28.631,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name><![CDATA[Ec Reginatto & Cia/0001-92]]></name>
+        <description><![CDATA[Cidade: Vanini<br> Microrregião: Casca<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 380h]]></description>
+        <styleUrl>#icon-1721-7CB342</styleUrl>
+        <Point>
+          <coordinates>
+            -51.837,-28.469,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Diagro/ 0002-37</name>
+        <styleUrl>#icon-1721-7CB342-nodesc</styleUrl>
+        <Point>
+          <coordinates>
+            -51.8526,-28.464,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Escritório Reginatto/0001-92</name>
+        <description>Somente escritório, mas com CNPJ participante</description>
+        <styleUrl>#icon-1644-9C27B0</styleUrl>
+        <Point>
+          <coordinates>
+            -51.8460966,-28.4761505,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>David Canabarro (15 unidades)</name>
+      <Placemark>
+        <name>Antunes Com De Cereais Eireli/0001-51</name>
+        <description><![CDATA[Cidade: David Canabarro<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 260h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.767,-28.435,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Batistello Agroneg Eireli/0001-85</name>
+        <description><![CDATA[Cidade: David Canabarro<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 372h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.792,-28.412,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0005-99</name>
+        <description><![CDATA[Cidade: Muliterno<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 310h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.772,-28.333,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0012-18</name>
+        <description><![CDATA[Cidade: Caseiros<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 369h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.684,-28.274,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0011-05</name>
+        <description><![CDATA[Cidade: Ciriaco<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 324h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.868,-28.341,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0013-77</name>
+        <description><![CDATA[Cidade: Ciriaco<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 398h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.959,-28.291,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0015-39</name>
+        <description><![CDATA[Cidade: Caseiros<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 488h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.839,-28.249,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0018-81</name>
+        <description><![CDATA[Cidade: David Canabarro<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 334h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.808,-28.399,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0023-49</name>
+        <description><![CDATA[Cidade: David Canabarro<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 272h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.876,-28.436,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coperdia/0128-78</name>
+        <description><![CDATA[Cidade: Ciriaco<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 344h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.959,-28.29,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Perlini Agronegocios/0002-91</name>
+        <description><![CDATA[Cidade: David Canabarro<br> Microrregião: David Canabarro<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 342h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.83,-28.391,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cereais São Luís (Evandro Cereais/0001-63)</name>
+        <description><![CDATA[Cidade: Caseiros<br>Microrregião: David Canabarro<br>Recomendação: INJETAR<br>Módulo: 8H<br>Horas Alocadas 2026: 568h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.7171116,-28.2451515,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Agro Nova/0001-23</name>
+        <description><![CDATA[Cidade: Caseiros<br>Microrregião: David Canabarro<br>Recomendação: INJETAR<br>Módulo:<br>Horas Alocadas 2026: ]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.698264,-28.261204,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Escritório Diagro/0001-56</name>
+        <description>Somente escritório, mas com CNPJ participante</description>
+        <styleUrl>#icon-1644-9C27B0</styleUrl>
+        <Point>
+          <coordinates>
+            -51.8463562,-28.3875452,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0009-12</name>
+        <description><![CDATA[Cidade: Ciriaco<br>Microrregião: David Canabarro<br>Recomendação: INJETAR<br>Módulo: 2H/4H<br>Horas Alocadas 2026: 246h]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.8695411,-28.3746109,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Diagro/0005-80</name>
+        <description><![CDATA[Cidade: Ciriaco<br>Microrregião: David Canabarro<br>Recomendação: <br>Módulo: <br>Horas Alocadas 2026: ]]></description>
+        <styleUrl>#icon-1657-E65100</styleUrl>
+        <Point>
+          <coordinates>
+            -51.870034,-28.374374,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Lagoa Vermelha (15 unidades)</name>
+      <Placemark>
+        <name>Agrozem/0001-83</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 388h]]></description>
+        <styleUrl>#icon-1591-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.54,-28.212,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0002-46</name>
+        <description><![CDATA[Cidade: Ibiraiaras<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 530h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.631,-28.372,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0007-50</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 510h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.454,-27.997,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0014-80</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 340h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.527,-28.204,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0015-60</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 387h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.512,-28.456,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Coasa/0021-87</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 514h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.612,-28.225,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0074-77</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 426h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.485,-28.257,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0080-15</name>
+        <description><![CDATA[Cidade: Ibiraiaras<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 388h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.639,-28.368,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0058-95</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INVESTIGAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 510h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.481,-27.961,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0066-03</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INVESTIGAR<br> Módulo: 8H<br> Horas Alocadas 2026: 424h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.526,-28.188,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Mbfran Cereais Me/0001-58</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 510h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.458,-27.992,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0020-39</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: MANTER<br> Módulo: 8H<br> Horas Alocadas 2026: 418h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.542,-28.087,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0023-81</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 498h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.493,-28.423,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0029-77</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INVESTIGAR<br> Módulo: 8H<br> Horas Alocadas 2026: 514h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.51,-28.21,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Tres Tentos/0062-91</name>
+        <description><![CDATA[Cidade: Lagoa Vermelha<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 8H<br> Horas Alocadas 2026: 516h]]></description>
+        <styleUrl>#icon-1603-C2185B</styleUrl>
+        <Point>
+          <coordinates>
+            -51.487,-28.257,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Muitos Capoes (11 unidades - 3940h)</name>
+      <Placemark>
+        <name>Bocchi Ind/0017-22</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 454h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.171,-28.069,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0086-00</name>
+        <description><![CDATA[Cidade: Pinhal Da Serra<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 288h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.171,-27.904,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0088-72</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 340h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.261,-27.969,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0052-08</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 214h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.167,-28.077,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0055-42</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 416h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.167,-28.079,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0056-23</name>
+        <description><![CDATA[Cidade: Pinhal Da Serra<br> Microrregião: Muitos Capoes<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 416h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.199,-27.952,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0067-86</name>
+        <description><![CDATA[Cidade: Muitos Capoes<br> Microrregião: Muitos Capoes<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 472h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.196,-28.326,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0068-67</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 112h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.19,-28.069,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0006-80</name>
+        <description><![CDATA[Cidade: Muitos Capoes<br> Microrregião: Muitos Capoes<br> Recomendação: MANTER<br> Módulo: -<br> Horas Alocadas 2026: 416h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.192,-28.302,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0021-10</name>
+        <description><![CDATA[Cidade: Esmeralda<br> Microrregião: Muitos Capoes<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 416h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.197,-28.048,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Olfar/0038-60</name>
+        <description><![CDATA[Cidade: Pinhal Da Serra<br> Microrregião: Muitos Capoes<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 396h]]></description>
+        <styleUrl>#icon-1723-0288D1</styleUrl>
+        <Point>
+          <coordinates>
+            -51.199,-27.953,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Nova Prata (20 unidades )</name>
+      <Placemark>
+        <name>Copercampos/0089-53</name>
+        <description><![CDATA[Cidade: Ibiraiaras<br> Microrregião: Lagoa Vermelha<br> Recomendação: INJETAR<br> Módulo: 2H/4H<br> Horas Alocadas 2026: 382h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.647,-28.462,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Agripan/0001-29</name>
+        <description><![CDATA[Cidade: Guabiju<br> Microrregião: Nova Prata<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 130h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.632,-28.529,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Agro Sta Cruz L/0001-45</name>
+        <description><![CDATA[Cidade: Sao Jorge<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 196h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.688,-28.495,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>CDM Agronegocios LTDA/0001-02</name>
+        <description><![CDATA[Cidade: Andre Da Rocha<br> Microrregião: Nova Prata<br> Recomendação: MANTER<br> Módulo: -<br> Horas Alocadas 2026: 382h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.58,-28.628,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>CDM Agronegocios LTDA/0004-47</name>
+        <description><![CDATA[Cidade: Protasio Alves<br> Microrregião: Nova Prata<br> Recomendação: MANTER<br> Módulo: -<br> Horas Alocadas 2026: 204h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.471,-28.767,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0003-27</name>
+        <description><![CDATA[Cidade: Guabiju<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 382h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.691,-28.529,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bocchi Ind/0013-07</name>
+        <description><![CDATA[Cidade: Andre Da Rocha<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 396h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.567,-28.623,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Ceag Cereais E Agrop Dall Agnol Ltd/0001-34</name>
+        <description><![CDATA[Cidade: Nova Araca<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 242h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.736,-28.657,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cerealista Frasson/0001-50</name>
+        <description><![CDATA[Cidade: Andre Da Rocha<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 410h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.55,-28.548,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Com Cereais Marcuzzo Epp/0001-26</name>
+        <description><![CDATA[Cidade: Guapore<br> Microrregião: Nova Prata<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 294h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.899,-28.828,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Com Cereais S Liberal Me/0001-10</name>
+        <description><![CDATA[Cidade: Vista Alegre Do Prata<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 196h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.729,-28.825,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cooperlate/0007-06</name>
+        <description><![CDATA[Cidade: Parai<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 358h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.823,-28.631,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Vai ser Oleoplan - Aguardando dados para alterar o sistema</name>
+        <description><![CDATA[Cidade: Andre Da Rocha<br> Microrregião: Nova Prata<br> Recomendação:<br> Módulo: -<br> Horas Alocadas 2026:]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.553,-28.548,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0098-44</name>
+        <description><![CDATA[Cidade: Nova Prata<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 410h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.628,-28.733,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Mm Coml De Cereais/0001-07</name>
+        <description><![CDATA[Cidade: Guapore<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 390h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.906598,-28.826792,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0002-57</name>
+        <description><![CDATA[Cidade: Veranopolis<br> Microrregião: Nova Prata<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 458h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.538,-28.925,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Protasio/0001-08</name>
+        <description><![CDATA[Cidade: Protasio Alves<br> Microrregião: Nova Prata<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 152h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.477,-28.754,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Copercampos/0082-87</name>
+        <description><![CDATA[Cidade: Nova Prata<br>Microrregião: Nova Prata<br>Recomendação: <br>Módulo: -<br>Horas Alocadas 2026:]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.632,-28.744,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Com Cereais Belo Milho/0001-33</name>
+        <description><![CDATA[Cidade: Vista Alegre Do Prata<br>Microrregião: Nova Prata<br>Recomendação: INJETAR<br>Módulo: -<br>Horas Alocadas 2026: 266h]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.7828643,-28.8116111,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Diagro/0003-18</name>
+        <description><![CDATA[Cidade: São Jorge<br>Microrregião: Nova Prata<br>Recomendação:<br>Módulo: <br>Horas Alocadas 2026: ]]></description>
+        <styleUrl>#icon-1541-FBC02D</styleUrl>
+        <Point>
+          <coordinates>
+            -51.7001207,-28.5096861,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+    <Folder>
+      <name>Vacaria (17 unidades - 6268h)</name>
+      <Placemark>
+        <name>Agr Dois Capoes Me/0001-62</name>
+        <description><![CDATA[Cidade: Bom Jesus<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 38h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.545,-28.631,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Agrotecnica/0005-81</name>
+        <description><![CDATA[Cidade: Sao Francisco De Paula<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 126h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.503,-29.42,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Bianchini/0023-95</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 0h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.949,-28.508,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cerealista Gdo Eireli Me/0001-18</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 172h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.966,-28.282,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Chapada Graos/0001-83</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 552h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.019,-28.426,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cooperval/0001-72</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 620h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.919,-28.473,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Cotrijal/0106-27</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 590h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.122,-28.49,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Mda Cereais/0007-46</name>
+        <description><![CDATA[Cidade: Sao Francisco De Paula<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 96h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.544,-29.433,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Minotto/0001-39</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 440h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.0005,-28.439,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Nutriva/0001-83</name>
+        <description><![CDATA[Cidade: Ipe<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 380h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.214,-28.695,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Oleoplan/0024-62</name>
+        <description><![CDATA[Cidade: Ipe<br> Microrregião: Vacaria<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 488h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.202,-28.676,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Schio/0001-28</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: MANTER<br> Módulo: -<br> Horas Alocadas 2026: 716h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.897,-28.475,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Sementes Araucaria/0001-37</name>
+        <description><![CDATA[Cidade: Campestre Da Serra<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 370h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -51.088,-28.717,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Tres Tentos/0052-10</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 568h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.99,-28.453,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Turamix/0005-60</name>
+        <description><![CDATA[Cidade: Sao Jose Dos Ausentes<br> Microrregião: Vacaria<br> Recomendação: INVESTIGAR<br> Módulo: -<br> Horas Alocadas 2026: 56h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.084998,-28.740156,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Wonsovicz/0001-50</name>
+        <description><![CDATA[Cidade: Bom Jesus<br> Microrregião: Vacaria<br> Recomendação: MANTER<br> Módulo: 8H<br> Horas Alocadas 2026: 460h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.441,-28.652,0
+          </coordinates>
+        </Point>
+      </Placemark>
+      <Placemark>
+        <name>Zamban De Cereais Lt Me/0001-70</name>
+        <description><![CDATA[Cidade: Vacaria<br> Microrregião: Vacaria<br> Recomendação: INJETAR<br> Módulo: -<br> Horas Alocadas 2026: 596h]]></description>
+        <styleUrl>#icon-1570-424242</styleUrl>
+        <Point>
+          <coordinates>
+            -50.992,-28.451,0
+          </coordinates>
+        </Point>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>
