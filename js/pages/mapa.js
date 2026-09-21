@@ -82,6 +82,8 @@ Paginas.mapa = {
         (dica ? `<div class="tt-dica">${dica}</div>` : '');
     }
     const TT = { className: 'tt-card', direction: 'top', offset: [0, -8] };
+    const statusMalha = el.querySelector('#malha-status');
+    function definirStatus(txt) { statusMalha.textContent = txt || ''; statusMalha.hidden = !txt; }
     const mapa = L.map('mapa', { preferCanvas: true, zoomControl: true }).setView([-15.5, -52], 4);
     // fundos: o "claro" deixa as cores das microrregiões e as bolhas em evidência
     const FUNDOS = {
@@ -279,14 +281,24 @@ Paginas.mapa = {
       }
       definirStatus('');
     }
+    // Cidade que é origem E atuação: a marca de origem fica encostada no canto do losango, em vez de por cima dele
+    function deslocamentoOrigem(cidadeId, r) {
+      const a = porAtuacao.get(cidadeId);
+      if (!a) return 0;
+      const meiaDiagonal = Math.round(raioAtuacao(a.total) * 1.5) * 0.71;
+      return Math.round((meiaDiagonal + r) * 0.72);
+    }
     function desenharOrigens() {
       camadas.origens.clearLayers();
       if (estilo === 'pintar') { desenharCoropleto(); return; }
       if (estilo === 'pontos') {
         for (const g of porOrigem.values()) {
           if (foco && !foco.has(g.cidade.id)) continue;
-          const m = L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: 4 * fator() + 2, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 })
-            .bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver onde trabalham' }), TT);
+          const rp = Math.round(4 * fator() + 2), dp = deslocamentoOrigem(g.cidade.id, rp);
+          const m = dp
+            ? L.marker([g.cidade.lat, g.cidade.lng], { pane: 'origens', keyboard: false, icon: L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem encostada" style="width:${2 * rp}px;height:${2 * rp}px"></div>`, iconSize: [2 * rp, 2 * rp], iconAnchor: [rp - dp, rp + dp] }) })
+            : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: rp, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 });
+          m.bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver onde trabalham' }), TT);
           m.on('click', () => selecionarOrigem(g));
           camadas.origens.addLayer(m);
         }
@@ -295,7 +307,8 @@ Paginas.mapa = {
       for (const gr of agruparOrigens()) {
         const r = Math.round(raioOrigem(gr.total));
         const varias = gr.itens.length > 1;
-        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r, r] });
+        const desloc = deslocamentoOrigem(gr.cidade.id, r); // evita cobrir o losango da cidade de atuação
+        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r + desloc] });
         const tip = varias
           ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
           : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver onde trabalham' });
@@ -369,8 +382,6 @@ Paginas.mapa = {
     const distritos = Store.distritos().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
       .map(d => regiaoFiltro.micro ? { ...d, micros: (d.micros || []).filter(m => m.id === regiaoFiltro.micro.id) } : d);
     const camadaRotulos = L.layerGroup().addTo(mapa);
-    const statusMalha = el.querySelector('#malha-status');
-    function definirStatus(txt) { statusMalha.textContent = txt || ''; statusMalha.hidden = !txt; }
     const cidadesDaMicro = m => (m.cidadeIds || []).map(id => Store.cidade(id)).filter(Boolean);
     function limitesDe(cidades) {
       const pts = cidades.map(c => [c.lat, c.lng]);

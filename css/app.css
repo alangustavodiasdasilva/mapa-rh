@@ -314,6 +314,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .legenda-faixa { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.4); }
 .bolha-origem { border-radius: 50%; background: rgba(234, 88, 12, .9); border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); color: #fff; font-weight: 700; text-align: center; cursor: pointer; white-space: nowrap; }
 .bolha-origem.varias { background: rgba(194, 65, 12, .95); border: 2px solid #fff; }
+.bolha-origem.encostada { box-shadow: 0 0 0 2px #1d4ed8, 0 1px 4px rgba(0,0,0,.35); }
 .silo-grupo { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .silo-grupo::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,255,255,.75); }
 .painel-cidade { color: var(--primaria); text-decoration: none; font-weight: 600; }
