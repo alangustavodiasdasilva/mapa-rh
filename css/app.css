@@ -308,6 +308,10 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .painel-recolhido .painel-cab { margin-bottom: 0; }
 .painel-recolhido .painel-corpo { display: none; }
 .bolha-origem-wrap { background: transparent; border: none; }
+.marc-atuacao { display: flex; align-items: center; justify-content: center; background: #1d4ed8; border: 2px solid #fff; border-radius: 4px; transform: rotate(45deg); box-shadow: 0 1px 4px rgba(0,0,0,.4); cursor: pointer; color: #fff; font-weight: 700; }
+.marc-atuacao span { transform: rotate(-45deg); line-height: 1; }
+.marc-atuacao.mini { width: 14px; height: 14px; border-width: 1.5px; margin: 0 8px 0 2px; box-shadow: none; flex-shrink: 0; font-size: 8px; }
+.legenda-faixa { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.4); }
 .bolha-origem { border-radius: 50%; background: rgba(234, 88, 12, .9); border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); color: #fff; font-weight: 700; text-align: center; cursor: pointer; white-space: nowrap; }
 .bolha-origem.varias { background: rgba(194, 65, 12, .95); border: 2px solid #fff; }
 .silo-grupo { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; cursor: pointer; }

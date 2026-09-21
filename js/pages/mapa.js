@@ -15,8 +15,20 @@ Paginas.mapa = {
               <option value="ruas">Ruas (OpenStreetMap)</option>
               <option value="satelite">Satélite</option>
             </select></div>
-          <label title="Onde as pessoas trabalham (bolha azul)"><input type="checkbox" id="c-atuacao" checked> <span class="ponto-cor" style="background:#1d4ed8"></span>Cidades de atuação</label>
-          <label title="De onde as pessoas vêm (bolha laranja com a quantidade; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>Cidades de origem</label>
+          <label title="Cidade de atuação: onde a pessoa trabalha (losango azul com a quantidade)"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
+          <label title="Cidade de origem: de onde a pessoa vem (laranja; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>De onde vêm <span class="muted small">(origem)</span></label>
+          <label class="sub" style="display:block">Mostrar as origens como
+            <select id="c-estilo" style="margin-top:2px">
+              <option value="bolhas">Bolhas com a quantidade</option>
+              <option value="pontos">Pontos pequenos</option>
+              <option value="pintar">Municípios pintados (mais escuro = mais gente)</option>
+            </select></label>
+          <label class="sub" style="display:block">Tamanho dos marcadores
+            <select id="c-tamanho" style="margin-top:2px">
+              <option value="p">Pequeno</option>
+              <option value="m">Médio</option>
+              <option value="g">Grande</option>
+            </select></label>
           <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> <span class="ponto-cor" style="background:#16a34a"></span>Microrregiões (malha)</label>
           <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
           <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> 🌾 Unidades PDR (<span id="qtd-silos">0</span>)</label>
@@ -25,7 +37,7 @@ Paginas.mapa = {
           </select>
           <label><input type="checkbox" id="c-limites" checked> Limite do estado</label>
           <label id="c-sine-wrap" title="Agências FGTAS/Sine do RS (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
-          <div class="secao">Linhas atuação → origem</div>
+          <div class="secao">Linhas: de onde vêm → onde trabalham</div>
           <select id="c-modo-linhas">
             <option value="selecionada">Só da cidade que eu clicar</option>
             <option value="todas">Todas as linhas</option>
@@ -122,8 +134,17 @@ Paginas.mapa = {
       if (!g) { g = { cidade: f.cidadeOrigem, total: 0, local: 0, movel: 0, fluxos: [] }; porOrigem.set(f.cidadeOrigem.id, g); }
       g.total += f.total; g.local += f.local; g.movel += f.movel; g.fluxos.push(f);
     }
-    const raioAtuacao = n => Math.min(30, 9 + 2.6 * Math.sqrt(n));
-    const raioOrigem = n => Math.min(22, 5 + 2.2 * Math.sqrt(n));
+    // Tamanho dos marcadores (ajustável no painel) e estilo das origens (bolhas / pontos / municípios pintados)
+    const FATOR_TAMANHO = { p: 0.6, m: 0.8, g: 1.05 };
+    let tamanho = localStorage.getItem('maparh:mapa-tamanho') || 'm';
+    let estilo = localStorage.getItem('maparh:mapa-estilo') || 'bolhas';
+    if (!FATOR_TAMANHO[tamanho]) tamanho = 'm';
+    if (!['bolhas', 'pontos', 'pintar'].includes(estilo)) estilo = 'bolhas';
+    el.querySelector('#c-tamanho').value = tamanho;
+    el.querySelector('#c-estilo').value = estilo;
+    const fator = () => FATOR_TAMANHO[tamanho];
+    const raioAtuacao = n => Math.round(Math.min(24, 8 + 2.2 * Math.sqrt(n)) * fator());
+    const raioOrigem = n => Math.round(Math.min(20, 5 + 2.0 * Math.sqrt(n)) * fator());
 
     // linha curva entre dois pontos (arco leve para não sobrepor)
     function curva(a, b) {
@@ -223,21 +244,67 @@ Paginas.mapa = {
       }));
     }
     function selecionarOrigem(g) { abrirPainelCidade(g.cidade, { fluxosOrigem: g.fluxos }); destacarLinhas(linhasPorChave.get('O:' + g.cidade.id) || []); }
+    const COR_CLASSES = ['#fed7aa', '#fdba74', '#fb923c', '#ea580c', '#9a3412'];
+    let cortesCoropleto = [];
+    function classeDe(n) { let k = 0; for (const c of cortesCoropleto) if (n > c) k++; return Math.min(k, COR_CLASSES.length - 1); }
+    mapa.createPane('coropleto').style.zIndex = 360;
+    let versaoCoropleto = 0;
+    // Municípios de origem pintados pela quantidade de contratações (classes por quantis)
+    async function desenharCoropleto() {
+      const versao = ++versaoCoropleto;
+      const origens = [...porOrigem.values()].filter(g => !foco || foco.has(g.cidade.id));
+      if (!origens.length) return;
+      const totais = origens.map(g => g.total).sort((a, b) => a - b);
+      const q = f => totais[Math.min(totais.length - 1, Math.floor(f * totais.length))];
+      cortesCoropleto = [...new Set([q(0.2), q(0.4), q(0.6), q(0.8)])];
+      atualizarLegendaOrigens();
+      const porUF = new Map();
+      origens.forEach(g => { if (!porUF.has(g.cidade.uf)) porUF.set(g.cidade.uf, []); porUF.get(g.cidade.uf).push(g); });
+      for (const [uf, lista] of porUF) {
+        let dadosUF = null;
+        definirStatus(`Carregando limites dos municípios (${uf})…`);
+        try { dadosUF = await Malha.carregarUF(uf); } catch (e) { /* sem malha: cai para pontos */ }
+        if (!ativo || versao !== versaoCoropleto) return;
+        for (const g of lista) {
+          const cor = COR_CLASSES[classeDe(g.total)];
+          const tip = balao({ cor, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver onde trabalham' });
+          const f = dadosUF ? Malha.featureDaCidade(g.cidade, dadosUF) : null;
+          const camada = f
+            ? L.geoJSON(f, { pane: 'coropleto', style: { color: '#fff', weight: 0.8, opacity: 0.9, fillColor: cor, fillOpacity: 0.8 } })
+            : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: 5 * fator() + 2, color: '#fff', weight: 1.5, fillColor: cor, fillOpacity: 0.95 });
+          camada.bindTooltip(tip, { ...TT, sticky: !!f });
+          camada.on('click', e => { L.DomEvent.stopPropagation(e); selecionarOrigem(g); });
+          camadas.origens.addLayer(camada);
+        }
+      }
+      definirStatus('');
+    }
     function desenharOrigens() {
       camadas.origens.clearLayers();
+      if (estilo === 'pintar') { desenharCoropleto(); return; }
+      if (estilo === 'pontos') {
+        for (const g of porOrigem.values()) {
+          if (foco && !foco.has(g.cidade.id)) continue;
+          const m = L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: 4 * fator() + 2, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 })
+            .bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver onde trabalham' }), TT);
+          m.on('click', () => selecionarOrigem(g));
+          camadas.origens.addLayer(m);
+        }
+        return;
+      }
       for (const gr of agruparOrigens()) {
         const r = Math.round(raioOrigem(gr.total));
         const varias = gr.itens.length > 1;
         const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r, r] });
         const tip = varias
-          ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
-          : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'origem', total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver os destinos' });
+          ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
+          : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver onde trabalham' });
         const m = L.marker([gr.cidade.lat, gr.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
         m.on('click', () => varias ? abrirPainelGrupoOrigem(gr) : selecionarOrigem(gr.itens[0]));
         camadas.origens.addLayer(m);
       }
     }
-    mapa.on('zoomend', desenharOrigens);
+    mapa.on('zoomend', () => { if (estilo === 'bolhas') desenharOrigens(); });
     desenharOrigens();
 
     const marcadoresHub = new Map(), marcadoresAtuacao = new Map();
@@ -246,6 +313,7 @@ Paginas.mapa = {
       const m = L.circleMarker([h.lat, h.lng], { pane: 'atuacao', radius: raioAtuacao(h.total), color: COR_HUB, weight: 2, dashArray: '4 3', fillColor: COR_HUB, fillOpacity: 0.35 })
         .bindTooltip(balao({ cor: COR_HUB, titulo: `${h.uf} — ${UI.esc(Store.UFS[h.uf] || h.uf)}`, tipo: 'atuação móvel', sub: 'podem atuar em qualquer lugar do estado', total: h.total, local: h.local, movel: h.movel }), TT);
       m.on('click', () => { abrirPainelHub(h); destacarLinhas(linhasPorChave.get('H:' + h.uf) || []); });
+      m._total = h.total;
       marcadoresHub.set('H:' + h.uf, m);
       camadas.hubs.addLayer(m);
     }
@@ -254,17 +322,30 @@ Paginas.mapa = {
       const infoCor = Store.corDaCidade(a.cidade.id);
       const corMarcador = COR_ATUACAO;
       const rotuloDist = infoCor ? `<br><span class="muted small">${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''}</span>` : '';
-      const m = L.circleMarker([a.cidade.lat, a.cidade.lng], { pane: 'atuacao', radius: raioAtuacao(a.total), color: '#fff', weight: 2.5, fillColor: corMarcador, fillOpacity: 0.95 })
+      const m = L.marker([a.cidade.lat, a.cidade.lng], { icon: iconeAtuacao(a.total), pane: 'atuacao', keyboard: false })
         .bindTooltip(() => {
           const proprias = a.fluxos.filter(f => f.cidadeOrigem.id === a.cidade.id).reduce((n, f) => n + f.total, 0);
-          return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'cidade de atuação',
+          return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'onde trabalham',
             sub: infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)}` : '', total: a.total, local: a.local, movel: a.movel,
-            dica: `${a.fluxos.length} cidade(s) de origem${proprias ? ` · ${proprias} residem na própria cidade` : ''} · clique para ver` });
-        }, TT);
+            dica: `vêm de ${a.fluxos.length} cidade(s)${proprias ? ` · ${proprias} moram na própria cidade` : ''} · clique para ver de onde vêm` });
+        }, { ...TT, offset: [0, -raioAtuacao(a.total) - 4] });
       m.on('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
+      m._total = a.total;
       marcadoresAtuacao.set(a.cidade.id, m);
       camadas.atuacao.addLayer(m);
     }
+    function iconeAtuacao(total) {
+      const r = raioAtuacao(total), lado = Math.round(r * 1.5);
+      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px;font-size:${lado >= 26 ? 11 : 9}px"><span>${total}</span></div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
+    }
+    // mudança de estilo / tamanho pelo painel
+    el.querySelector('#c-estilo').addEventListener('change', e => { estilo = e.target.value; localStorage.setItem('maparh:mapa-estilo', estilo); desenharOrigens(); atualizarLegendaOrigens(); });
+    el.querySelector('#c-tamanho').addEventListener('change', e => {
+      tamanho = e.target.value; localStorage.setItem('maparh:mapa-tamanho', tamanho);
+      for (const m of marcadoresAtuacao.values()) m.setIcon(iconeAtuacao(m._total));
+      for (const m of marcadoresHub.values()) m.setRadius(raioAtuacao(m._total));
+      desenharOrigens();
+    });
     // Aplica o foco: esconde bolhas, cidades de atuação, hubs e unidades que não se ligam à seleção
     function aplicarFoco(chaves) {
       foco = chaves ? new Set(chaves) : null;
@@ -768,8 +849,8 @@ Paginas.mapa = {
     legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></div><div class="painel-corpo">` +
       `<div class="legenda-secao">Contratações</div>` +
       projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} <span class="muted">(linhas)</span>`)).join('') +
-      item(bola(COR_ATUACAO, 14), 'Cidade de atuação') +
-      item(`<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, 'Cidade de origem — o número é a quantidade de contratações') +
+      item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Onde trabalham</b> (cidade de atuação) — nº de pessoas') +
+      `<div id="legenda-origens"></div>` +
       (porHub.size ? item(bola(COR_HUB, 14), 'Atuação móvel em todo o estado') : '') +
       (todosSilos.length ? `<div class="legenda-secao">🌾 Unidades PDR (${todosSilos.length})</div>` +
         item(`<span class="silo-grupo" style="background:#16a34a;width:18px;height:18px;border-width:1.5px;box-shadow:none;flex-shrink:0"></span>`, 'Unidade — cor da microrregião da cidade') +
@@ -782,6 +863,23 @@ Paginas.mapa = {
           (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${bola(m.cor || d.cor, 9)}${UI.esc(m.nome)} <span class="muted small">(${(m.cidadeIds || []).length})</span></a>`).join('')
         ).join('') : '') +
       `<div class="muted small" style="margin-top:6px;border-top:1px solid var(--borda);padding-top:5px">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) · ${porOrigem.size} cid. de origem</div></div>`;
+    function atualizarLegendaOrigens() {
+      const alvo = el.querySelector('#legenda-origens');
+      if (!alvo) return;
+      if (estilo === 'pintar') {
+        const faixas = [];
+        let ini = 1;
+        cortesCoropleto.forEach(c => { faixas.push(ini === c ? `${c}` : `${ini}–${c}`); ini = c + 1; });
+        faixas.push(`${ini}+`);
+        alvo.innerHTML = item(bola(COR_ORIGEM, 12), '<b>De onde vêm</b> (cidade de origem) — município pintado') +
+          `<div class="legenda-item" style="gap:4px;flex-wrap:wrap;padding-left:20px">${faixas.map((f, i) => `<span class="legenda-faixa" style="background:${COR_CLASSES[Math.min(i, COR_CLASSES.length - 1)]}">${f}</span>`).join('')}</div>`;
+      } else if (estilo === 'pontos') {
+        alvo.innerHTML = item(bola(COR_ORIGEM, 10), '<b>De onde vêm</b> (cidade de origem) — a quantidade aparece ao passar o mouse');
+      } else {
+        alvo.innerHTML = item(`<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, '<b>De onde vêm</b> (cidade de origem) — nº de pessoas');
+      }
+    }
+    atualizarLegendaOrigens();
     // painéis recolhíveis (estado lembrado na sessão)
     for (const painelEl of [el.querySelector('#controles'), legenda]) {
       const chave = 'maparh:mapa-recolhido:' + painelEl.id;

@@ -36,11 +36,14 @@ PRIMEIROS PASSOS
    "Analisar linhas", confira a situação de cada linha e "Importar linhas válidas".
    Também dá para digitar linha a linha (Enter adiciona).
 4. Mapa:
-   - ponto azul   = cidade de atuação
-   - ponto roxo   = atuação móvel (todo o estado), no centro do estado
-   - ponto laranja= cidade de origem (tamanho = quantidade)
-   - linhas ligam atuação -> origem (tracejadas quando é "todo o estado")
-   - contorno tracejado = limite do estado do projeto
+   - losango azul com número = ONDE TRABALHAM (cidade de atuação)
+   - laranja                 = DE ONDE VÊM (cidade de origem). No painel "Mostrar no
+                               mapa" escolha como ver as origens: bolhas com a
+                               quantidade, pontos pequenos ou municípios pintados
+                               (mais escuro = mais gente); e o tamanho dos marcadores
+   - ponto roxo              = atuação móvel (todo o estado), no centro do estado
+   - linhas ligam de onde vêm -> onde trabalham (tracejadas quando é "todo o estado")
+   - contorno tracejado      = limite do estado do projeto
    Com muitas contratações o mapa se organiza sozinho: as cidades de origem
    próximas viram uma bolha só com o total (aproxime o zoom para separar; clique
    na bolha para ver a lista) e as linhas aparecem apenas para a cidade clicada
