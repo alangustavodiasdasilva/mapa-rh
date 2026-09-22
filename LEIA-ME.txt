@@ -36,15 +36,20 @@ PRIMEIROS PASSOS
    "Analisar linhas", confira a situação de cada linha e "Importar linhas válidas".
    Também dá para digitar linha a linha (Enter adiciona).
 4. Mapa:
-   - losango azul            = ONDE TRABALHAM (cidade de atuação); clique para ver de onde vêm
+   - losango azul c/ número  = TRABALHAM AQUI: quantas pessoas trabalham nessa cidade
+                               (vindas de qualquer lugar); clique para ver de onde vêm
    - etiqueta azul c/ número = TOTAL DO DISTRITO (soma de quem trabalha nas cidades
                                dele). Clique nela: painel com os dados do distrito
                                e as bolhas/linhas do distrito inteiro
    - nome da micro c/ número = total da microrregião; clique para ver os dados dela
-   - laranja                 = DE ONDE VÊM (cidade de origem). No painel "Mostrar no
-                               mapa" escolha como ver as origens: bolhas com a
-                               quantidade, pontos pequenos ou municípios pintados
-                               (mais escuro = mais gente); e o tamanho dos marcadores
+   - laranja                 = DE ONDE VÊM: quantos saíram dessa cidade para trabalhar
+                               em outra (as linhas partem dela, com seta para o trabalho)
+   - meio laranja/meio azul  = moram e trabalham na própria cidade
+                               No painel "Mostrar no mapa" escolha como ver as origens:
+                               bolhas com a quantidade, pontos pequenos ou municípios
+                               pintados (mais escuro = mais gente); e o tamanho
+   - clique na linha         = trajeto (de onde vêm -> onde trabalham), enquadrando os
+                               dois pontos no mapa
    - ponto roxo              = atuação móvel (todo o estado), no centro do estado
    - linhas ligam de onde vêm -> onde trabalham (tracejadas quando é "todo o estado")
    - contorno tracejado      = limite do estado do projeto
