@@ -15,7 +15,7 @@ Paginas.mapa = {
               <option value="ruas">Ruas (OpenStreetMap)</option>
               <option value="satelite">Satélite</option>
             </select></div>
-          <label title="Cidade de atuação: onde a pessoa trabalha (losango azul com a quantidade)"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
+          <label title="Cidade de atuação: onde a pessoa trabalha (losango azul; o total aparece no distrito)"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
           <label title="Cidade de origem: de onde a pessoa vem (laranja; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>De onde vêm <span class="muted small">(origem)</span></label>
           <label class="sub" style="display:block">Mostrar as origens como
             <select id="c-estilo" style="margin-top:2px">
@@ -146,6 +146,7 @@ Paginas.mapa = {
     el.querySelector('#c-estilo').value = estilo;
     const fator = () => FATOR_TAMANHO[tamanho];
     const raioAtuacao = n => Math.round(Math.min(24, 8 + 2.2 * Math.sqrt(n)) * fator());
+    const ladoAtuacao = () => Math.round(20 * fator()); // losango da cidade de atuação (sem número: o total fica no distrito)
     const raioOrigem = n => Math.round(Math.min(20, 5 + 2.0 * Math.sqrt(n)) * fator());
 
     // linha curva entre dois pontos (arco leve para não sobrepor)
@@ -285,7 +286,7 @@ Paginas.mapa = {
     function deslocamentoOrigem(cidadeId, r) {
       const a = porAtuacao.get(cidadeId);
       if (!a) return 0;
-      const meiaDiagonal = Math.round(raioAtuacao(a.total) * 1.5) * 0.71;
+      const meiaDiagonal = ladoAtuacao() * 0.71;
       return Math.round((meiaDiagonal + r) * 0.72);
     }
     function desenharOrigens() {
@@ -335,27 +336,27 @@ Paginas.mapa = {
       const infoCor = Store.corDaCidade(a.cidade.id);
       const corMarcador = COR_ATUACAO;
       const rotuloDist = infoCor ? `<br><span class="muted small">${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''}</span>` : '';
-      const m = L.marker([a.cidade.lat, a.cidade.lng], { icon: iconeAtuacao(a.total), pane: 'atuacao', keyboard: false })
+      const m = L.marker([a.cidade.lat, a.cidade.lng], { icon: iconeAtuacao(), pane: 'atuacao', keyboard: false })
         .bindTooltip(() => {
           const proprias = a.fluxos.filter(f => f.cidadeOrigem.id === a.cidade.id).reduce((n, f) => n + f.total, 0);
           return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'onde trabalham',
             sub: infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)}` : '', total: a.total, local: a.local, movel: a.movel,
             dica: `vêm de ${a.fluxos.length} cidade(s)${proprias ? ` · ${proprias} moram na própria cidade` : ''} · clique para ver de onde vêm` });
-        }, { ...TT, offset: [0, -raioAtuacao(a.total) - 4] });
+        }, { ...TT, offset: [0, -ladoAtuacao() * 0.71 - 4] });
       m.on('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
       m._total = a.total;
       marcadoresAtuacao.set(a.cidade.id, m);
       camadas.atuacao.addLayer(m);
     }
-    function iconeAtuacao(total) {
-      const r = raioAtuacao(total), lado = Math.round(r * 1.5);
-      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px;font-size:${lado >= 26 ? 11 : 9}px"><span>${total}</span></div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
+    function iconeAtuacao() {
+      const lado = ladoAtuacao();
+      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px"></div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
     }
     // mudança de estilo / tamanho pelo painel
     el.querySelector('#c-estilo').addEventListener('change', e => { estilo = e.target.value; localStorage.setItem('maparh:mapa-estilo', estilo); desenharOrigens(); atualizarLegendaOrigens(); });
     el.querySelector('#c-tamanho').addEventListener('change', e => {
       tamanho = e.target.value; localStorage.setItem('maparh:mapa-tamanho', tamanho);
-      for (const m of marcadoresAtuacao.values()) m.setIcon(iconeAtuacao(m._total));
+      for (const m of marcadoresAtuacao.values()) m.setIcon(iconeAtuacao());
       for (const m of marcadoresHub.values()) m.setRadius(raioAtuacao(m._total));
       desenharOrigens();
     });
@@ -408,9 +409,9 @@ Paginas.mapa = {
           const topo = [Math.max(...lats) + 0.06, (Math.min(...lngs) + Math.max(...lngs)) / 2];
           const totalD = totaisDistrito.get(d.id) || 0;
           const marcD = L.marker(topo, {
-            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito">Distrito ${UI.esc(d.nome)} <b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito"><i></i>Distrito ${UI.esc(d.nome)} <b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
             interactive: true, pane: 'rotulos', keyboard: false
-          }).bindTooltip(balao({ cor: '#111827', titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total pela cidade de atuação', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
+          }).bindTooltip(balao({ cor: COR_ATUACAO, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
           marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
           camadaRotulos.addLayer(marcD);
         }
@@ -948,7 +949,8 @@ Paginas.mapa = {
     legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></div><div class="painel-corpo">` +
       `<div class="legenda-secao">Contratações</div>` +
       projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} <span class="muted">(linhas)</span>`)).join('') +
-      item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Onde trabalham</b> (cidade de atuação) — nº de pessoas') +
+      item('<span class="marc-atuacao mini"></span>', '<b>Onde trabalham</b> (cidade de atuação) — clique para ver de onde vêm') +
+      (distritos.length ? item('<span class="rotulo-distrito mini"><b>n</b></span>', '<b>Total do distrito</b> — soma de quem trabalha nas cidades dele; clique para ver tudo do distrito') : '') +
       `<div id="legenda-origens"></div>` +
       (porHub.size ? item(bola(COR_HUB, 14), 'Atuação móvel em todo o estado') : '') +
       (todosSilos.length ? `<div class="legenda-secao">🌾 Unidades PDR (${todosSilos.length})</div>` +

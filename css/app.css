@@ -299,9 +299,12 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 
 /* rótulos e status da malha no mapa */
 .rotulo-micro { background: transparent; border: none; }
-.rotulo-micro span.rotulo-distrito { background: #111827; color: #fff; font-size: 12px; padding: 5px 12px; border-radius: 999px; border: 2px solid #fde047; transform: translate(-50%, -100%); cursor: pointer; pointer-events: auto; }
-.rotulo-micro span.rotulo-distrito:hover { background: #1f2937; }
-.rotulo-micro span.rotulo-distrito b { display: inline-block; margin-left: 6px; background: #fde047; color: #111827; border-radius: 999px; padding: 1px 8px; font-size: 13px; }
+.rotulo-micro span.rotulo-distrito { background: #1d4ed8; color: #fff; font-size: 12px; padding: 5px 12px 5px 10px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.45); transform: translate(-50%, -100%); cursor: pointer; pointer-events: auto; }
+.rotulo-micro span.rotulo-distrito:hover { background: #1e40af; }
+.rotulo-distrito i { display: inline-block; width: 9px; height: 9px; background: #fff; border-radius: 2px; transform: rotate(45deg); margin-right: 9px; vertical-align: 1px; }
+.rotulo-distrito b { display: inline-block; margin-left: 6px; background: #fff; color: #1d4ed8; border-radius: 999px; padding: 1px 8px; font-size: 13px; text-shadow: none; }
+.rotulo-distrito.mini { display: inline-block; background: #1d4ed8; color: #fff; border: 1.5px solid #fff; border-radius: 999px; padding: 1px 5px; margin: 0 6px 0 0; flex-shrink: 0; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.rotulo-distrito.mini b { margin: 0; font-size: 10px; padding: 0 5px; }
 .rotulo-micro span { display: inline-block; transform: translate(-50%, 9px); padding: 2px 7px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.35); text-shadow: 0 1px 1px rgba(0,0,0,.35); }
 .malha-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 400; background: rgba(15,23,42,.85); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
 .mapa-legenda { max-height: 45vh; overflow-y: auto; }
