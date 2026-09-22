@@ -40,6 +40,7 @@ PRIMEIROS PASSOS
    - etiqueta azul c/ número = TOTAL DO DISTRITO (soma de quem trabalha nas cidades
                                dele). Clique nela: painel com os dados do distrito
                                e as bolhas/linhas do distrito inteiro
+   - nome da micro c/ número = total da microrregião; clique para ver os dados dela
    - laranja                 = DE ONDE VÊM (cidade de origem). No painel "Mostrar no
                                mapa" escolha como ver as origens: bolhas com a
                                quantidade, pontos pequenos ou municípios pintados

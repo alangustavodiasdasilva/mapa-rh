@@ -383,6 +383,22 @@ Paginas.mapa = {
     const distritos = Store.distritos().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
       .map(d => regiaoFiltro.micro ? { ...d, micros: (d.micros || []).filter(m => m.id === regiaoFiltro.micro.id) } : d);
     const camadaRotulos = L.layerGroup().addTo(mapa);
+    // Rótulos de distrito/micro que se sobrepõem (zoom afastado): o distrito sempre fica; das micros, some a com menos contratações
+    const rotulosMapa = []; // { marcador, prioridade }
+    function ajustarRotulos() {
+      const itens = rotulosMapa.filter(r => r.marcador._icon);
+      for (const r of itens) r.marcador._icon.style.display = '';
+      const aceitos = [];
+      for (const r of itens.sort((a, b) => b.prioridade - a.prioridade)) {
+        const span = r.marcador._icon.firstElementChild;
+        if (!span) continue;
+        const b = span.getBoundingClientRect();
+        const caixa = [b.left - 3, b.top - 2, b.right + 3, b.bottom + 2];
+        if (aceitos.some(c => caixa[0] < c[2] && caixa[2] > c[0] && caixa[1] < c[3] && caixa[3] > c[1])) r.marcador._icon.style.display = 'none';
+        else aceitos.push(caixa);
+      }
+    }
+    mapa.on('zoomend', ajustarRotulos);
     const cidadesDaMicro = m => (m.cidadeIds || []).map(id => Store.cidade(id)).filter(Boolean);
     function limitesDe(cidades) {
       const pts = cidades.map(c => [c.lat, c.lng]);
@@ -414,6 +430,7 @@ Paginas.mapa = {
           }).bindTooltip(balao({ cor: COR_ATUACAO, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
           marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
           camadaRotulos.addLayer(marcD);
+          rotulosMapa.push({ marcador: marcD, prioridade: Infinity });
         }
         for (const m of (d.micros || [])) {
           const poloId = m.poloCidadeId || (m.cidadeIds || [])[0];
@@ -429,13 +446,17 @@ Paginas.mapa = {
             camadas.distritos.addLayer(L.circleMarker([polo.lat, polo.lng], { radius: 5, color: '#fff', weight: 1.5, fillColor: '#0f172a', fillOpacity: 0.85 })
               .bindTooltip(balao({ cor, titulo: `👑 ${UI.esc(m.nome)}`, tipo: 'cidade polo', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
             const totalM = totaisMicro.get(m.id) || 0;
-            camadaRotulos.addLayer(L.marker([polo.lat, polo.lng], {
+            const marcM = L.marker([polo.lat, polo.lng], {
               icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)}">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
-              interactive: false, pane: 'rotulos', keyboard: false
-            }));
+              interactive: true, pane: 'rotulos', keyboard: false
+            }).bindTooltip(balao({ cor, titulo: UI.esc(m.nome), tipo: `microrregião · distrito ${UI.esc(d.nome)}`, sub: `${(m.cidadeIds || []).length} município(s) · polo ${UI.esc(polo.nome)}`, total: totalM, dica: 'clique para ver as contratações da microrregião' }), { ...TT, offset: [0, -8] });
+            marcM.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelMicro(d, m); });
+            camadaRotulos.addLayer(marcM);
+            rotulosMapa.push({ marcador: marcM, prioridade: totalM });
           }
         }
       }
+      ajustarRotulos();
       if (!porUF.size) return;
       let semMalha = 0, ufsSemMalha = 0;
       for (const [uf, itens] of porUF) {
@@ -1014,7 +1035,7 @@ Paginas.mapa = {
     function atualizarCamadaDistritos() {
       const on = el.querySelector('#c-distritos').checked, rot = el.querySelector('#c-rotulos').checked;
       if (on) camadas.distritos.addTo(mapa); else mapa.removeLayer(camadas.distritos);
-      if (on && rot) camadaRotulos.addTo(mapa); else mapa.removeLayer(camadaRotulos);
+      if (on && rot) { camadaRotulos.addTo(mapa); ajustarRotulos(); } else mapa.removeLayer(camadaRotulos);
       el.querySelector('#c-rotulos').disabled = !on;
     }
     el.querySelector('#c-distritos').addEventListener('change', atualizarCamadaDistritos);
