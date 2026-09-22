@@ -407,10 +407,12 @@ Paginas.mapa = {
           const lats = cidsDist.map(c => c.lat), lngs = cidsDist.map(c => c.lng);
           const topo = [Math.max(...lats) + 0.06, (Math.min(...lngs) + Math.max(...lngs)) / 2];
           const totalD = totaisDistrito.get(d.id) || 0;
-          camadaRotulos.addLayer(L.marker(topo, {
-            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito" style="border-color:${UI.esc(d.cor)}">Distrito ${UI.esc(d.nome)} · <b>${UI.fmtNum(totalD)}</b> contratação(ões)</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
-            interactive: false, pane: 'rotulos', keyboard: false
-          }));
+          const marcD = L.marker(topo, {
+            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito">Distrito ${UI.esc(d.nome)} <b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+            interactive: true, pane: 'rotulos', keyboard: false
+          }).bindTooltip(balao({ cor: '#111827', titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total pela cidade de atuação', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
+          marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
+          camadaRotulos.addLayer(marcD);
         }
         for (const m of (d.micros || [])) {
           const poloId = m.poloCidadeId || (m.cidadeIds || [])[0];
@@ -776,6 +778,71 @@ Paginas.mapa = {
       aplicarFoco([g.cidade.id, ...destinosDe(g.fluxos)]);
     }
     // Painel de uma microrregião: números das contratações com atuação nas cidades dela
+    // Painel do distrito: contratações de quem trabalha nas cidades dele, por microrregião e por cidade de origem
+    function abrirPainelDistrito(d) {
+      const ids = new Set(Store.cidadesDoDistrito(d).map(c => c.id));
+      const lista = regs.filter(r => r.cidadeAtuacao && ids.has(r.cidadeAtuacao.id));
+      const local = lista.filter(r => r.tipo === 'LOCAL').length;
+      const propria = lista.filter(r => ids.has(r.cidadeId)).length;
+      const dists = lista.map(r => r.distancia).filter(x => x != null);
+      const distMedia = dists.length ? dists.reduce((a, b) => a + b, 0) / dists.length : null;
+      const unidades = Store.silosNaRegiao(Store.todosSilosPdr(), d.id, '').length;
+      const porMicro = (d.micros || []).map(m => {
+        const mids = new Set(m.cidadeIds || []);
+        const l = lista.filter(r => mids.has(r.cidadeAtuacao.id));
+        return { m, total: l.length, local: l.filter(r => r.tipo === 'LOCAL').length, propria: l.filter(r => mids.has(r.cidadeId)).length, origens: new Set(l.map(r => r.cidadeId)).size };
+      }).sort((a, b) => b.total - a.total);
+      const origens = new Map();
+      for (const r of lista) {
+        let o = origens.get(r.cidadeId);
+        if (!o) { o = { cidade: r.cidade, local: 0, movel: 0, total: 0, foraDoEstado: r.foraDoEstado, dist: r.distancia }; origens.set(r.cidadeId, o); }
+        o[r.tipo === 'LOCAL' ? 'local' : 'movel']++; o.total++;
+      }
+      const filtrado = App.filtros.distritoId === d.id && !App.filtros.microId;
+      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(d.cor)}"></span>Distrito ${UI.esc(d.nome)}`,
+        `${(d.micros || []).length} microrregião(ões) · ${ids.size} município(s) · ${unidades} unidade(s) PDR · total pela cidade de atuação`) +
+        `<div class="grade" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Contratações</div><div class="valor" style="font-size:20px">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Moram no distrito</div><div class="valor" style="font-size:20px">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Dist. média</div><div class="valor" style="font-size:20px">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
+        </div>
+        <div class="linha" style="gap:6px;margin-bottom:10px">
+          <button class="btn btn-pequeno" id="painel-focar">Aproximar</button>
+          ${filtrado ? '<span class="badge badge-azul">filtro do topo ativo neste distrito</span>' : `<button class="btn btn-pequeno btn-primario" id="painel-filtrar">Filtrar tudo por este distrito</button>`}
+        </div>
+        <div class="ficha-secao">Por microrregião</div>` +
+        UI.tabela({
+          vazio: 'Nenhuma microrregião com contratações.',
+          colunas: [
+            { titulo: 'Microrregião', render: x => `<a href="#" class="painel-micro" data-m="${x.m.id}"><span class="ponto-cor" style="background:${UI.esc(x.m.cor)}"></span>${UI.esc(x.m.nome)}</a>` },
+            { titulo: 'L', classe: 'direita', render: x => x.local },
+            { titulo: 'M', classe: 'direita', render: x => x.total - x.local },
+            { titulo: 'Total', classe: 'direita', render: x => `<b>${x.total}</b>` },
+            { titulo: 'Moram na micro', classe: 'direita', render: x => x.total ? `${x.propria} <span class="muted small">(${UI.fmtPct(x.propria / x.total * 100, 0)})</span>` : '—' }
+          ],
+          linhas: porMicro
+        }) +
+        `<div class="ficha-secao">Principais cidades de origem</div>` +
+        UI.tabela({
+          vazio: 'Nenhuma contratação com atuação neste distrito (no filtro atual).',
+          colunas: [
+            { titulo: 'Cidade de origem', render: o => `${UI.esc(o.cidade.nome)}/${o.cidade.uf}${ids.has(o.cidade.id) ? ' <span class="badge badge-verde">no distrito</span>' : ''}${o.foraDoEstado ? ' <span class="badge badge-amarelo">fora do estado</span>' : ''}` },
+            { titulo: 'L', classe: 'direita', render: o => o.local },
+            { titulo: 'M', classe: 'direita', render: o => o.movel },
+            { titulo: 'Total', classe: 'direita', render: o => `<b>${o.total}</b>` },
+            { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
+          ],
+          linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 30)
+        }) + (origens.size > 30 ? `<div class="muted small" style="margin-top:6px">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '');
+      ligarFechar();
+      // bolinhas e linhas de todo o distrito
+      destacarLinhas([...ids].flatMap(id => linhasPorChave.get('A:' + id) || []));
+      aplicarFoco([...ids, ...lista.map(r => r.cidadeId)]);
+      painel.querySelector('#painel-focar').addEventListener('click', () => focar(Store.cidadesDoDistrito(d)));
+      const bf = painel.querySelector('#painel-filtrar');
+      if (bf) bf.addEventListener('click', () => { App.filtros.distritoId = d.id; App.filtros.microId = ''; App.aoMudarFiltros(); });
+      painel.querySelectorAll('.painel-micro').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const m = (d.micros || []).find(x => x.id === a.dataset.m); if (m) abrirPainelMicro(d, m); }));
+    }
     function abrirPainelMicro(d, m) {
       const ids = new Set(m.cidadeIds || []);
       const lista = regs.filter(r => r.cidadeAtuacao && ids.has(r.cidadeAtuacao.id));
@@ -925,7 +992,7 @@ Paginas.mapa = {
       if (!d) return;
       const m = a.dataset.m ? (d.micros || []).find(x => x.id === a.dataset.m) : null;
       focar(m ? cidadesDaMicro(m) : Store.cidadesDoDistrito(d));
-      if (m) abrirPainelMicro(d, m);
+      if (m) abrirPainelMicro(d, m); else abrirPainelDistrito(d);
     }));
 
     // ---------- controles ----------
