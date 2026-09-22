@@ -112,7 +112,7 @@ Paginas.mapa = {
     const camadas = {
       silos: L.layerGroup().addTo(mapa),
       distritos: L.layerGroup().addTo(mapa),
-      limites: L.layerGroup().addTo(mapa), linhas: L.layerGroup().addTo(mapa), origens: L.layerGroup().addTo(mapa),
+      limites: L.layerGroup().addTo(mapa), linhas: L.layerGroup().addTo(mapa), setas: L.layerGroup().addTo(mapa), origens: L.layerGroup().addTo(mapa),
       hubs: L.layerGroup().addTo(mapa), atuacao: L.layerGroup().addTo(mapa), calor: null
     };
     const painel = el.querySelector('#painel');
@@ -178,7 +178,8 @@ Paginas.mapa = {
       const rotuloDistrito = infoCor ? ` (${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''})` : '';
       const linha = L.polyline(curva(destino, f.cidadeOrigem), {
         color: corLinha, weight: 1.5 + Math.log2(f.total + 1) * 1.2, opacity: 0.65, dashArray: f.atuacaoMovel ? '6 6' : null
-      }).bindTooltip(`<b>${UI.esc(f.projeto.nome)}</b><br>${UI.esc(Analise.rotuloAtuacao(f))}${rotuloDistrito} ← ${UI.esc(f.cidadeOrigem.nome)}/${f.cidadeOrigem.uf}<br>${f.total} contratação(ões) · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}`, { sticky: true });
+      }).bindTooltip(`<b>${UI.esc(f.projeto.nome)}</b><br>Vêm de <b>${UI.esc(f.cidadeOrigem.nome)}/${f.cidadeOrigem.uf}</b> ➜ trabalham em <b>${UI.esc(Analise.rotuloAtuacao(f))}</b>${rotuloDistrito}<br>${f.total} contratação(ões) · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}`, { sticky: true });
+      linha._fluxo = f; linha._destino = destino;
       todasLinhas.push(linha);
       registrarLinha(f.atuacaoMovel ? 'H:' + f.uf : 'A:' + f.cidadeAtuacao.id, linha);
       registrarLinha('O:' + f.cidadeOrigem.id, linha);
@@ -202,16 +203,60 @@ Paginas.mapa = {
     let foco = null;
     function aplicarModoLinhas() {
       const modo = selModoLinhas.value;
-      if (foco && linhasSelecionadas) { mostrarLinhas(linhasSelecionadas, true); return; } // em foco, só as linhas da seleção
-      if (modo === 'todas') {
+      if (foco && linhasSelecionadas) mostrarLinhas(linhasSelecionadas, true); // em foco, só as linhas da seleção
+      else if (modo === 'todas') {
         mostrarLinhas(todasLinhas, false);
         if (linhasSelecionadas) { camadas.linhas.eachLayer(l => l.setStyle({ opacity: 0.08 })); linhasSelecionadas.forEach(l => { l.setStyle({ opacity: 0.95 }); l.bringToFront(); }); }
       } else if (modo === 'selecionada') mostrarLinhas(linhasSelecionadas, true);
       else mostrarLinhas(null);
+      atualizarSetas();
     }
     // Ao clicar em um ponto: realça só as linhas dele (lista = null limpa a seleção)
     function destacarLinhas(lista) { linhasSelecionadas = lista && lista.length ? lista : null; aplicarModoLinhas(); }
     selModoLinhas.addEventListener('change', () => { aplicarModoLinhas(); atualizarAvisoLinhas(); });
+
+    // Sentido das linhas: saem da bolha laranja (de onde vêm) e a seta aponta para o losango azul (onde trabalham).
+    // Como a bolha fica encostada no losango quando a cidade é origem E atuação, a ponta da linha acompanha a bolha.
+    mapa.createPane('setas').style.zIndex = 420;
+    function pontaOrigem(f) {
+      const o = f.cidadeOrigem;
+      if (estilo !== 'bolhas' || !porAtuacao.has(o.id) || !porOrigem.has(o.id)) return o;
+      const d = deslocamentoOrigem(o.id, Math.round(raioOrigem(porOrigem.get(o.id).total)));
+      if (!d) return o;
+      const ll = mapa.layerPointToLatLng(mapa.latLngToLayerPoint([o.lat, o.lng]).add([d, -d]));
+      return { lat: ll.lat, lng: ll.lng };
+    }
+    function criarSeta(l) {
+      const f = l._fluxo, pts = l.getLatLngs();
+      const recuo = (f.atuacaoMovel ? raioAtuacao((porHub.get(f.uf) || { total: 1 }).total) : ladoAtuacao() * 0.71) + 8;
+      // anda pela curva a partir do destino (pts[0]) até a distância do recuo, para a seta ficar logo antes do losango
+      let acum = 0, prev = mapa.latLngToLayerPoint(pts[0]), pos = null, ang = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const q = mapa.latLngToLayerPoint(pts[i]), seg = q.distanceTo(prev);
+        if (acum + seg >= recuo) {
+          pos = prev.add(q.subtract(prev).multiplyBy((recuo - acum) / seg));
+          ang = Math.atan2(prev.y - q.y, prev.x - q.x) * 180 / Math.PI; // aponta para o destino
+          break;
+        }
+        acum += seg; prev = q;
+      }
+      if (!pos) return null; // linha mais curta que o recuo neste zoom
+      return L.marker(mapa.layerPointToLatLng(pos), {
+        pane: 'setas', interactive: false, keyboard: false, opacity: l.options.opacity,
+        icon: L.divIcon({ className: 'seta-linha-wrap', html: `<div class="seta-linha" style="border-left-color:${l.options.color};transform:rotate(${ang.toFixed(1)}deg)"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] })
+      });
+    }
+    function atualizarSetas() {
+      camadas.setas.clearLayers();
+      camadas.linhas.eachLayer(l => {
+        if (!l._fluxo) return;
+        if (porAtuacao.has(l._fluxo.cidadeOrigem.id)) l.setLatLngs(curva(l._destino, pontaOrigem(l._fluxo)));
+        if (l.options.opacity < 0.2) return; // linhas apagadas (fora da seleção) não ganham seta
+        const s = criarSeta(l);
+        if (s) camadas.setas.addLayer(s);
+      });
+    }
+    mapa.on('zoomend', atualizarSetas);
     aplicarModoLinhas(); atualizarAvisoLinhas();
 
     // ---------- marcadores de origem: agrupados conforme o zoom ----------
@@ -359,7 +404,7 @@ Paginas.mapa = {
       return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px"></div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
     }
     // mudança de estilo / tamanho pelo painel
-    el.querySelector('#c-estilo').addEventListener('change', e => { estilo = e.target.value; localStorage.setItem('maparh:mapa-estilo', estilo); desenharOrigens(); atualizarLegendaOrigens(); });
+    el.querySelector('#c-estilo').addEventListener('change', e => { estilo = e.target.value; localStorage.setItem('maparh:mapa-estilo', estilo); desenharOrigens(); atualizarLegendaOrigens(); atualizarSetas(); });
     el.querySelector('#c-tamanho').addEventListener('change', e => {
       tamanho = e.target.value; localStorage.setItem('maparh:mapa-tamanho', tamanho);
       for (const m of marcadoresAtuacao.values()) m.setIcon(iconeAtuacao());
@@ -986,7 +1031,7 @@ Paginas.mapa = {
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
     legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></div><div class="painel-corpo">` +
       `<div class="legenda-secao">Contratações</div>` +
-      projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} <span class="muted">(linhas)</span>`)).join('') +
+      projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} <span class="muted">— linha: de onde vêm ➜ onde trabalham (a seta aponta para o trabalho)</span>`)).join('') +
       item('<span class="marc-atuacao mini"></span>', '<b>Onde trabalham</b> (cidade de atuação) — clique para ver de onde vêm') +
       (distritos.length ? item('<span class="rotulo-distrito mini"><b>n</b></span>', '<b>Total do distrito</b> — soma de quem trabalha nas cidades dele; clique para ver tudo do distrito') : '') +
       `<div id="legenda-origens"></div>` +
