@@ -299,6 +299,8 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 
 /* rótulos e status da malha no mapa */
 .rotulo-micro { background: transparent; border: none; }
+.rotulo-micro span.rotulo-distrito { background: #0f172a; color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 6px; border-left: 5px solid #16a34a; transform: translate(-50%, -100%); }
+.rotulo-micro span.rotulo-distrito b { font-size: 13px; }
 .rotulo-micro span { display: inline-block; transform: translate(-50%, 9px); padding: 2px 7px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.35); text-shadow: 0 1px 1px rgba(0,0,0,.35); }
 .malha-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 400; background: rgba(15,23,42,.85); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
 .mapa-legenda { max-height: 45vh; overflow-y: auto; }

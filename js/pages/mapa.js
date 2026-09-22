@@ -389,9 +389,29 @@ Paginas.mapa = {
     }
     function focar(cidades) { const b = limitesDe(cidades); if (b) mapa.fitBounds(b, { maxZoom: 11 }); }
 
+    // Totais de contratações por microrregião e por distrito: o distrito da pessoa é o da cidade onde ela trabalha (atuação)
+    const totaisMicro = new Map(), totaisDistrito = new Map();
+    for (const r of regs) {
+      if (!r.cidadeAtuacao) continue;
+      const info = Store.corDaCidade(r.cidadeAtuacao.id);
+      if (!info || !info.micro) continue;
+      totaisMicro.set(info.micro.id, (totaisMicro.get(info.micro.id) || 0) + 1);
+      totaisDistrito.set(info.distrito.id, (totaisDistrito.get(info.distrito.id) || 0) + 1);
+    }
     async function desenharDistritos() {
       const porUF = new Map(); // uf -> [{ cidade, distrito, micro, polo }]
       for (const d of distritos) {
+        // rótulo do distrito com o total, acima da região
+        const cidsDist = Store.cidadesDoDistrito(d);
+        if (cidsDist.length) {
+          const lats = cidsDist.map(c => c.lat), lngs = cidsDist.map(c => c.lng);
+          const topo = [Math.max(...lats) + 0.06, (Math.min(...lngs) + Math.max(...lngs)) / 2];
+          const totalD = totaisDistrito.get(d.id) || 0;
+          camadaRotulos.addLayer(L.marker(topo, {
+            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito" style="border-color:${UI.esc(d.cor)}">Distrito ${UI.esc(d.nome)} · <b>${UI.fmtNum(totalD)}</b> contratação(ões)</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+            interactive: false, pane: 'rotulos', keyboard: false
+          }));
+        }
         for (const m of (d.micros || [])) {
           const poloId = m.poloCidadeId || (m.cidadeIds || [])[0];
           const cor = m.cor || d.cor || '#2563eb';
@@ -405,8 +425,9 @@ Paginas.mapa = {
           if (polo) {
             camadas.distritos.addLayer(L.circleMarker([polo.lat, polo.lng], { radius: 5, color: '#fff', weight: 1.5, fillColor: '#0f172a', fillOpacity: 0.85 })
               .bindTooltip(balao({ cor, titulo: `👑 ${UI.esc(m.nome)}`, tipo: 'cidade polo', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
+            const totalM = totaisMicro.get(m.id) || 0;
             camadaRotulos.addLayer(L.marker([polo.lat, polo.lng], {
-              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)}">${UI.esc(m.nome)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)}">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
               interactive: false, pane: 'rotulos', keyboard: false
             }));
           }
@@ -422,7 +443,7 @@ Paginas.mapa = {
         if (!ativo) return;
         for (const it of itens) {
           const f = dadosUF ? Malha.featureDaCidade(it.cidade, dadosUF) : null;
-          const tooltip = balao({ cor: it.cor, titulo: `${it.polo ? '👑 ' : ''}${UI.esc(it.cidade.nome)}/${it.cidade.uf}`, sub: `${UI.esc(it.micro.nome)} · distrito ${UI.esc(it.distrito.nome)}` });
+          const tooltip = balao({ cor: it.cor, titulo: `${it.polo ? '👑 ' : ''}${UI.esc(it.cidade.nome)}/${it.cidade.uf}`, sub: `${UI.esc(it.micro.nome)} (${UI.fmtNum(totaisMicro.get(it.micro.id) || 0)} contratações) · distrito ${UI.esc(it.distrito.nome)} (${UI.fmtNum(totaisDistrito.get(it.distrito.id) || 0)})` });
           if (!f) {
             // sem limite oficial (sem internet ou nome diferente do IBGE): mostra um círculo no lugar
             semMalha++;
@@ -868,10 +889,10 @@ Paginas.mapa = {
         item(bola(COR_SILO_FORA, 12), 'Fora das microrregiões cadastradas') +
         Store.mapasPdr().map(m => item('<span style="width:12px;flex-shrink:0"></span>', `<span class="muted">${UI.esc(m.nome)} (${(m.pontos || []).length})</span>`)).join('')
       : '') +
-      (distritos.length ? `<div class="legenda-secao">Distritos e microrregiões <span style="font-weight:400;text-transform:none;letter-spacing:0">· clique para aproximar</span></div>` +
+      (distritos.length ? `<div class="legenda-secao">Distritos e microrregiões <span style="font-weight:400;text-transform:none;letter-spacing:0">· total pela cidade de atuação · clique para aproximar</span></div>` +
         distritos.map(d =>
-          `<a href="#" class="legenda-micro" data-d="${d.id}" style="padding-left:2px;font-weight:600">${bola(d.cor || '#2563eb', 10)}${UI.esc(d.nome)} <span class="muted small" style="font-weight:400">(${Store.cidadesDoDistrito(d).length} cid)</span></a>` +
-          (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${bola(m.cor || d.cor, 9)}${UI.esc(m.nome)} <span class="muted small">(${(m.cidadeIds || []).length})</span></a>`).join('')
+          `<a href="#" class="legenda-micro" data-d="${d.id}" style="padding-left:2px;font-weight:600">${bola(d.cor || '#2563eb', 10)}${UI.esc(d.nome)} <span class="muted small" style="font-weight:400">· <b>${UI.fmtNum(totaisDistrito.get(d.id) || 0)}</b> contratações · ${Store.cidadesDoDistrito(d).length} cid</span></a>` +
+          (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${bola(m.cor || d.cor, 9)}${UI.esc(m.nome)} <span class="muted small">· <b>${UI.fmtNum(totaisMicro.get(m.id) || 0)}</b> · ${(m.cidadeIds || []).length} cid</span></a>`).join('')
         ).join('') : '') +
       `<div class="muted small" style="margin-top:6px;border-top:1px solid var(--borda);padding-top:5px">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) · ${porOrigem.size} cid. de origem</div></div>`;
     function atualizarLegendaOrigens() {
