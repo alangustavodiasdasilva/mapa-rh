@@ -1,4 +1,4 @@
-// Estrutura inicial do distrito Lagoa Vermelha: microrregiões, cidade polo e cidades atendidas.
+// Estrutura inicial dos distritos (Lagoa Vermelha e Sarandi): microrregiões, cidade polo e cidades atendidas.
 // É carregada UMA vez (mesclando com o que já existir) e depois pode ser editada à vontade no menu Distritos.
 window.DISTRITOS_SEED = [
   {
@@ -12,10 +12,22 @@ window.DISTRITOS_SEED = [
       { nome: "Vacaria", polo: "Vacaria", cidades: ["Bom Jesus","Campestre da Serra","Ipê","São Francisco de Paula","São José dos Ausentes","Vacaria"] },
       { nome: "Nova Prata", polo: "Nova Prata", cidades: ["André da Rocha","Guabiju","Guaporé","Nova Araçá","Nova Prata","Protásio Alves","São Jorge","Veranópolis","Vista Alegre do Prata"] },
     ]
-  }
+  },
+  {
+    nome: "Sarandi", uf: "RS", cor: "#eab308",
+    micros: [
+      { nome: "Frederico Westphalen", polo: "Frederico Westphalen", cidades: ["Caiçara","Frederico Westphalen","Iraí","Palmitinho","Planalto","Taquaruçu do Sul","Vicente Dutra"] },
+      { nome: "Seberi", polo: "Seberi", cidades: ["Boa Vista das Missões","Jaboticaba","Cristal do Sul","Dois Irmãos das Missões","Erval Seco","Rodeio Bonito","Seberi"] },
+      { nome: "Constantina", polo: "Constantina", cidades: ["Cerro Grande","Constantina","Lajeado do Bugre","Liberato Salzano","Novo Tiradentes","Novo Xingu","Sagrada Família","São José das Missões","São Pedro das Missões"] },
+      { nome: "Almirante Tamandaré do Sul", polo: "Almirante Tamandaré do Sul", cidades: ["Almirante Tamandaré do Sul","Chapada"] },
+      { nome: "Nonoai", polo: "Nonoai", cidades: ["Entre Rios do Sul","Gramado dos Loureiros","Nonoai","Rio dos Índios","Três Palmeiras","Trindade do Sul"] },
+      { nome: "Ronda Alta", polo: "Ronda Alta", cidades: ["Engenho Velho","Pontão","Ronda Alta"] },
+      { nome: "Sarandi", polo: "Sarandi", cidades: ["Barra Funda","Nova Boa Vista","Novo Barreiro","Rondinha","Sarandi"] },
+    ]
+  },
 ];
 
-// Coordenadas (IBGE) das cidades do distrito, para funcionar mesmo sem baixar a lista completa de municípios.
+// Coordenadas (IBGE) das cidades dos distritos, para funcionar mesmo sem baixar a lista completa de municípios.
 // Formato: [nome, UF, latitude, longitude, código IBGE]
 window.CIDADES_SEED = (window.CIDADES_SEED || []).concat([
   ["Ibiraiaras","RS",-28.3741,-51.6377,"4309902"],
@@ -49,5 +61,45 @@ window.CIDADES_SEED = (window.CIDADES_SEED || []).concat([
   ["Protásio Alves","RS",-28.7572,-51.4757,"4315172"],
   ["São Jorge","RS",-28.4984,-51.7064,"4318440"],
   ["Veranópolis","RS",-28.9312,-51.5516,"4322806"],
-  ["Vista Alegre do Prata","RS",-28.8052,-51.7947,"4323606"]
+  ["Vista Alegre do Prata","RS",-28.8052,-51.7947,"4323606"],
+  // Distrito Sarandi
+  ["Caiçara","RS",-27.2791,-53.4257,"4303400"],
+  ["Frederico Westphalen","RS",-27.3586,-53.3958,"4308508"],
+  ["Iraí","RS",-27.1951,-53.2543,"4310504"],
+  ["Palmitinho","RS",-27.3596,-53.5580,"4313805"],
+  ["Planalto","RS",-27.3297,-53.0575,"4314704"],
+  ["Taquaruçu do Sul","RS",-27.4005,-53.4702,"4321329"],
+  ["Vicente Dutra","RS",-27.1607,-53.4022,"4323101"],
+  ["Boa Vista das Missões","RS",-27.6671,-53.3102,"4302154"],
+  ["Jaboticaba","RS",-27.6347,-53.2762,"4310850"],
+  ["Cristal do Sul","RS",-27.4520,-53.2422,"4306072"],
+  ["Dois Irmãos das Missões","RS",-27.6621,-53.5304,"4306429"],
+  ["Erval Seco","RS",-27.5443,-53.5005,"4307302"],
+  ["Rodeio Bonito","RS",-27.4742,-53.1706,"4315909"],
+  ["Seberi","RS",-27.4829,-53.4026,"4320206"],
+  ["Cerro Grande","RS",-27.6106,-53.1672,"4305157"],
+  ["Constantina","RS",-27.7320,-52.9938,"4305801"],
+  ["Lajeado do Bugre","RS",-27.6913,-53.1818,"4311429"],
+  ["Liberato Salzano","RS",-27.6010,-53.0753,"4311601"],
+  ["Novo Tiradentes","RS",-27.5649,-53.1837,"4313441"],
+  ["Novo Xingu","RS",-27.7490,-53.0639,"4313466"],
+  ["Sagrada Família","RS",-27.7085,-53.1351,"4316428"],
+  ["São José das Missões","RS",-27.7789,-53.1226,"4318457"],
+  ["São Pedro das Missões","RS",-27.7706,-53.2513,"4319364"],
+  ["Almirante Tamandaré do Sul","RS",-28.1149,-52.9142,"4300471"],
+  ["Chapada","RS",-28.0559,-53.0665,"4305306"],
+  ["Entre Rios do Sul","RS",-27.5298,-52.7347,"4306957"],
+  ["Gramado dos Loureiros","RS",-27.4429,-52.9149,"4309126"],
+  ["Nonoai","RS",-27.3689,-52.7756,"4312708"],
+  ["Rio dos Índios","RS",-27.2973,-52.8417,"4315552"],
+  ["Três Palmeiras","RS",-27.6139,-52.8437,"4321857"],
+  ["Trindade do Sul","RS",-27.5239,-52.8956,"4321956"],
+  ["Engenho Velho","RS",-27.7060,-52.9145,"4306924"],
+  ["Pontão","RS",-28.0585,-52.6791,"4314779"],
+  ["Ronda Alta","RS",-27.7758,-52.8056,"4316105"],
+  ["Barra Funda","RS",-27.9205,-53.0391,"4301958"],
+  ["Nova Boa Vista","RS",-27.9926,-52.9784,"4312955"],
+  ["Novo Barreiro","RS",-27.9077,-53.1103,"4313490"],
+  ["Rondinha","RS",-27.8315,-52.9081,"4316204"],
+  ["Sarandi","RS",-27.9420,-52.9231,"4320107"],
 ]);

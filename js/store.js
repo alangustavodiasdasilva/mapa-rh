@@ -151,8 +151,21 @@ const Store = (() => {
     // v4→v5: as microrregiões passam a receber tons da cor do distrito (do mais escuro ao mais claro)
     // v5→v6: escala de tons mais espaçada
     if (versaoAntiga < 6) { dados.distritos.forEach(d => { if (!corValida(d.cor)) d.cor = '#16a34a'; aplicarTons(d); }); mudou = true; }
-    // Estrutura inicial dos distritos (data/distritos_seed.js): aplicada uma única vez, mesclando com o que já existir
-    if (!dados.seedDistritosCarregado && window.DISTRITOS_SEED) { aplicarSeedDistritos(); dados.seedDistritosCarregado = true; mudou = true; }
+    // Estrutura inicial dos distritos (data/distritos_seed.js): cada distrito do seed é aplicado uma única vez, mesclando com o que já existir
+    if (window.DISTRITOS_SEED) {
+      if (!Array.isArray(dados.seedDistritosAplicados)) {
+        // versões antigas tinham só uma marca geral: considera aplicados os distritos do seed que já existem
+        dados.seedDistritosAplicados = dados.seedDistritosCarregado
+          ? window.DISTRITOS_SEED.filter(sd => dados.distritos.some(x => normalizar(x.nome) === normalizar(sd.nome))).map(sd => normalizar(sd.nome)) : [];
+        mudou = true;
+      }
+      const pendentes = window.DISTRITOS_SEED.filter(sd => !dados.seedDistritosAplicados.includes(normalizar(sd.nome)));
+      if (pendentes.length) {
+        aplicarSeedDistritos(pendentes);
+        pendentes.forEach(sd => dados.seedDistritosAplicados.push(normalizar(sd.nome)));
+        dados.seedDistritosCarregado = true; mudou = true;
+      }
+    }
     if (dados.versao !== VERSAO) { dados.versao = VERSAO; mudou = true; }
     if (mudou) salvar();
   }
@@ -674,8 +687,8 @@ const Store = (() => {
     return res;
   }
   // Cria/completa os distritos descritos em window.DISTRITOS_SEED (nome, uf, cor, micros: [{ nome, polo, cidades }])
-  function aplicarSeedDistritos() {
-    for (const sd of (window.DISTRITOS_SEED || [])) {
+  function aplicarSeedDistritos(lista = window.DISTRITOS_SEED || []) {
+    for (const sd of lista) {
       const uf = String(sd.uf || '').toUpperCase();
       let d = dados.distritos.find(x => normalizar(x.nome) === normalizar(sd.nome));
       if (!d) {

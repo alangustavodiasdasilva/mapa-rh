@@ -386,6 +386,8 @@ Paginas.mapa = {
     // Rótulos de distrito/micro que se sobrepõem (zoom afastado): o distrito sempre fica; das micros, some a com menos contratações
     const rotulosMapa = []; // { marcador, prioridade }
     function ajustarRotulos() {
+      // zoom afastado: etiqueta do distrito só com o losango e o total, rótulos das micros menores
+      mapa.getContainer().classList.toggle('mapa-longe', mapa.getZoom() < 9);
       const itens = rotulosMapa.filter(r => r.marcador._icon);
       for (const r of itens) r.marcador._icon.style.display = '';
       const aceitos = [];
@@ -425,7 +427,7 @@ Paginas.mapa = {
           const topo = [Math.max(...lats) + 0.06, (Math.min(...lngs) + Math.max(...lngs)) / 2];
           const totalD = totaisDistrito.get(d.id) || 0;
           const marcD = L.marker(topo, {
-            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito"><i></i>Distrito ${UI.esc(d.nome)} <b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito"><i></i><em>Distrito ${UI.esc(d.nome)}</em><b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
             interactive: true, pane: 'rotulos', keyboard: false
           }).bindTooltip(balao({ cor: COR_ATUACAO, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
           marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
@@ -703,9 +705,18 @@ Paginas.mapa = {
         ? `<textarea class="ficha-campo" data-k="${k}" rows="2" placeholder="${UI.esc(placeholder)}" ${editar ? '' : 'readonly'}>${UI.esc(notas[k] || '')}</textarea>`
         : `<input class="ficha-campo" data-k="${k}" placeholder="${UI.esc(placeholder)}" value="${UI.esc(notas[k] || '')}" ${editar ? '' : 'readonly'}>`}</label>`;
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+      // Para onde foram os contratados desta cidade (cidade de atuação + microrregião/distrito). Clicando na bolha laranja, fica no topo da ficha
+      const destaqueDestinos = !!(fluxosOrigem && fluxos && fluxos.length);
+      const regiaoDe = id => { const i = Store.corDaCidade(id); return i ? ` <span class="muted small">· ${UI.esc(i.micro.nome)} · ${UI.esc(i.distrito.nome)}</span>` : ''; };
+      const tabelaDestinos = fluxos && fluxos.length ? UI.tabela({ colunas: [
+          { titulo: 'Para onde foram (atuação)', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `<a href="#" class="ficha-destino" data-id="${f.cidadeAtuacao.id}">${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}</a>${regiaoDe(f.cidadeAtuacao.id)}` },
+          { titulo: 'L', classe: 'direita', render: f => f.local }, { titulo: 'M', classe: 'direita', render: f => f.movel },
+          { titulo: 'Total', classe: 'direita', render: f => `<b>${f.total}</b>` }, { titulo: 'Dist.', classe: 'direita', render: f => UI.fmtKm(f.dist) }
+        ], linhas: fluxos.slice().sort((x, y) => y.total - x.total) }) : '';
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${info ? info.cor : '#64748b'}"></span>${UI.esc(cid.nome)}/${cid.uf}`,
         info ? `Microrregião <b>${UI.esc(info.micro.nome)}</b> · distrito ${UI.esc(info.distrito.nome)} <a href="#" id="ficha-micro">ver números da microrregião</a>` : 'Cidade fora das microrregiões cadastradas') +
         `<div class="ficha">
+          ${destaqueDestinos ? `<div class="ficha-secao">Para onde foram <span class="muted small">${UI.fmtNum(g ? g.total : fluxos.reduce((n, f) => n + f.total, 0))} contratado(s) desta cidade · ${fluxos.length} destino(s) · clique no destino para ver quem mais atua lá</span></div>` + tabelaDestinos : ''}
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
           <div class="ficha-grade" id="ficha-ibge"><span class="muted small">Buscando no IBGE…</span></div>
           <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
@@ -715,12 +726,7 @@ Paginas.mapa = {
             <div class="ficha-dado"><div class="rotulo">Como origem</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${g.local} local · ${g.movel} móvel` : 'ninguém contratado daqui'}</div></div>
             <div class="ficha-dado"><div class="rotulo">Como atuação</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `${a.fluxos.length} cidade(s) de origem` : 'sem contratações atuando aqui'}</div></div>
           </div>
-          ${fluxos && fluxos.length ? `<details style="margin-top:6px"><summary class="small" style="cursor:pointer;font-weight:600">Para onde vão os contratados daqui (${fluxos.length} destino(s))</summary>` +
-            UI.tabela({ colunas: [
-              { titulo: 'Atuação', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}` },
-              { titulo: 'L', classe: 'direita', render: f => f.local }, { titulo: 'M', classe: 'direita', render: f => f.movel },
-              { titulo: 'Total', classe: 'direita', render: f => `<b>${f.total}</b>` }, { titulo: 'Dist.', classe: 'direita', render: f => UI.fmtKm(f.dist) }
-            ], linhas: fluxos.slice().sort((x, y) => y.total - x.total) }) + '</details>' : ''}
+          ${!destaqueDestinos && tabelaDestinos ? `<details style="margin-top:6px"><summary class="small" style="cursor:pointer;font-weight:600">Para onde vão os contratados daqui (${fluxos.length} destino(s))</summary>` + tabelaDestinos + '</details>' : ''}
           ${a ? `<div style="margin-top:6px"><button class="btn btn-pequeno" id="ficha-atuacao">Ver de onde vem quem atua aqui</button></div>` : ''}
 
           <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? 'dados oficiais da FGTAS' : (sinePerto ? 'agência mais próxima' : '')}</span></div>
@@ -749,6 +755,11 @@ Paginas.mapa = {
       ligarFechar();
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
       if (a && !fluxosOrigem) destacarLinhas(linhasPorChave.get('A:' + cid.id) || []);
+      painel.querySelectorAll('.ficha-destino').forEach(l => l.addEventListener('click', e => {
+        e.preventDefault();
+        const a2 = porAtuacao.get(l.dataset.id);
+        if (a2) { abrirPainelAtuacao(a2); destacarLinhas(linhasPorChave.get('A:' + a2.cidade.id) || []); }
+      }));
       const bm = painel.querySelector('#ficha-micro');
       if (bm) bm.addEventListener('click', e => { e.preventDefault(); abrirPainelMicro(info.distrito, info.micro); });
       const ba = painel.querySelector('#ficha-atuacao');
