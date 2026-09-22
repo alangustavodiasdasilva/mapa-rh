@@ -226,7 +226,7 @@ Paginas.mapa = {
       if (estilo !== 'bolhas' || !porAtuacao.has(o.id) || !porOrigem.has(o.id)) return o;
       const d = deslocamentoOrigem(o.id, Math.round(raioOrigem(saidasDe(porOrigem.get(o.id)).foram || 1)));
       if (!d) return o;
-      const ll = mapa.layerPointToLatLng(mapa.latLngToLayerPoint([o.lat, o.lng]).add([d, -d]));
+      const ll = mapa.layerPointToLatLng(mapa.latLngToLayerPoint([o.lat, o.lng]).add([d, 0]));
       return { lat: ll.lat, lng: ll.lng };
     }
     function criarSeta(l) {
@@ -330,12 +330,13 @@ Paginas.mapa = {
       }
       definirStatus('');
     }
-    // Cidade que é origem E atuação: a marca de origem fica encostada no canto do losango, em vez de por cima dele
+    // Cidade que é origem E atuação: as bolas ficam ao lado do losango (direita = saíram daqui, esquerda = moram e
+    // trabalham aqui), sem cobrir o losango nem o nome da microrregião. Devolve a distância horizontal do centro.
     function deslocamentoOrigem(cidadeId, r) {
       const a = porAtuacao.get(cidadeId);
       if (!a) return 0;
-      const meiaDiagonal = ladoAtuacao(a.total) * 0.71;
-      return Math.round((meiaDiagonal + r) * 0.72);
+      const meiaDiagonal = (ladoAtuacao(a.total) + 4) * 0.71; // +4: borda branca do losango
+      return Math.round(meiaDiagonal + r + 3);
     }
     // Quem vem de uma cidade se divide em quem "fica" (mora e trabalha na própria cidade) e quem "saiu" (trabalha em outra cidade)
     function saidasDe(g) {
@@ -359,9 +360,9 @@ Paginas.mapa = {
         camadas.origens.addLayer(m);
       };
       const titulo = `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`;
-      if (s.foram) bolha(s.foram, '', (r, d) => [r - d, r + d], // canto de cima, à direita do losango
+      if (s.foram) bolha(s.foram, '', (r, d) => [r - d, r], // à direita do losango
         balao({ cor: COR_ORIGEM, titulo, tipo: 'saíram daqui para trabalhar em outra cidade', sub: `${s.destinos} destino(s)${s.proprias ? ` · outras ${s.proprias} moram e trabalham aqui mesmo` : ''}`, total: s.foram, local: g.local - s.ficaLocal, movel: g.movel - s.ficaMovel, dica: 'clique para ver para onde foram' }));
-      if (s.proprias) bolha(s.proprias, ' fica', (r, d) => [r + d, r - d], // canto de baixo, à esquerda do losango
+      if (s.proprias) bolha(s.proprias, ' fica', (r, d) => [r + d, r], // à esquerda do losango
         balao({ cor: COR_ORIGEM, titulo, tipo: 'moram e trabalham na própria cidade', sub: s.foram ? `outras ${s.foram} saíram para trabalhar em outra cidade` : 'ninguém saiu para outra cidade', total: s.proprias, local: s.ficaLocal, movel: s.ficaMovel, dica: 'clique para ver a ficha da cidade' }));
     }
     function desenharOrigens() {
@@ -372,7 +373,7 @@ Paginas.mapa = {
           if (foco && !foco.has(g.cidade.id)) continue;
           const rp = Math.round(4 * fator() + 2), dp = deslocamentoOrigem(g.cidade.id, rp);
           const m = dp
-            ? L.marker([g.cidade.lat, g.cidade.lng], { pane: 'origens', keyboard: false, icon: L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem encostada" style="width:${2 * rp}px;height:${2 * rp}px"></div>`, iconSize: [2 * rp, 2 * rp], iconAnchor: [rp - dp, rp + dp] }) })
+            ? L.marker([g.cidade.lat, g.cidade.lng], { pane: 'origens', keyboard: false, icon: L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem encostada" style="width:${2 * rp}px;height:${2 * rp}px"></div>`, iconSize: [2 * rp, 2 * rp], iconAnchor: [rp - dp, rp] }) })
             : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: rp, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 });
           m.bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver para onde foram' }), TT);
           m.on('click', () => selecionarOrigem(g));
@@ -385,7 +386,7 @@ Paginas.mapa = {
         if (!varias) { desenharBolhasCidade(gr.itens[0]); continue; }
         const r = Math.round(raioOrigem(gr.total));
         const desloc = deslocamentoOrigem(gr.cidade.id, r); // evita cobrir o losango da cidade de atuação
-        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r + desloc] });
+        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r] });
         const tip = varias
           ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
           : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(gr.itens[0]), total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver para onde foram' });
@@ -524,8 +525,10 @@ Paginas.mapa = {
             camadas.distritos.addLayer(L.circleMarker([polo.lat, polo.lng], { radius: 5, color: '#fff', weight: 1.5, fillColor: '#0f172a', fillOpacity: 0.85 })
               .bindTooltip(balao({ cor, titulo: `👑 ${UI.esc(m.nome)}`, tipo: 'cidade polo', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
             const totalM = totaisMicro.get(m.id) || 0;
+            const aPolo = porAtuacao.get(polo.id); // com losango na cidade polo, o nome desce para não ficar por baixo dele
+            const dy = aPolo ? Math.round((ladoAtuacao(aPolo.total) + 4) * 0.71 + 3) : 9;
             const marcM = L.marker([polo.lat, polo.lng], {
-              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)}">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)};transform:translate(-50%,${dy}px)">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
               interactive: true, pane: 'rotulos', keyboard: false
             }).bindTooltip(balao({ cor, titulo: UI.esc(m.nome), tipo: `microrregião · distrito ${UI.esc(d.nome)}`, sub: `${(m.cidadeIds || []).length} município(s) · polo ${UI.esc(polo.nome)}`, total: totalM, dica: 'clique para ver as contratações da microrregião' }), { ...TT, offset: [0, -8] });
             marcM.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelMicro(d, m); });
@@ -594,8 +597,8 @@ Paginas.mapa = {
         </svg>`;
     }
     function criarIconeSilo(cor) {
-      const svg = `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;background:${cor};border:1.5px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer">${glifoSilo(Store.corTexto(cor), cor, 12)}</div>`;
-      return L.divIcon({ className: 'silo-marcador-div', html: svg, iconSize: [20, 20], iconAnchor: [10, 10] });
+      const svg = `<div style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;background:${cor};border:1.5px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer">${glifoSilo(Store.corTexto(cor), cor, 9)}</div>`;
+      return L.divIcon({ className: 'silo-marcador-div', html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
     }
 
     function renderSilos() {
@@ -617,7 +620,7 @@ Paginas.mapa = {
         infos.forEach(i => { const k = i ? i.cor : COR_SILO_FORA; contagem.set(k, (contagem.get(k) || 0) + 1); });
         const cor = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]; // cor da microrregião predominante
         const nomes = gr.itens.slice(0, 6).map(s => UI.esc(s.nome)).join('<br>');
-        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 13)}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] }), pane: 'silos', keyboard: false })
+        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
           .bindTooltip(balao({ cor, titulo: `🌾 ${gr.itens.length} unidades próximas`, sub: nomes.replace(/<br>/g, ' · ') + (gr.itens.length > 6 ? ' …' : ''), dica: 'clique para aproximar' }), { ...TT, offset: [0, -16] });
         m.on('click', () => mapa.setView(gr.latLng, Math.min(mapa.getZoom() + 2, 14)));
         camadas.silos.addLayer(m);
@@ -1192,6 +1195,17 @@ Paginas.mapa = {
     el.querySelector('#c-rotulos').addEventListener('change', atualizarCamadaDistritos);
     el.querySelector('#c-calor').addEventListener('change', e => { el.querySelector('#c-modo-calor').hidden = !e.target.checked; montarCalor(); });
     el.querySelector('#c-modo-calor').addEventListener('change', montarCalor);
+    // Lembra o que ficou ligado/desligado em "Mostrar no mapa" (ex.: unidades PDR), para não ter que desmarcar toda vez
+    const CHAVE_CAMADAS = 'maparh:mapa-camadas';
+    const caixasCamadas = [...el.querySelectorAll('#controles input[type=checkbox][id^="c-"]')];
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_CAMADAS) || '{}');
+      for (const cb of caixasCamadas) if (cb.id in salvo && cb.checked !== !!salvo[cb.id] && !cb.disabled) { cb.checked = !!salvo[cb.id]; cb.dispatchEvent(new Event('change')); }
+    } catch (e) { /* estado salvo inválido: ignora */ }
+    caixasCamadas.forEach(cb => cb.addEventListener('change', () => {
+      const estado = {}; caixasCamadas.forEach(c => { estado[c.id] = c.checked; });
+      localStorage.setItem(CHAVE_CAMADAS, JSON.stringify(estado));
+    }));
     function ajustar() { if (pontos.length) mapa.fitBounds(L.latLngBounds(pontos).pad(0.15), { maxZoom: 9 }); }
     // enquadramento inicial: a área de trabalho (atuação, distritos, silos); origens distantes ficam fora, sem "encolher" o mapa
     function enquadrarInicial() {

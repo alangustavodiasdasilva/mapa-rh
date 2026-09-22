@@ -333,8 +333,8 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .bolha-origem { border-radius: 50%; background: rgba(234, 88, 12, .9); border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); color: #fff; font-weight: 700; text-align: center; cursor: pointer; white-space: nowrap; }
 .bolha-origem.varias { background: rgba(194, 65, 12, .95); border: 2px solid #fff; }
 .bolha-origem.fica { background: linear-gradient(135deg, rgba(234, 88, 12, .95) 50%, rgba(29, 78, 216, .95) 50%); }
-.silo-grupo { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.silo-grupo::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,255,255,.75); }
+.silo-grupo { position: relative; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.silo-grupo::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgba(255,255,255,.75); }
 .painel-cidade { color: var(--primaria); text-decoration: none; font-weight: 600; }
 .painel-cidade:hover { text-decoration: underline; }
 .legenda-micro { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 1px 4px 1px 14px; border-radius: 4px; color: var(--texto); text-decoration: none; cursor: pointer; }
