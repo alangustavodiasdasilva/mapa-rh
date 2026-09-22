@@ -224,7 +224,7 @@ Paginas.mapa = {
     function pontaOrigem(f) {
       const o = f.cidadeOrigem;
       if (estilo !== 'bolhas' || !porAtuacao.has(o.id) || !porOrigem.has(o.id)) return o;
-      const d = deslocamentoOrigem(o.id, Math.round(raioOrigem(saidasDe(porOrigem.get(o.id)).foram || 1)));
+      const d = deslocamentoOrigem(o.id, Math.round(raioOrigem(porOrigem.get(o.id).total)));
       if (!d) return o;
       const ll = mapa.layerPointToLatLng(mapa.latLngToLayerPoint([o.lat, o.lng]).add([d, 0]));
       return { lat: ll.lat, lng: ll.lng };
@@ -294,7 +294,8 @@ Paginas.mapa = {
         total: gr.itens.reduce((n, g) => n + g.total, 0), local: gr.itens.reduce((n, g) => n + g.local, 0), movel: gr.itens.reduce((n, g) => n + g.movel, 0)
       }));
     }
-    function selecionarOrigem(g) { abrirPainelCidade(g.cidade, { fluxosOrigem: g.fluxos }); destacarLinhas(linhasPorChave.get('O:' + g.cidade.id) || []); }
+    function selecionarOrigem(g) { abrirPainelOrigem(g); destacarLinhas(linhasPorChave.get('O:' + g.cidade.id) || []); }
+    function selecionarAtuacao(a) { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); }
     const COR_CLASSES = ['#fed7aa', '#fdba74', '#fb923c', '#ea580c', '#9a3412'];
     let cortesCoropleto = [];
     function classeDe(n) { let k = 0; for (const c of cortesCoropleto) if (n > c) k++; return Math.min(k, COR_CLASSES.length - 1); }
@@ -346,24 +347,18 @@ Paginas.mapa = {
     }
     function resumoDestinos(g) {
       const s = saidasDe(g);
-      return `${s.foram ? `<b>${s.foram}</b> foram trabalhar em outro lugar (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : 'ninguém foi para outra cidade'}${s.proprias ? ` · ${s.proprias} trabalham na própria cidade` : ''}`;
+      return `${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' · ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''}`;
     }
-    // Bolhas de uma cidade de origem: laranja = saíram daqui (as linhas partem dela); laranja/azul = moram e trabalham aqui mesmo
+    // Bolha laranja de uma cidade: quantas pessoas SÃO daqui (as linhas partem dela). Fica à direita do losango quando a cidade também é de trabalho
     function desenharBolhasCidade(g) {
       const s = saidasDe(g);
-      const bolha = (qtd, classe, ancora, tip) => {
-        const r = Math.round(raioOrigem(qtd));
-        const d = deslocamentoOrigem(g.cidade.id, r); // encosta no canto do losango quando a cidade também é de atuação
-        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${classe}${d ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${qtd}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: ancora(r, d) });
-        const m = L.marker([g.cidade.lat, g.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
-        m.on('click', () => selecionarOrigem(g));
-        camadas.origens.addLayer(m);
-      };
-      const titulo = `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`;
-      if (s.foram) bolha(s.foram, '', (r, d) => [r - d, r], // à direita do losango
-        balao({ cor: COR_ORIGEM, titulo, tipo: 'saíram daqui para trabalhar em outra cidade', sub: `${s.destinos} destino(s)${s.proprias ? ` · outras ${s.proprias} moram e trabalham aqui mesmo` : ''}`, total: s.foram, local: g.local - s.ficaLocal, movel: g.movel - s.ficaMovel, dica: 'clique para ver para onde foram' }));
-      if (s.proprias) bolha(s.proprias, ' fica', (r, d) => [r + d, r], // à esquerda do losango
-        balao({ cor: COR_ORIGEM, titulo, tipo: 'moram e trabalham na própria cidade', sub: s.foram ? `outras ${s.foram} saíram para trabalhar em outra cidade` : 'ninguém saiu para outra cidade', total: s.proprias, local: s.ficaLocal, movel: s.ficaMovel, dica: 'clique para ver a ficha da cidade' }));
+      const r = Math.round(raioOrigem(g.total));
+      const d = deslocamentoOrigem(g.cidade.id, r);
+      const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${d ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${g.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - d, r] });
+      const tip = balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'são daqui', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver quem são e onde trabalham' });
+      const m = L.marker([g.cidade.lat, g.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
+      m.on('click', () => selecionarOrigem(g));
+      camadas.origens.addLayer(m);
     }
     function desenharOrigens() {
       camadas.origens.clearLayers();
@@ -417,8 +412,8 @@ Paginas.mapa = {
         .bindTooltip(() => {
           const proprias = a.fluxos.filter(f => f.cidadeOrigem.id === a.cidade.id).reduce((n, f) => n + f.total, 0);
           return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'trabalham aqui',
-            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias} vieram de ${a.fluxos.length - (proprias ? 1 : 0)} outra(s) cidade(s)${proprias ? ` · ${proprias} moram aqui mesmo` : ''}`,
-            total: a.total, local: a.local, movel: a.movel, dica: 'clique para ver de onde vêm' });
+            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias ? `${a.total - proprias} vieram de ${a.fluxos.length - (proprias ? 1 : 0)} outra(s) cidade(s)` : ''}${a.total - proprias && proprias ? ' · ' : ''}${proprias ? `${proprias} são daqui mesmo` : ''}`,
+            total: a.total, local: a.local, movel: a.movel, dica: 'clique para ver quem são e de onde vêm' });
         }, { ...TT, offset: [0, -ladoAtuacao(a.total) * 0.71 - 4] });
       m.on('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
       m._total = a.total;
@@ -707,7 +702,45 @@ Paginas.mapa = {
       const mt = painel.querySelector('#painel-mostrar-tudo');
       if (mt) mt.addEventListener('click', e => { e.preventDefault(); linhasSelecionadas = null; aplicarFoco(null); mt.closest('.painel-foco-aviso').remove(); });
     }
+    // ---------- painéis: sempre listam as PESSOAS (uma linha por contratação), para o número do mapa bater com a lista ----------
     const colProjeto = { titulo: 'Projeto', render: f => `<span class="ponto-cor" style="background:${UI.esc(f.projeto.cor)}"></span>${UI.esc(f.projeto.nome)}${f.projeto.ano ? ' <span class="muted small">' + f.projeto.ano + '</span>' : ''}` };
+    const badgeTipo = r => `<span class="badge ${r.tipo === 'LOCAL' ? 'badge-verde' : 'badge-roxo'}" title="${r.tipo === 'LOCAL' ? 'Contratação local' : 'Contratação móvel'}">${r.tipo === 'LOCAL' ? 'Local' : 'Móvel'}</span>`;
+    const nomeCidade = c => c ? `${UI.esc(c.nome)}/${c.uf}` : '—';
+    const regiaoCurta = id => { const i = Store.corDaCidade(id); return i ? `<span class="muted small"> · ${UI.esc(i.micro.nome)}</span>` : ''; };
+    const rotuloMovel = r => `<span class="badge badge-roxo">MÓVEL · todo o estado ${UI.esc(r.projeto.uf)}</span>`;
+    // pessoas por agrupamento (mesma regra usada nos números do mapa)
+    const pessoasDeOrigem = cidadeId => regs.filter(r => r.cidadeId === cidadeId);
+    const pessoasDeAtuacao = cidadeId => regs.filter(r => !r.atuacaoMovel && r.cidadeAtuacao && r.cidadeAtuacao.id === cidadeId);
+    const pessoasDoHub = uf => regs.filter(r => r.atuacaoMovel && r.projeto.uf === uf);
+    const pessoasDoFluxo = f => regs.filter(r => r.projetoId === f.projeto.id && r.cidadeId === f.cidadeOrigem.id && (f.atuacaoMovel ? r.atuacaoMovel : (!r.atuacaoMovel && r.cidadeAtuacao && r.cidadeAtuacao.id === f.cidadeAtuacao.id)));
+    // Lista de pessoas: nº, de onde vem, onde trabalha, tipo, distância (+ projeto quando há mais de um)
+    function listaPessoas(lista, { origem = true, destino = true, referencia = null, cadastro = false, limite = 300 } = {}) {
+      const varios = new Set(lista.map(r => r.projetoId)).size > 1;
+      const nome = c => c ? c.nome : '';
+      const ordenada = lista.slice().sort((a, b) => nome(a.cidade).localeCompare(nome(b.cidade)) || nome(a.cidadeAtuacao).localeCompare(nome(b.cidadeAtuacao)) || (a.criadoEm || '').localeCompare(b.criadoEm || ''));
+      let n = 0;
+      return UI.tabela({
+        vazio: 'Ninguém no filtro atual.',
+        colunas: [
+          { titulo: '#', classe: 'direita', render: () => ++n },
+          ...(origem ? [{ titulo: 'De onde vem', render: r => `<a href="#" class="p-origem" data-id="${r.cidadeId}" title="Ver todos que são desta cidade">${nomeCidade(r.cidade)}</a>${regiaoCurta(r.cidadeId)}${referencia && r.cidadeId === referencia ? ' <span class="badge badge-azul">daqui mesmo</span>' : ''}${r.foraDoEstado ? ' <span class="badge badge-amarelo">fora do estado</span>' : ''}` }] : []),
+          ...(destino ? [{ titulo: 'Onde trabalha', render: r => r.atuacaoMovel ? rotuloMovel(r) : `<a href="#" class="p-destino" data-id="${r.cidadeAtuacao.id}" title="Ver todos que trabalham nesta cidade">${nomeCidade(r.cidadeAtuacao)}</a>${regiaoCurta(r.cidadeAtuacao.id)}${referencia && r.cidadeAtuacao.id === referencia ? ' <span class="badge badge-azul">aqui mesmo</span>' : ''}` }] : []),
+          { titulo: 'Tipo', render: badgeTipo },
+          ...(varios ? [colProjeto] : []),
+          { titulo: 'Dist.', classe: 'direita', render: r => UI.fmtKm(r.distancia) },
+          ...(cadastro ? [{ titulo: 'Cadastro', render: r => `${UI.fmtData(r.criadoEm)}${r.criadoPor ? ` <span class="muted small">${UI.esc(r.criadoPor)}</span>` : ''}` }] : [])
+        ],
+        linhas: ordenada.slice(0, limite)
+      }) + (lista.length > limite ? `<div class="muted small" style="margin-top:6px">Mostrando ${limite} de ${lista.length}. Use os filtros do topo para reduzir.</div>` : '');
+    }
+    // nomes de cidade dentro das listas são clicáveis: origem → "são daqui"; trabalho → "trabalham aqui"
+    function ligarListas() {
+      painel.querySelectorAll('.p-origem').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const g = porOrigem.get(a.dataset.id); if (g) selecionarOrigem(g); }));
+      painel.querySelectorAll('.p-destino').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const at = porAtuacao.get(a.dataset.id); if (at) selecionarAtuacao(at); }));
+    }
+    const botaoFicha = cid => `<button class="btn btn-pequeno" id="painel-ficha">Ficha de ${UI.esc(cid.nome)} (IBGE, SINE, anotações)</button>`;
+    const ligarFicha = cid => { const b = painel.querySelector('#painel-ficha'); if (b) b.addEventListener('click', () => abrirPainelCidade(cid, {})); };
+    const resumo = (titulo, html) => `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600">${titulo}</summary>${html}</details>`;
     function tabelaOrigens(lista, totalRef, cidadeRef) {
       return UI.tabela({
         vazio: 'Nenhuma contratação para o filtro atual.',
@@ -723,51 +756,84 @@ Paginas.mapa = {
         linhas: lista.slice().sort((a, b) => b.total - a.total)
       });
     }
-    // Clique em uma linha: mostra o trajeto dela (de onde vêm ➜ onde trabalham) e enquadra as duas pontas no mapa
+    function tabelaDestinos(lista) {
+      return UI.tabela({
+        vazio: 'Nenhuma contratação para o filtro atual.',
+        colunas: [
+          { titulo: 'Onde trabalham', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}${regiaoCurta(f.cidadeAtuacao.id)}` },
+          ...(new Set(lista.map(f => f.projeto.id)).size > 1 ? [colProjeto] : []),
+          { titulo: 'L', classe: 'direita', render: f => f.local },
+          { titulo: 'M', classe: 'direita', render: f => f.movel },
+          { titulo: 'Total', classe: 'direita', render: f => `<b>${f.total}</b>` },
+          { titulo: 'Dist.', classe: 'direita', render: f => UI.fmtKm(f.dist) }
+        ],
+        linhas: lista.slice().sort((a, b) => b.total - a.total)
+      });
+    }
+    // Losango azul: quem TRABALHA na cidade
+    function abrirPainelAtuacao(a) {
+      const lista = pessoasDeAtuacao(a.cidade.id);
+      const daqui = lista.filter(r => r.cidadeId === a.cidade.id).length;
+      const cidades = new Set(lista.map(r => r.cidadeId)).size;
+      painel.innerHTML = cabecalhoPainel(`<span class="marc-atuacao mini"><span>${lista.length}</span></span>Trabalham em ${UI.esc(a.cidade.nome)}`,
+        `<b>${lista.length}</b> pessoa(s) trabalham em ${UI.esc(a.cidade.nome)}/${a.cidade.uf}: ${daqui ? `${daqui} são daqui mesmo` : ''}${daqui && lista.length - daqui ? ' e ' : ''}${lista.length - daqui ? `${lista.length - daqui} vieram de ${cidades - (daqui ? 1 : 0)} outra(s) cidade(s)` : ''} · ${a.local} local · ${a.movel} móvel`) +
+        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(a.cidade)}</div>` +
+        listaPessoas(lista, { destino: false, referencia: a.cidade.id }) +
+        resumo('Resumo por cidade de origem', tabelaOrigens(a.fluxos, a.total, a.cidade));
+      ligarFechar(); ligarListas(); ligarFicha(a.cidade);
+      aplicarFoco([a.cidade.id, ...a.fluxos.map(f => f.cidadeOrigem.id)]);
+    }
+    // Bola laranja: quem É da cidade (e onde cada um trabalha)
+    function abrirPainelOrigem(g) {
+      const lista = pessoasDeOrigem(g.cidade.id);
+      const s = saidasDe(g);
+      painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini">${lista.length}</span>São de ${UI.esc(g.cidade.nome)}`,
+        `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(g.cidade.nome)}/${g.cidade.uf}: ${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' e ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''} · ${g.local} local · ${g.movel} móvel`) +
+        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(g.cidade)}</div>` +
+        listaPessoas(lista, { origem: false, referencia: g.cidade.id }) +
+        resumo('Resumo por cidade de trabalho', tabelaDestinos(g.fluxos));
+      ligarFechar(); ligarListas(); ligarFicha(g.cidade);
+      aplicarFoco([g.cidade.id, ...destinosDe(g.fluxos)]);
+    }
+    // Ponto roxo: atuação móvel em todo o estado
+    function abrirPainelHub(h) {
+      const lista = pessoasDoHub(h.uf);
+      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>Atuação móvel em ${UI.esc(Store.UFS[h.uf] || h.uf)}`,
+        `<b>${lista.length}</b> pessoa(s) podem atuar em qualquer lugar do estado · vêm de ${h.fluxos.length} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
+        listaPessoas(lista, { destino: false }) + resumo('Resumo por cidade de origem', tabelaOrigens(h.fluxos, h.total));
+      ligarFechar(); ligarListas();
+      aplicarFoco(['H:' + h.uf, ...h.fluxos.map(f => f.cidadeOrigem.id)]);
+    }
+    // Várias cidades de origem juntas numa bola (zoom afastado)
+    function abrirPainelGrupoOrigem(gr) {
+      const lista = gr.itens.flatMap(g => pessoasDeOrigem(g.cidade.id));
+      painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini varias">${lista.length}</span>${gr.itens.length} cidades próximas`,
+        `<b>${lista.length}</b> pessoa(s) são de ${gr.itens.length} cidades vizinhas, juntas numa bola só neste zoom · aproxime para separar, ou clique no nome de uma cidade`) +
+        listaPessoas(lista);
+      ligarFechar(); ligarListas();
+      aplicarFoco([...gr.itens.map(g => g.cidade.id), ...gr.itens.flatMap(g => destinosDe(g.fluxos))]);
+    }
+    // Clique em uma linha: quem faz aquele trajeto (de onde vêm ➜ onde trabalham), com as duas pontas enquadradas
     function abrirPainelFluxo(f, linha) {
       const o = f.cidadeOrigem, infoO = Store.corDaCidade(o.id);
       const infoA = f.atuacaoMovel ? null : Store.corDaCidade(f.cidadeAtuacao.id);
-      const destNome = f.atuacaoMovel ? `MÓVEL · todo o estado ${UI.esc(f.uf)}` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}`;
+      const destNome = f.atuacaoMovel ? `todo o estado ${UI.esc(f.uf)} (móvel)` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}`;
       const regiao = i => i ? `${UI.esc(i.micro.nome)} · distrito ${UI.esc(i.distrito.nome)}` : 'fora das microrregiões cadastradas';
-      const lista = regs.filter(r => r.projetoId === f.projeto.id && r.cidadeId === o.id && (f.atuacaoMovel ? r.atuacaoMovel : (!r.atuacaoMovel && r.cidadeAtuacao.id === f.cidadeAtuacao.id)));
-      painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>${UI.esc(o.nome)} ➜ ${destNome}`,
-        `${UI.esc(f.projeto.nome)}${f.projeto.ano ? ' ' + f.projeto.ano : ''} · <b>${f.total}</b> pessoa(s) saíram de ${UI.esc(o.nome)} para trabalhar em ${f.atuacaoMovel ? 'todo o estado' : UI.esc(f.cidadeAtuacao.nome)} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}`) +
+      const lista = pessoasDoFluxo(f);
+      painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>De ${UI.esc(o.nome)} para ${destNome}`,
+        `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
         `<div class="ficha-grade" style="margin-bottom:10px">
-          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px">${UI.esc(o.nome)}/${o.uf}</div><div class="muted small">${regiao(infoO)}</div></div>
-          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${destNome}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
+          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
+          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
         </div>
-        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button>
-          <button class="btn btn-pequeno" id="fluxo-origem">Ficha de ${UI.esc(o.nome)}</button>
-          ${!f.atuacaoMovel ? `<button class="btn btn-pequeno" id="fluxo-atuacao">Quem mais atua em ${UI.esc(f.cidadeAtuacao.nome)}</button>` : ''}
-        </div>` +
-        UI.tabela({
-          vazio: 'Nenhum registro no filtro atual.',
-          colunas: [
-            { titulo: 'Tipo', render: r => `<span class="badge ${r.tipo === 'LOCAL' ? 'badge-verde' : 'badge-roxo'}">${r.tipo}</span>` },
-            { titulo: 'Base de contratação', render: r => r.baseContratacao && Store.cidade(r.baseContratacao) ? UI.esc(Store.cidade(r.baseContratacao).nome) : '—' },
-            { titulo: 'Cadastrado em', render: r => `${UI.fmtData(r.criadoEm)}${r.criadoPor ? ` <span class="muted small">por ${UI.esc(r.criadoPor)}</span>` : ''}` }
-          ],
-          linhas: lista
-        });
-      ligarFechar();
+        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
+        listaPessoas(lista, { origem: false, destino: false, cadastro: true });
+      ligarFechar(); ligarListas();
       destacarLinhas([linha]);
       aplicarFoco([o.id, f.atuacaoMovel ? 'H:' + f.uf : f.cidadeAtuacao.id]);
       const enquadrar = () => mapa.fitBounds(linha.getBounds().pad(0.25), { maxZoom: 11 });
       enquadrar();
       painel.querySelector('#fluxo-enquadrar').addEventListener('click', enquadrar);
-      painel.querySelector('#fluxo-origem').addEventListener('click', () => { const g = porOrigem.get(o.id); if (g) selecionarOrigem(g); else abrirPainelCidade(o); });
-      const ba = painel.querySelector('#fluxo-atuacao');
-      if (ba) ba.addEventListener('click', () => { const a = porAtuacao.get(f.cidadeAtuacao.id); if (a) { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); } });
-    }
-    function abrirPainelAtuacao(a) {
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_ATUACAO}"></span>${UI.esc(a.cidade.nome)}/${a.cidade.uf}`,
-        `Cidade de atuação · ${a.total} contratação(ões) (${a.local} local, ${a.movel} móvel) · ${a.fluxos.length} cidade(s) de origem`) +
-        `<div class="linha" style="gap:6px;margin-bottom:10px"><button class="btn btn-pequeno" id="painel-ficha">Ficha da cidade (IBGE, SINE, anotações)</button></div>` +
-        tabelaOrigens(a.fluxos, a.total, a.cidade);
-      ligarFechar();
-      aplicarFoco([a.cidade.id, ...a.fluxos.map(f => f.cidadeOrigem.id)]);
-      painel.querySelector('#painel-ficha').addEventListener('click', () => abrirPainelCidade(a.cidade, {}));
     }
 
     // ---------- ficha da cidade: dados do IBGE, contratações, anotações do RH e divisa ----------
@@ -821,29 +887,18 @@ Paginas.mapa = {
         ? `<textarea class="ficha-campo" data-k="${k}" rows="2" placeholder="${UI.esc(placeholder)}" ${editar ? '' : 'readonly'}>${UI.esc(notas[k] || '')}</textarea>`
         : `<input class="ficha-campo" data-k="${k}" placeholder="${UI.esc(placeholder)}" value="${UI.esc(notas[k] || '')}" ${editar ? '' : 'readonly'}>`}</label>`;
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
-      // Para onde foram os contratados desta cidade (cidade de atuação + microrregião/distrito). Clicando na bolha laranja, fica no topo da ficha
-      const destaqueDestinos = !!(fluxosOrigem && fluxos && fluxos.length);
-      const regiaoDe = id => { const i = Store.corDaCidade(id); return i ? ` <span class="muted small">· ${UI.esc(i.micro.nome)} · ${UI.esc(i.distrito.nome)}</span>` : ''; };
-      const tabelaDestinos = fluxos && fluxos.length ? UI.tabela({ colunas: [
-          { titulo: 'Para onde foram (atuação)', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `<a href="#" class="ficha-destino" data-id="${f.cidadeAtuacao.id}">${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}</a>${regiaoDe(f.cidadeAtuacao.id)}` },
-          { titulo: 'L', classe: 'direita', render: f => f.local }, { titulo: 'M', classe: 'direita', render: f => f.movel },
-          { titulo: 'Total', classe: 'direita', render: f => `<b>${f.total}</b>` }, { titulo: 'Dist.', classe: 'direita', render: f => UI.fmtKm(f.dist) }
-        ], linhas: fluxos.slice().sort((x, y) => y.total - x.total) }) : '';
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${info ? info.cor : '#64748b'}"></span>${UI.esc(cid.nome)}/${cid.uf}`,
         info ? `Microrregião <b>${UI.esc(info.micro.nome)}</b> · distrito ${UI.esc(info.distrito.nome)} <a href="#" id="ficha-micro">ver números da microrregião</a>` : 'Cidade fora das microrregiões cadastradas') +
         `<div class="ficha">
-          ${destaqueDestinos ? `<div class="ficha-secao">Para onde foram <span class="muted small">${UI.fmtNum(g ? g.total : fluxos.reduce((n, f) => n + f.total, 0))} contratado(s) desta cidade · ${fluxos.length} destino(s) · clique no destino para ver quem mais atua lá</span></div>` + tabelaDestinos : ''}
+          <div class="ficha-secao">Contratações <span class="muted small">no filtro atual · clique para ver quem</span></div>
+          <div class="ficha-grade" style="margin-bottom:4px">
+            <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${a.fluxos.length} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
+            <button class="ficha-dado ficha-botao" id="ficha-ver-origem" ${g ? '' : 'disabled'}><div class="rotulo"><span class="bolha-origem mini">&nbsp;</span>São daqui</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${resumoDestinos(g).replace(/<[^>]+>/g, '')} · ver quem` : 'ninguém contratado daqui'}</div></button>
+          </div>
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
           <div class="ficha-grade" id="ficha-ibge"><span class="muted small">Buscando no IBGE…</span></div>
           <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
 
-          <div class="ficha-secao">Contratações <span class="muted small">no filtro atual</span></div>
-          <div class="ficha-grade">
-            <div class="ficha-dado"><div class="rotulo">Como origem</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${g.local} local · ${g.movel} móvel` : 'ninguém contratado daqui'}</div></div>
-            <div class="ficha-dado"><div class="rotulo">Como atuação</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `${a.fluxos.length} cidade(s) de origem` : 'sem contratações atuando aqui'}</div></div>
-          </div>
-          ${!destaqueDestinos && tabelaDestinos ? `<details style="margin-top:6px"><summary class="small" style="cursor:pointer;font-weight:600">Para onde vão os contratados daqui (${fluxos.length} destino(s))</summary>` + tabelaDestinos + '</details>' : ''}
-          ${a ? `<div style="margin-top:6px"><button class="btn btn-pequeno" id="ficha-atuacao">Ver de onde vem quem atua aqui</button></div>` : ''}
 
           <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? 'dados oficiais da FGTAS' : (sinePerto ? 'agência mais próxima' : '')}</span></div>
           ${blocoSine}
@@ -871,15 +926,11 @@ Paginas.mapa = {
       ligarFechar();
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
       if (a && !fluxosOrigem) destacarLinhas(linhasPorChave.get('A:' + cid.id) || []);
-      painel.querySelectorAll('.ficha-destino').forEach(l => l.addEventListener('click', e => {
-        e.preventDefault();
-        const a2 = porAtuacao.get(l.dataset.id);
-        if (a2) { abrirPainelAtuacao(a2); destacarLinhas(linhasPorChave.get('A:' + a2.cidade.id) || []); }
-      }));
       const bm = painel.querySelector('#ficha-micro');
       if (bm) bm.addEventListener('click', e => { e.preventDefault(); abrirPainelMicro(info.distrito, info.micro); });
-      const ba = painel.querySelector('#ficha-atuacao');
-      if (ba) ba.addEventListener('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
+      const bva = painel.querySelector('#ficha-ver-atuacao'), bvo = painel.querySelector('#ficha-ver-origem');
+      if (bva && a) bva.addEventListener('click', () => selecionarAtuacao(a));
+      if (bvo && g) bvo.addEventListener('click', () => selecionarOrigem(g));
       const bs = painel.querySelector('#ficha-salvar');
       if (bs) bs.addEventListener('click', () => {
         const campos = {};
@@ -902,29 +953,6 @@ Paginas.mapa = {
       } catch (e) {
         if (alvo.isConnected) alvo.innerHTML = '<span class="muted small">Não foi possível consultar o IBGE agora (sem internet?).</span>';
       }
-    }
-    function abrirPainelHub(h) {
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>${h.uf} — atuação móvel`,
-        `Podem atuar em qualquer lugar de ${UI.esc(Store.UFS[h.uf] || h.uf)} · ${h.total} contratação(ões) (${h.local} local, ${h.movel} móvel) · ${h.fluxos.length} cidade(s) de origem`) + tabelaOrigens(h.fluxos, h.total, null);
-      ligarFechar();
-      aplicarFoco(['H:' + h.uf, ...h.fluxos.map(f => f.cidadeOrigem.id)]);
-    }
-    function abrirPainelOrigem(g) {
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_ORIGEM}"></span>${UI.esc(g.cidade.nome)}/${g.cidade.uf}`,
-        `Cidade de origem · ${g.total} contratação(ões) (${g.local} local, ${g.movel} móvel)`) +
-        UI.tabela({
-          colunas: [
-            { titulo: 'Atuação', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}` },
-            colProjeto,
-            { titulo: 'L', classe: 'direita', render: f => f.local },
-            { titulo: 'M', classe: 'direita', render: f => f.movel },
-            { titulo: 'Total', classe: 'direita', render: f => `<b>${f.total}</b>` },
-            { titulo: 'Dist.', classe: 'direita', render: f => UI.fmtKm(f.dist) }
-          ],
-          linhas: g.fluxos.slice().sort((a, b) => b.total - a.total)
-        });
-      ligarFechar();
-      aplicarFoco([g.cidade.id, ...destinosDe(g.fluxos)]);
     }
     // Painel de uma microrregião: números das contratações com atuação nas cidades dela
     // Painel do distrito: contratações de quem trabalha nas cidades dele, por microrregião e por cidade de origem
@@ -982,8 +1010,9 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 30)
-        }) + (origens.size > 30 ? `<div class="muted small" style="margin-top:6px">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '');
-      ligarFechar();
+        }) + (origens.size > 30 ? `<div class="muted small" style="margin-top:6px">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
+      ligarFechar(); ligarListas();
       // bolinhas e linhas de todo o distrito
       destacarLinhas([...ids].flatMap(id => linhasPorChave.get('A:' + id) || []));
       aplicarFoco([...ids, ...lista.map(r => r.cidadeId)]);
@@ -1028,29 +1057,14 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 40)
-        }) + (origens.size > 40 ? `<div class="muted small" style="margin-top:6px">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '');
-      ligarFechar();
+        }) + (origens.size > 40 ? `<div class="muted small" style="margin-top:6px">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
+      ligarFechar(); ligarListas();
       destacarLinhas([...ids].flatMap(id => linhasPorChave.get('A:' + id) || []));
       aplicarFoco([...ids, ...lista.map(r => r.cidadeId)]);
       painel.querySelector('#painel-focar').addEventListener('click', () => focar(cidadesDaMicro(m)));
       const bf = painel.querySelector('#painel-filtrar');
       if (bf) bf.addEventListener('click', () => { App.filtros.distritoId = d.id; App.filtros.microId = m.id; App.aoMudarFiltros(); });
-    }
-    function abrirPainelGrupoOrigem(gr) {
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_ORIGEM}"></span>${gr.itens.length} cidades de origem próximas`,
-        `${gr.total} contratação(ões) (${gr.local} local, ${gr.movel} móvel) · agrupadas neste zoom — aproxime para separar ou clique em uma cidade`) +
-        UI.tabela({
-          colunas: [
-            { titulo: 'Cidade de origem', render: g => `<a href="#" class="painel-cidade" data-id="${g.cidade.id}">${UI.esc(g.cidade.nome)}/${g.cidade.uf}</a>` },
-            { titulo: 'L', classe: 'direita', render: g => g.local },
-            { titulo: 'M', classe: 'direita', render: g => g.movel },
-            { titulo: 'Total', classe: 'direita', render: g => `<b>${g.total}</b>` }
-          ],
-          linhas: gr.itens
-        });
-      ligarFechar();
-      aplicarFoco([...gr.itens.map(g => g.cidade.id), ...gr.itens.flatMap(g => destinosDe(g.fluxos))]);
-      painel.querySelectorAll('.painel-cidade').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const g = porOrigem.get(a.dataset.id); if (g) selecionarOrigem(g); }));
     }
     // Linha (visível) sob o ponto clicado. O mapa tem vários canvas empilhados (malha, hubs, destaque…) e o Leaflet só
     // testa as linhas do canvas que recebeu o clique, então o teste é feito aqui, com a tolerância do renderizador.
@@ -1105,7 +1119,7 @@ Paginas.mapa = {
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
     legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><span class="linha" style="gap:6px"><button class="btn-link small" id="legenda-ajuda" title="Como ler o mapa">como ler?</button><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></span></div><div class="painel-corpo">` +
       `<div class="legenda-secao">Em cada cidade</div>` +
-      item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade (vindas de qualquer lugar)') +
+      item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique: quem são e de onde vêm') +
       `<div id="legenda-origens"></div>` +
       `<div class="legenda-secao">Ligações</div>` +
       projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} — <b>de onde vêm ➜ onde trabalham</b>; a seta aponta para o trabalho. Clique na linha para ver o trajeto`)).join('') +
@@ -1135,8 +1149,7 @@ Paginas.mapa = {
       } else if (estilo === 'pontos') {
         alvo.innerHTML = item(bola(COR_ORIGEM, 10), '<b>De onde vêm</b> (cidade de origem) — a quantidade aparece ao passar o mouse');
       } else {
-        alvo.innerHTML = item(`<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, '<b>De onde vêm</b> — saíram desta cidade para trabalhar em outra (as linhas partem daqui)') +
-          item(`<span class="bolha-origem fica" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, '<b>Moram e trabalham na própria cidade</b>');
+        alvo.innerHTML = item(`<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, '<b>São daqui</b> — quantas pessoas contratadas são desta cidade (as linhas partem daqui). Clique: quem são e onde trabalham');
       }
     }
     atualizarLegendaOrigens();
@@ -1145,13 +1158,12 @@ Paginas.mapa = {
       const simb = (marca, titulo, texto) => `<div class="legenda-item" style="align-items:flex-start;margin-bottom:10px"><span style="width:26px;display:flex;justify-content:center;flex-shrink:0;padding-top:2px">${marca}</span><span><b>${titulo}</b><br><span class="muted">${texto}</span></span></div>`;
       UI.modal({
         titulo: 'Como ler o mapa', largura: '620px',
-        corpo: `<p class="muted small" style="margin-top:0">Cada pessoa contratada tem uma <b>cidade de origem</b> (onde mora / de onde veio) e uma <b>cidade de atuação</b> (onde trabalha). O mapa mostra as duas coisas com símbolos diferentes, cada um com a sua quantidade.</p>` +
-          simb('<span class="marc-atuacao mini" style="margin:0"><span>n</span></span>', 'Losango azul — trabalham aqui', 'Quantas pessoas trabalham nesta cidade, vindas de qualquer lugar. Clique: lista de onde elas vêm.') +
-          simb('<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px">n</span>', 'Bola laranja — saíram daqui', 'Moram nesta cidade e trabalham em outra. As linhas partem desta bola. Clique: para onde foram.') +
-          simb('<span class="bolha-origem fica" style="width:20px;height:20px;line-height:17px;font-size:10px">n</span>', 'Meio laranja, meio azul — moram e trabalham aqui', 'Pessoas desta cidade que trabalham nela mesma (não geram linha).') +
-          simb('<span class="legenda-traco" style="color:#dc2626;width:22px"></span>', 'Linha com seta — o trajeto', 'Sai da bola laranja (de onde vêm) e a seta aponta para o losango azul (onde trabalham). Passe o mouse para ver quantos; clique para ver o trajeto com os dois pontos enquadrados.') +
+        corpo: `<p class="muted small" style="margin-top:0">Cada pessoa contratada tem uma <b>cidade de onde vem</b> (origem) e uma <b>cidade onde trabalha</b> (atuação). O mapa mostra as duas coisas com símbolos diferentes; o número de cada símbolo é sempre <b>quantidade de pessoas</b>, e clicando aparece a lista dessas pessoas, uma por linha.</p>` +
+          simb('<span class="marc-atuacao mini" style="margin:0"><span>n</span></span>', 'Losango azul — trabalham aqui', 'O número é quantas pessoas trabalham nesta cidade. Clique: a lista dessas pessoas, uma por linha, com a cidade de onde cada uma vem.') +
+          simb('<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px">n</span>', 'Bola laranja — são daqui', 'O número é quantas pessoas contratadas são desta cidade (moram / vieram daqui). Clique: a lista delas com a cidade onde cada uma trabalha. Uma mesma pessoa aparece na bola laranja da cidade de onde vem e no losango azul da cidade onde trabalha.') +
+          simb('<span class="legenda-traco" style="color:#dc2626;width:22px"></span>', 'Linha com seta — o trajeto', 'Sai da bola laranja (de onde vêm) e a seta aponta para o losango azul (onde trabalham). O número no balão é quantas pessoas fazem esse trajeto. Clique: a lista delas, com os dois pontos enquadrados no mapa.') +
           simb('<span class="rotulo-distrito mini" style="margin:0"><b>n</b></span>', 'Etiqueta azul — total do distrito', 'Soma de todos os losangos (quem trabalha) nas cidades do distrito. Clique: painel do distrito com as bolas e linhas dele. O nome de cada microrregião também mostra o total dela e é clicável.') +
-          `<p class="muted small" style="margin-bottom:0">Com muita gente, cidades de origem próximas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município para abrir a ficha dele (IBGE, SINE, anotações).</p>`,
+          `<p class="muted small" style="margin-bottom:0">Com muita gente, cidades de origem vizinhas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município (mesmo sem contratação) para abrir a ficha dele: IBGE, SINE e anotações do RH.</p>`,
         botoes: [{ texto: 'Entendi', classe: 'btn-primario' }]
       });
     });

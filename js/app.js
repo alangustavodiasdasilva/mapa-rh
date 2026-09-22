@@ -98,6 +98,7 @@ const App = {
             <div class="usuario-nome">${UI.esc(u.nome)}</div>
             <div class="usuario-perfil">${UI.esc(Store.PERFIS[u.perfil])}</div>
             <div class="acoes"><a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">${icone('sair', 14)} Sair</a></div>
+            <div class="muted small" style="margin-top:6px" title="Se o número não bater com a versão publicada, aperte Ctrl+F5">versão ${UI.esc(App.versao())}</div>
           </div>
         </aside>
         <div class="sidebar-fundo" id="sidebar-fundo"></div>
@@ -313,4 +314,6 @@ const App = {
   }
 };
 
+// versão = o "?v=" dos scripts no index.html (sobe a cada publicação)
+App.versao = () => ((document.querySelector('script[src*="js/app.js"]') || {}).src || '').replace(/.*v=(\d+).*/, '$1') || '?';
 document.addEventListener('DOMContentLoaded', () => App.init());

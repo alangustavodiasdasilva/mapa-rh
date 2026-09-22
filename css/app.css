@@ -332,7 +332,11 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .legenda-faixa { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.4); }
 .bolha-origem { border-radius: 50%; background: rgba(234, 88, 12, .9); border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); color: #fff; font-weight: 700; text-align: center; cursor: pointer; white-space: nowrap; }
 .bolha-origem.varias { background: rgba(194, 65, 12, .95); border: 2px solid #fff; }
-.bolha-origem.fica { background: linear-gradient(135deg, rgba(234, 88, 12, .95) 50%, rgba(29, 78, 216, .95) 50%); }
+.bolha-origem.mini { display: inline-block; min-width: 22px; height: 22px; line-height: 19px; font-size: 11px; padding: 0 4px; margin-right: 8px; vertical-align: middle; }
+.ficha-botao { text-align: left; font: inherit; cursor: pointer; border: 1px solid var(--borda, #e2e8f0); background: #f8fafc; }
+.ficha-botao:hover:not(:disabled) { border-color: var(--primaria); background: #eff6ff; }
+.ficha-botao:disabled { cursor: default; opacity: .7; }
+.ficha-botao .rotulo { display: flex; align-items: center; gap: 2px; }
 .silo-grupo { position: relative; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .silo-grupo::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid rgba(255,255,255,.75); }
 .painel-cidade { color: var(--primaria); text-decoration: none; font-weight: 600; }
