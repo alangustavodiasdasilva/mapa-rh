@@ -289,6 +289,12 @@ Paginas.mapa = {
       const meiaDiagonal = ladoAtuacao() * 0.71;
       return Math.round((meiaDiagonal + r) * 0.72);
     }
+    // "X trabalham na própria cidade · Y foram para outra(s) cidade(s)" — para o balão da bolha laranja
+    function resumoDestinos(g) {
+      const proprias = g.fluxos.filter(f => !f.atuacaoMovel && f.cidadeAtuacao.id === g.cidade.id).reduce((n, f) => n + f.total, 0);
+      const foram = g.total - proprias, destinos = g.fluxos.filter(f => f.atuacaoMovel || f.cidadeAtuacao.id !== g.cidade.id).length;
+      return `${foram ? `<b>${foram}</b> foram trabalhar em outro lugar (${destinos} destino${destinos === 1 ? '' : 's'})` : 'ninguém foi para outra cidade'}${proprias ? ` · ${proprias} trabalham na própria cidade` : ''}`;
+    }
     function desenharOrigens() {
       camadas.origens.clearLayers();
       if (estilo === 'pintar') { desenharCoropleto(); return; }
@@ -299,7 +305,7 @@ Paginas.mapa = {
           const m = dp
             ? L.marker([g.cidade.lat, g.cidade.lng], { pane: 'origens', keyboard: false, icon: L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem encostada" style="width:${2 * rp}px;height:${2 * rp}px"></div>`, iconSize: [2 * rp, 2 * rp], iconAnchor: [rp - dp, rp + dp] }) })
             : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: rp, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 });
-          m.bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver onde trabalham' }), TT);
+          m.bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver para onde foram' }), TT);
           m.on('click', () => selecionarOrigem(g));
           camadas.origens.addLayer(m);
         }
@@ -312,7 +318,7 @@ Paginas.mapa = {
         const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r + desloc] });
         const tip = varias
           ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
-          : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver onde trabalham' });
+          : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(gr.itens[0]), total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver para onde foram' });
         const m = L.marker([gr.cidade.lat, gr.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
         m.on('click', () => varias ? abrirPainelGrupoOrigem(gr) : selecionarOrigem(gr.itens[0]));
         camadas.origens.addLayer(m);
