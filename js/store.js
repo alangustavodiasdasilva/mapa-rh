@@ -37,6 +37,7 @@ const Store = (() => {
   const MOVEL = 'MOVEL'; // legado: registros antigos com atuação em todo o estado
 
   let dados = null;
+  let avisoCarregamento = ''; // mensagem para a tela mostrar quando algo deu errado ao abrir
   let municipiosIBGE = null;      // [[nome, uf, lat, lng, codigo], ...]
   let indiceCidades = new Map();  // id -> cidade
   let listaCidades = [];
@@ -81,10 +82,18 @@ const Store = (() => {
     };
   }
   function carregar() {
+    let bruto = null;
     try {
-      const bruto = localStorage.getItem(CHAVE);
+      bruto = localStorage.getItem(CHAVE);
       dados = bruto ? JSON.parse(bruto) : dadosPadrao();
-    } catch (e) { console.error('Falha ao ler dados salvos', e); dados = dadosPadrao(); }
+      if (!dados || typeof dados !== 'object') throw new Error('formato inesperado');
+    } catch (e) {
+      console.error('Falha ao ler dados salvos', e);
+      // guarda o arquivo ilegível em vez de apagá-lo: ainda dá para recuperar à mão
+      try { if (bruto) localStorage.setItem(CHAVE + ':corrompido', bruto); } catch (e2) { /* sem espaço */ }
+      dados = dadosPadrao();
+      avisoCarregamento = 'Os dados salvos neste navegador estavam ilegíveis e o sistema começou do zero. Uma cópia do arquivo com problema foi guardada — restaure o seu backup mais recente em Backup.';
+    }
     for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.length) dados.usuarios = dadosPadrao().usuarios;
@@ -117,7 +126,7 @@ const Store = (() => {
       if (!Array.isArray(d.micros)) {
         d.micros = [];
         if (Array.isArray(d.cidadeIds) && d.cidadeIds.length) {
-          d.micros.push({ id: uid(), nome: d.nome, cor: d.cor || '#059669', cidadeIds: d.cidadeIds });
+          d.micros.push({ id: uid(), nome: d.nome, cor: d.cor || '#4e9933', cidadeIds: d.cidadeIds });
         }
         delete d.cidadeIds;
         mudou = true;
@@ -169,9 +178,16 @@ const Store = (() => {
     if (dados.versao !== VERSAO) { dados.versao = VERSAO; mudou = true; }
     if (mudou) salvar();
   }
+  // Se o navegador recusar a gravação (espaço cheio), a memória volta ao que está no disco:
+  // sem isso o sistema continuaria mostrando cadastros que na verdade não foram salvos.
   function salvar() {
-    try { localStorage.setItem(CHAVE, JSON.stringify(dados)); }
-    catch (e) { UI.toast('Não foi possível salvar: espaço do navegador cheio. Faça um backup.', 'erro', 6000); throw e; }
+    const texto = JSON.stringify(dados);
+    try { localStorage.setItem(CHAVE, texto); }
+    catch (e) {
+      try { const bruto = localStorage.getItem(CHAVE); if (bruto) { dados = JSON.parse(bruto); reconstruirIndice(); } } catch (e2) { /* disco também ilegível */ }
+      UI.toast('Não foi possível salvar: o espaço do navegador está cheio. A última alteração foi desfeita — faça um backup e apague o que não usa.', 'erro', 8000);
+      throw new Error('Espaço do navegador cheio: a alteração não foi salva.');
+    }
   }
 
   // ---------- cidades ----------
@@ -251,14 +267,17 @@ const Store = (() => {
     return cidade(id);
   }
   function excluirCidade(id) {
-    if (usoCidade(id) > 0) throw new Error('Esta cidade está em uso por registros.');
+    if (usoCidade(id) > 0) throw new Error('Esta cidade está em uso por contratações (como origem, cidade de trabalho ou base).');
+    const emMicro = dados.distritos.find(d => (d.micros || []).some(m => (m.cidadeIds || []).includes(id)));
+    if (emMicro) throw new Error(`Esta cidade faz parte de uma microrregião do distrito ${emMicro.nome}. Tire-a da microrregião antes de excluir.`);
     const antes = dados.cidades.length;
     dados.cidades = dados.cidades.filter(c => c.id !== id);
     if (dados.cidades.length === antes) throw new Error('Só é possível excluir cidades adicionadas manualmente ou por busca.');
     salvar(); reconstruirIndice();
   }
+  // Conta também a base de contratação: sem isso a cidade some e os registros ficam sem base.
   function usoCidade(id) {
-    return dados.registros.filter(r => r.cidadeId === id || r.atuacao === id).length;
+    return dados.registros.filter(r => r.cidadeId === id || r.atuacao === id || r.baseContratacao === id).length;
   }
   function definirMunicipiosIBGE(lista) {
     municipiosIBGE = lista;
@@ -362,7 +381,7 @@ const Store = (() => {
       throw new Error('Este projeto já tem cidades de atuação em ' + p.uf + '. Para mudar o estado, corrija ou exclua esses registros antes.');
     }
     Object.assign(p, { nome: obj.nome.trim(), uf, ano, descricao: (obj.descricao || '').trim(),
-      cor: obj.cor || '#2563eb', ativo: obj.ativo !== false, atualizadoEm: agora() });
+      cor: obj.cor || '#4e9933', ativo: obj.ativo !== false, atualizadoEm: agora() });
     delete p.cidadeId; delete p.metaLocal;
     if (novo && autor && autor.projetos) { autor.projetos.push(p.id); }
     salvar();
@@ -387,9 +406,10 @@ const Store = (() => {
     const c = cidade(r.cidadeId);
     const ca = cidade(r.atuacao) || null;
     const cb = r.baseContratacao ? cidade(r.baseContratacao) : null;
-    // legado: atuacao = 'MOVEL' (todo o estado) — mostra base de contratação se disponível
-    const atuacaoMovel = ehMovel(r.atuacao) && !cb;
-    const cidadeAtuacao = ehMovel(r.atuacao) ? cb : ca;
+    // Atuação MÓVEL = a pessoa roda o estado inteiro. A base é só o ponto de partida dela,
+    // nunca "a cidade onde trabalha" — por isso cidadeAtuacao fica nula e não entra em média de distância.
+    const atuacaoMovel = ehMovel(r.atuacao);
+    const cidadeAtuacao = atuacaoMovel ? null : ca;
     return { ...r, projeto: p, cidade: c, cidadeAtuacao, cidadeBase: cb, atuacaoMovel,
       distancia: c && cidadeAtuacao ? distanciaKm(c, cidadeAtuacao) : null,
       foraDoEstado: !!(p && c && c.uf !== p.uf) };
@@ -412,7 +432,8 @@ const Store = (() => {
       .map(enriquecer)
       .filter(r => r.projeto && r.cidade && (r.atuacaoMovel || r.cidadeAtuacao))
       .filter(r => !uf || r.cidade.uf === uf)
-      .filter(r => !regiao || (r.cidadeAtuacao && regiao.has(r.cidadeAtuacao.id)));
+      // A região é a de onde a pessoa trabalha; para quem atua em todo o estado, vale a base de contratação.
+      .filter(r => !regiao || (r.cidadeAtuacao && regiao.has(r.cidadeAtuacao.id)) || (r.atuacaoMovel && r.cidadeBase && regiao.has(r.cidadeBase.id)));
   }
   function validarRegistro({ projetoId, tipo, cidadeId, atuacao, baseContratacao }) {
     if (!projeto(projetoId)) throw new Error('Projeto inválido.');
@@ -480,8 +501,10 @@ const Store = (() => {
   // distrito = { id, nome, uf, cor, descricao, micros: [{ id, nome, cor, poloCidadeId, cidadeIds: [] }] }
   // Regra: cada cidade pertence a no máximo UMA microrregião (de qualquer distrito).
   // Cores: cada DISTRITO tem uma cor própria; as MICRORREGIÕES recebem tons dessa cor (do mais escuro ao mais claro).
-  const PALETA_DISTRITOS = ['#16a34a', '#2563eb', '#dc2626', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d',
-    '#ea580c', '#0d9488', '#9333ea', '#ca8a04', '#4f46e5', '#be123c', '#059669', '#b45309'];
+  // Verdes, azuis e roxos afastados da terracota (de onde vêm) e do petróleo (onde trabalham),
+  // para que a cor de uma região nunca seja lida como um conceito de dado.
+  const PALETA_DISTRITOS = ['#998833', '#8b9933', '#6d9933', '#4e9933', '#33993a', '#33995c', '#33997e',
+    '#334799', '#3d3399', '#5c3399', '#7a3399', '#993399', '#99337a', '#99335f'];
   const corValida = c => /^#[0-9a-fA-F]{6}$/.test(String(c || ''));
   function hexParaHsl(hex) {
     let c = String(hex || '').replace('#', '');
@@ -530,6 +553,14 @@ const Store = (() => {
     });
   }
   // Cor do texto que fica legível sobre a cor informada
+  // Dois registros da mesma cor de região: mancha lavada no polígono, tom forte no rótulo/chip.
+  // Derivados na hora de desenhar — a cor escolhida pelo usuário continua sendo a que está salva.
+  function ajustarTom(hex, sat, luz) {
+    const h = hexParaHsl(corValida(hex) ? hex : '#4e9933')[0];
+    return hslParaHex(h, sat, luz);
+  }
+  function tomMancha(hex) { return ajustarTom(hex, 34, 76); }
+  function tomForte(hex) { return ajustarTom(hex, 58, 32); }
   function corTexto(hex) { return hexParaHsl(hex)[2] > 58 ? '#0f172a' : '#ffffff'; }
   // Reparte os tons da cor do distrito entre as microrregiões (em ordem alfabética: da mais escura à mais clara)
   function aplicarTons(d) {
@@ -603,6 +634,8 @@ const Store = (() => {
     if (m.poloCidadeId === cidadeId) m.poloCidadeId = m.cidadeIds[0] || null;
   }
   // opcoes.mover = ids de cidades que podem ser transferidas de outra microrregião para esta
+  // Uma cidade que não resolve AGORA (lista do IBGE ainda não baixada, por exemplo) não pode
+  // ser apagada da microrregião: ela é mantida como está e volta a aparecer quando resolver.
   function salvarMicro(distritoId, obj, autor, { mover = [] } = {}) {
     const d = distrito(distritoId);
     if (!d) throw new Error('Distrito não encontrado.');
@@ -614,7 +647,10 @@ const Store = (() => {
     const novo = !m;
     const cor = corValida(obj.cor) ? obj.cor.toLowerCase() : ((m && m.cor) || corSugeridaMicro(d));
     const base = Array.isArray(obj.cidadeIds) ? obj.cidadeIds : (m ? m.cidadeIds || [] : []);
-    const cidadeIds = [...new Set(base.filter(c => !!cidade(c)))];
+    // Cidade que ainda não resolve (lista do IBGE não baixada, por exemplo) é mantida:
+    // apagá-la aqui faria o usuário perder cidades só por abrir e salvar a microrregião.
+    const guardadas = m ? (m.cidadeIds || []).filter(c => !cidade(c) && !base.includes(c)) : [];
+    const cidadeIds = [...new Set([...base.filter(c => !!cidade(c)), ...guardadas])];
     let poloCidadeId = obj.poloCidadeId && cidade(obj.poloCidadeId) ? obj.poloCidadeId
       : (m && cidadeIds.includes(m.poloCidadeId) ? m.poloCidadeId : (cidadeIds[0] || null));
     if (!poloCidadeId) throw new Error('Informe a cidade polo da microrregião.');
@@ -721,7 +757,7 @@ const Store = (() => {
   function corDaCidade(cidadeId) {
     const info = distritoDaCidade(cidadeId);
     if (!info) return null;
-    const cor = (info.micro && info.micro.cor) || info.distrito.cor || '#059669';
+    const cor = (info.micro && info.micro.cor) || info.distrito.cor || '#4e9933';
     const polo = info.micro && info.micro.poloCidadeId === cidadeId;
     return { cor, distrito: info.distrito, micro: info.micro, polo };
   }
@@ -762,11 +798,13 @@ const Store = (() => {
       return info.distrito.id === distritoId;
     });
   }
-  function resumoDistrito(d) {
+  // Contagem do distrito pela MESMA regra de registrosFiltrados (senão o mesmo distrito
+  // aparece com números diferentes no Mapa, na tela de Distritos e no Dashboard).
+  function resumoDistrito(d, opcoes = {}) {
     const cidades = cidadesDoDistrito(d);
     const ids = new Set(cidades.map(c => c.id));
     const silos = todosSilosPdr().filter(s => { const c = cidadeDoSilo(s, d.uf); return c && ids.has(c.id); }).length;
-    const contratacoes = dados.registros.filter(r => ids.has(r.atuacao) || ids.has(r.baseContratacao)).length;
+    const contratacoes = registrosFiltrados({ ...opcoes, distritoId: d.id }).length;
     return { micros: (d.micros || []).length, cidades: cidades.length, silos, contratacoes };
   }
 
@@ -939,6 +977,7 @@ const Store = (() => {
       distritos: dados.distritos.length, micros: dados.distritos.reduce((n, d) => n + (d.micros || []).length, 0), mapasPdr: (dados.mapasPdr || []).length };
   }
   // Dados de demonstração (a planilha de exemplo informada pelo RH).
+  function avisoAoCarregar() { const a = avisoCarregamento; avisoCarregamento = ''; return a; }
   function dadosDeExemplo(autor) {
     if (dados.projetos.length || dados.registros.length) throw new Error('Os dados de exemplo só podem ser carregados em uma base vazia.');
     const p = salvarProjeto({ nome: 'Exemplo — Contratações RS', uf: 'RS', ano: 2024, descricao: 'Projeto de demonstração. Pode ser editado ou excluído.', cor: '#2563eb' }, autor);
@@ -955,9 +994,9 @@ const Store = (() => {
     for (const [tipo, origem, uf, atuacaoCol, baseCol] of linhas) {
       const c = resolverCidade(origem, uf) || cidadeAproximada(origem, uf);
       const base = resolverCidade(baseCol, p.uf) || cidadeAproximada(baseCol, p.uf);
-      // quando atuacao = 'MOVEL' na coluna → usar base de contratação
+      // "MOVEL" na coluna de atuação = trabalha em todo o estado; a base fica só como ponto de partida
       const atuacaoResolvida = (ehMovel(atuacaoCol) || /^m[oó]vel/i.test(atuacaoCol))
-        ? (base ? base.id : MOVEL)
+        ? MOVEL
         : (resolverCidade(atuacaoCol, p.uf) || cidadeAproximada(atuacaoCol, p.uf))?.id;
       if (c && atuacaoResolvida) regs.push({ projetoId: p.id, tipo, cidadeId: c.id, atuacao: atuacaoResolvida, baseContratacao: base ? base.id : null });
     }
@@ -977,6 +1016,7 @@ const Store = (() => {
     importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, cidadeDoSilo, microDoSilo, silosNaRegiao,
     infoCidade, salvarInfoCidade, agenciasSine, sineDaCidade, sineMaisProximo,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr,
-    auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo,
+    auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo, avisoAoCarregar,
+    ajustarTom, tomMancha, tomForte,
     get dados() { return dados; } };
 })();

@@ -14,10 +14,13 @@ const ICONES = {
   auditoria: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
   backup: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
   sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
-  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>'
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  fechar: '<path d="M18 6 6 18M6 6l12 12"/>',
+  busca: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  silo: '<path d="M7 21h10V9l-5-5-5 5v12z"/><path d="M7 13h10"/>'
 };
-function icone(nome, tam = 18) {
-  return `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome] || ''}</svg>`;
+function icone(nome, tam = 20) {
+  return `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome] || ''}</svg>`;
 }
 
 const App = {
@@ -25,18 +28,20 @@ const App = {
   filtros: { projetoId: '', distritoId: '', microId: '', tipo: '', uf: '' },
   paginaAtual: null,
   destruirAtual: null,
+  // O menu tem três grupos: o dia a dia, o cadastro da estrutura e a administração
+  GRUPOS: [{ id: 'operacao', rotulo: 'Dia a dia' }, { id: 'estrutura', rotulo: 'Estrutura' }, { id: 'sistema', rotulo: 'Administração' }],
   MENU: [
-    { id: 'dashboard', rotulo: 'Dashboard' },
-    { id: 'mapa', rotulo: 'Mapa' },
-    { id: 'cadastro', rotulo: 'Cadastro' },
-    { id: 'projetos', rotulo: 'Projetos' },
-    { id: 'cidades', rotulo: 'Cidades' },
-    { id: 'distritos', rotulo: 'Distritos' },
-    { id: 'pdrs', rotulo: 'Mapas PDRs' },
-    { id: 'relatorios', rotulo: 'Relatórios' },
-    { id: 'usuarios', rotulo: 'Controle de acesso' },
-    { id: 'auditoria', rotulo: 'Auditoria' },
-    { id: 'backup', rotulo: 'Backup' }
+    { id: 'dashboard', rotulo: 'Visão geral', grupo: 'operacao' },
+    { id: 'mapa', rotulo: 'Mapa', grupo: 'operacao' },
+    { id: 'cadastro', rotulo: 'Contratações', grupo: 'operacao' },
+    { id: 'relatorios', rotulo: 'Relatórios', grupo: 'operacao' },
+    { id: 'projetos', rotulo: 'Projetos', grupo: 'estrutura' },
+    { id: 'distritos', rotulo: 'Distritos', grupo: 'estrutura' },
+    { id: 'cidades', rotulo: 'Cidades', grupo: 'estrutura' },
+    { id: 'pdrs', rotulo: 'Unidades (PDR)', grupo: 'estrutura' },
+    { id: 'usuarios', rotulo: 'Controle de acesso', grupo: 'sistema' },
+    { id: 'auditoria', rotulo: 'Auditoria', grupo: 'sistema' },
+    { id: 'backup', rotulo: 'Backup', grupo: 'sistema' }
   ],
 
   init() {
@@ -87,18 +92,21 @@ const App = {
   // ---------- estrutura ----------
   renderShell() {
     const u = this.usuario;
-    const itens = this.MENU.filter(m => Store.pode(u, m.id))
-      .map(m => `<a href="#/${m.id}" data-pagina="${m.id}">${icone(m.id)}<span>${m.rotulo}</span></a>`).join('');
+    const itens = this.GRUPOS.map(g => {
+      const links = this.MENU.filter(m => m.grupo === g.id && Store.pode(u, m.id))
+        .map(m => `<a href="#/${m.id}" data-pagina="${m.id}">${icone(m.id)}<span>${m.rotulo}</span></a>`).join('');
+      return links ? `<div class="menu-grupo etiqueta">${g.rotulo}</div>${links}` : '';
+    }).join('');
     document.getElementById('app').innerHTML = `
       <div class="layout">
         <aside class="sidebar" id="sidebar">
-          <div class="marca">${icone('mapa', 26)}<div><div>Mapa RH</div><small>Controle de contratações</small></div></div>
+          <div class="marca">${icone('mapa', 26)}<div><div>Mapa RH</div><small>Contratações por cidade</small></div></div>
           <nav>${itens}</nav>
           <div class="rodape">
             <div class="usuario-nome">${UI.esc(u.nome)}</div>
             <div class="usuario-perfil">${UI.esc(Store.PERFIS[u.perfil])}</div>
-            <div class="acoes"><a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">${icone('sair', 14)} Sair</a></div>
-            <div class="muted small" style="margin-top:6px" title="Se o número não bater com a versão publicada, aperte Ctrl+F5">versão ${UI.esc(App.versao())}</div>
+            <div class="acoes"><a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">Sair</a></div>
+            <div class="versao" title="Se o número não bater com a versão publicada, aperte Ctrl+F5">versão ${UI.esc(App.versao())}</div>
           </div>
         </aside>
         <div class="sidebar-fundo" id="sidebar-fundo"></div>
@@ -106,42 +114,25 @@ const App = {
           <header class="topo">
             <button class="btn-icone" id="btn-menu" title="Mostrar / esconder o menu">${icone('menu', 22)}</button>
             <h1 id="titulo-pagina"></h1>
-            <div class="filtros" id="filtros-wrap" title="Os filtros valem para todas as telas (mapa, dashboard, relatórios)">
-              <span class="filtros-rotulo">${icone('mapa', 14)} Filtros</span>
-              <div class="filtro-item" title="Projeto = estado/ano das contratações">
-                <label class="filtro-label">Projeto</label>
-                <select id="filtro-projeto"></select>
-              </div>
-              <div class="filtro-sep"></div>
-              <div class="filtro-item" title="Só contratações com atuação nas cidades do distrito">
-                <label class="filtro-label">Distrito</label>
-                <select id="filtro-distrito"><option value="">Todos</option></select>
-              </div>
-              <div class="filtro-item" title="Só contratações com atuação nas cidades da microrregião">
-                <label class="filtro-label">Microrregião</label>
-                <select id="filtro-micro"><option value="">Todas</option></select>
-              </div>
-              <div class="filtro-sep"></div>
-              <div class="filtro-item" title="Tipo da contratação">
-                <label class="filtro-label">Local / Móvel</label>
-                <select id="filtro-tipo">
-                  <option value="">Todos</option>
-                  <option value="LOCAL">Só LOCAL</option>
-                  <option value="MOVEL">Só MÓVEL</option>
-                </select>
-              </div>
-              <div class="filtro-item" id="filtro-item-uf" title="Estado de onde a pessoa vem">
-                <label class="filtro-label">Vem de (estado)</label>
-                <select id="filtro-uf">
-                  <option value="">Todos</option>
-                </select>
-              </div>
-              <button class="btn-limpar-filtros" id="btn-limpar-filtros" title="Limpar todos os filtros" style="display:none">✕ Limpar</button>
-            </div>
           </header>
+          <div class="faixa-filtro" id="faixa-filtro">
+            <span class="frase" id="filtro-frase"></span>
+            <span class="contagem" id="filtro-contagem"></span>
+          </div>
           <div id="banner"></div>
           <main class="pagina" id="pagina"></main>
         </div>
+      </div>
+      <div hidden id="filtros-guardados">
+        <div class="filtro-campo" data-f="projeto"><label>Projeto<select id="filtro-projeto"></select></label></div>
+        <div class="filtro-campo" data-f="regiao">
+          <label>Distrito<select id="filtro-distrito"><option value="">Todos</option></select></label>
+          <label>Microrregião<select id="filtro-micro"><option value="">Todas</option></select></label>
+        </div>
+        <div class="filtro-campo" data-f="tipo"><label>Tipo de contratação<select id="filtro-tipo">
+          <option value="">Local e móvel</option><option value="LOCAL">Só local</option><option value="MOVEL">Só móvel</option>
+        </select></label></div>
+        <div class="filtro-campo" data-f="uf"><label>Estado de onde a pessoa vem<select id="filtro-uf"><option value="">Todos</option></select></label></div>
       </div>`;
     document.getElementById('link-sair').addEventListener('click', e => { e.preventDefault(); this.sair(); });
     document.getElementById('link-senha').addEventListener('click', e => { e.preventDefault(); this.modalSenha(); });
@@ -168,14 +159,72 @@ const App = {
       this.aoMudarFiltros();
     });
     document.getElementById('filtro-uf').addEventListener('change', e => { this.filtros.uf = e.target.value; this.aoMudarFiltros(); });
-    document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
-      this.filtros.projetoId = ''; this.filtros.distritoId = ''; this.filtros.microId = ''; this.filtros.tipo = ''; this.filtros.uf = '';
-      this.aoMudarFiltros();
-    });
     this.atualizarFiltroProjetos();
     this.atualizarFiltroDistrito();
     this.atualizarFiltroUF();
+    this.atualizarFrase();
     this.atualizarBanner();
+  },
+
+  // ---------- filtro escrito como frase ----------
+  // Cada trecho em negrito é um botão; clicar abre o <select> que já existe, dentro de um popover.
+  atualizarFrase() {
+    const alvo = document.getElementById('filtro-frase');
+    if (!alvo) return;
+    const f = this.filtros;
+    const p = f.projetoId ? Store.projeto(f.projetoId) : null;
+    const reg = this.regiaoFiltrada();
+    const temDistritos = Store.distritos().length > 0;
+    const ufs = this._ufsDisponiveis || [];
+    const trecho = (campo, texto, ativo) => `<button class="filtro-frase${ativo ? ' ativo' : ''}" data-f="${campo}">${UI.esc(texto)}</button>`;
+    const partes = [
+      'Mostrando as contratações de ' + trecho('projeto', p ? Store.rotuloProjeto(p) : 'todos os projetos', !!p),
+      temDistritos ? (reg.micro ? 'na microrregião ' + trecho('regiao', reg.micro.nome, true)
+        : reg.distrito ? 'no distrito ' + trecho('regiao', reg.distrito.nome, true)
+          : 'em ' + trecho('regiao', 'todos os distritos', false)) : '',
+      f.tipo ? trecho('tipo', f.tipo === 'LOCAL' ? 'só as locais' : 'só as móveis', true) : trecho('tipo', 'locais e móveis', false),
+      ufs.length > 1 || f.uf ? 'vindas de ' + trecho('uf', f.uf ? Store.UFS[f.uf] || f.uf : 'qualquer estado', !!f.uf) : ''
+    ].filter(Boolean);
+    const limpar = (f.projetoId || f.distritoId || f.microId || f.tipo || f.uf) ? ' <button class="btn-link" id="limpar-filtros">limpar</button>' : '';
+    alvo.innerHTML = partes.join(', ') + '.' + limpar;
+    const n = this.regs().length;
+    const cont = document.getElementById('filtro-contagem');
+    if (cont) cont.innerHTML = `<b>${UI.fmtNum(n)}</b> contratação(ões)`;
+    alvo.querySelectorAll('.filtro-frase').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); this.abrirPopoverFiltro(b); }));
+    const bl = alvo.querySelector('#limpar-filtros');
+    if (bl) bl.addEventListener('click', () => {
+      this.filtros.projetoId = ''; this.filtros.distritoId = ''; this.filtros.microId = ''; this.filtros.tipo = ''; this.filtros.uf = '';
+      this.aoMudarFiltros();
+    });
+  },
+
+  abrirPopoverFiltro(botao) {
+    this.fecharPopoverFiltro();
+    const campo = document.querySelector(`#filtros-guardados .filtro-campo[data-f="${botao.dataset.f}"]`);
+    if (!campo) return;
+    const pop = document.createElement('div');
+    pop.className = 'filtro-popover';
+    pop.appendChild(campo); // move o campo real para dentro do popover (mantém os listeners)
+    document.body.appendChild(pop);
+    const r = botao.getBoundingClientRect();
+    pop.style.top = (r.bottom + window.scrollY + 6) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.innerWidth - 296)) + 'px';
+    const sel = pop.querySelector('select');
+    if (sel) setTimeout(() => sel.focus(), 0);
+    this._popover = pop;
+    this._fecharPop = ev => { if (!pop.contains(ev.target)) this.fecharPopoverFiltro(); };
+    this._escPop = ev => { if (ev.key === 'Escape') this.fecharPopoverFiltro(); };
+    setTimeout(() => { document.addEventListener('click', this._fecharPop); document.addEventListener('keydown', this._escPop); }, 0);
+  },
+
+  fecharPopoverFiltro() {
+    if (!this._popover) return;
+    document.removeEventListener('click', this._fecharPop);
+    document.removeEventListener('keydown', this._escPop);
+    const guardados = document.getElementById('filtros-guardados');
+    this._popover.querySelectorAll('.filtro-campo').forEach(c => guardados && guardados.appendChild(c));
+    this._popover.remove();
+    this._popover = null;
   },
 
   atualizarFiltroProjetos() {
@@ -202,9 +251,6 @@ const App = {
     }).join('');
     if (this.filtros.microId && !fonte.some(d => (d.micros || []).some(m => m.id === this.filtros.microId))) this.filtros.microId = '';
     selM.innerHTML = `<option value="">Todas</option>` + opcoes;
-    const wrapD = selD.closest('.filtro-item'), wrapM = selM.closest('.filtro-item');
-    if (wrapD) wrapD.style.display = distritos.length ? '' : 'none';
-    if (wrapM) wrapM.style.display = distritos.length ? '' : 'none';
   },
 
   atualizarFiltroUF() {
@@ -216,17 +262,18 @@ const App = {
     sel.innerHTML = `<option value="">Todos</option>` +
       ufs.map(u => `<option value="${u}" ${u === this.filtros.uf ? 'selected' : ''}>${u} — ${UI.esc(Store.UFS[u] || u)}</option>`).join('');
     if (this.filtros.uf && !ufs.includes(this.filtros.uf)) this.filtros.uf = '';
-    // só faz sentido quando há origem em mais de um estado
-    const wrapUF = document.getElementById('filtro-item-uf');
-    if (wrapUF) wrapUF.style.display = ufs.length > 1 || this.filtros.uf ? '' : 'none';
-    // Exibe/oculta botão Limpar
-    const btnLimpar = document.getElementById('btn-limpar-filtros');
-    if (btnLimpar) btnLimpar.style.display = (this.filtros.projetoId || this.filtros.distritoId || this.filtros.microId || this.filtros.tipo || this.filtros.uf) ? '' : 'none';
+    this._ufsDisponiveis = ufs; // a frase só cita o estado quando há origem em mais de um
   },
 
   atualizarBanner() {
     const b = document.getElementById('banner');
     if (!b) return;
+    const aviso = Store.avisoAoCarregar && Store.avisoAoCarregar();
+    if (aviso) { this._avisoDados = aviso; }
+    if (this._avisoDados) {
+      b.innerHTML = `<div class="banner banner-aviso">${UI.esc(this._avisoDados)} <a href="#/backup">Ir para Backup</a>.</div>`;
+      return;
+    }
     if (this.usuario.senhaPadrao) {
       b.innerHTML = `<div class="banner banner-aviso">Você ainda usa a senha padrão. <a href="#" id="banner-senha">Alterar senha agora</a>.</div>`;
       b.querySelector('#banner-senha').addEventListener('click', e => { e.preventDefault(); this.modalSenha(); });
@@ -235,8 +282,10 @@ const App = {
 
   aoMudarFiltros() {
     localStorage.setItem('maparh:filtros', JSON.stringify(this.filtros));
+    this.fecharPopoverFiltro();
     this.atualizarFiltroDistrito();
     this.atualizarFiltroUF();
+    this.atualizarFrase();
     this.rotear(true);
   },
   // nome da microrregião / distrito filtrados (para títulos e legendas)
@@ -250,7 +299,12 @@ const App = {
   rotear(forcar = false) {
     let nome = (location.hash || '').replace(/^#\/?/, '').split('?')[0] || 'dashboard';
     if (!Paginas[nome] || !Store.pode(this.usuario, nome)) {
-      nome = this.MENU.find(m => Store.pode(this.usuario, m.id)).id;
+      const primeira = this.MENU.find(m => Paginas[m.id] && Store.pode(this.usuario, m.id));
+      if (!primeira) { // perfil sem acesso a nada: avisa em vez de quebrar
+        document.getElementById('pagina').innerHTML = '<div class="card">Seu usuário não tem acesso a nenhuma tela. Peça a um administrador para revisar o seu perfil.</div>';
+        return;
+      }
+      nome = primeira.id;
       location.hash = '#/' + nome;
       return;
     }
@@ -259,8 +313,10 @@ const App = {
     document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.toggle('ativo', a.dataset.pagina === nome));
     const pag = Paginas[nome];
     document.getElementById('titulo-pagina').textContent = pag.titulo;
+    this.fecharPopoverFiltro();
     document.title = pag.titulo + ' · Mapa RH';
-    document.querySelector('.filtros').style.display = pag.semFiltros ? 'none' : '';
+    const faixa = document.getElementById('faixa-filtro');
+    if (faixa) faixa.hidden = !!pag.semFiltros;
     const el = document.getElementById('pagina');
     el.className = 'pagina pagina-' + nome;
     el.innerHTML = '';
@@ -274,7 +330,7 @@ const App = {
     }
   },
   ir(pagina) { if (location.hash === '#/' + pagina) this.rotear(true); else location.hash = '#/' + pagina; },
-  recarregar() { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); this.atualizarFiltroUF(); this.rotear(true); },
+  recarregar() { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); this.atualizarFiltroUF(); this.atualizarFrase(); this.rotear(true); },
 
   // ---------- atalhos de dados ----------
   regs(extra = {}) { return Store.registrosFiltrados({ ...this.filtros, usuario: this.usuario, ...extra }); },

@@ -77,7 +77,8 @@ Paginas.cadastro = {
     }
     function salvarPref() { localStorage.setItem('maparh:cadastro-pref', JSON.stringify({ tipo: tipoPadrao, uf: ufPadrao })); }
     function registrosDoProjeto() {
-      const lista = Store.registrosFiltrados({ projetoId, tipo: App.filtros.tipo, usuario: App.usuario })
+      // mesma regra das outras telas: os filtros do topo valem aqui também
+      const lista = Store.registrosFiltrados({ ...App.filtros, projetoId, usuario: App.usuario })
         .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
       const b = Store.normalizar(busca);
       if (!b) return lista;
@@ -87,7 +88,9 @@ Paginas.cadastro = {
         r.cidadeBase ? r.cidadeBase.nome : ''
       ].join(' ')).includes(b));
     }
-    const rotuloAtuacao = r => r.cidadeAtuacao ? UI.esc(r.cidadeAtuacao.nome) : '<span class="muted">—</span>';
+    const rotuloAtuacao = r => r.atuacaoMovel
+      ? '<span class="badge">todo o estado</span>'
+      : (r.cidadeAtuacao ? UI.esc(r.cidadeAtuacao.nome) : '<span class="muted">—</span>');
     const rotuloBase = r => r.cidadeBase ? UI.esc(r.cidadeBase.nome) : '<span class="muted">—</span>';
 
     // Resolve a cidade digitada: seleção do autocomplete, nome exato, grafia aproximada ou busca na internet.
@@ -119,7 +122,21 @@ Paginas.cadastro = {
     }
 
     function campoCidadeHTML(prefixo, sufixo, valor, cidadeId, placeholder) {
-      return `<input class="${prefixo}-${sufixo}" placeholder="${placeholder}" value="${valor ? UI.esc(valor) : ''}" data-cidade-id="${cidadeId || ''}" style="min-width:130px">`;
+      return `<input class="${prefixo}-${sufixo} campo-cidade" placeholder="${placeholder}" value="${valor ? UI.esc(valor) : ''}" data-cidade-id="${cidadeId || ''}">`;
+    }
+    // Campo de atuação = cidade OU "todo o estado" (atuação móvel). A caixa desliga o campo de cidade.
+    function campoAtuacaoHTML(prefixo, valor, cidadeId, movel) {
+      return `<div class="campo-atuacao">
+        ${campoCidadeHTML(prefixo, 'atuacao', valor, cidadeId, `Cidade em ${projeto().uf}…`)}
+        <label class="check small"><input type="checkbox" class="${prefixo}-movel" ${movel ? 'checked' : ''}> todo o estado</label>
+      </div>`;
+    }
+    function ligarAtuacao(raiz, prefixo) {
+      const chk = raiz.querySelector('.' + prefixo + '-movel'), campo = raiz.querySelector('.' + prefixo + '-atuacao');
+      if (!chk || !campo) return;
+      const aplicar = () => { campo.disabled = chk.checked; if (chk.checked) { campo.value = ''; campo.dataset.cidadeId = ''; } };
+      chk.addEventListener('change', aplicar);
+      aplicar();
     }
 
     function linhaEntradaHTML() {
@@ -128,7 +145,7 @@ Paginas.cadastro = {
         <td><select id="novo-tipo"><option value="LOCAL" ${tipoPadrao === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${tipoPadrao === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
         <td><input id="novo-cidade" placeholder="Cidade de origem…"></td>
         <td><select id="novo-uf" style="min-width:70px">${UI.opcoesUF(ufPadrao)}</select></td>
-        <td>${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${projeto().uf}…`)}</td>
+        <td>${campoAtuacaoHTML('novo', '', '', false)}</td>
         <td>${campoCidadeHTML('novo', 'base', '', '', `Base em ${projeto().uf}…`)}</td>
         <td class="muted small" colspan="2">Enter adiciona</td>
         <td class="acoes-col"><button class="btn btn-primario btn-pequeno" id="novo-add">Adicionar</button></td>
@@ -138,19 +155,21 @@ Paginas.cadastro = {
       const tipoEl = el.querySelector('#novo-tipo'), cidEl = el.querySelector('#novo-cidade'), ufEl = el.querySelector('#novo-uf');
       if (!tipoEl) return;
       ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
-      const atEl = el.querySelector('.novo-atuacao'), baseEl = el.querySelector('.novo-base');
+      const atEl = el.querySelector('.novo-atuacao'), baseEl = el.querySelector('.novo-base'), movelEl = el.querySelector('.novo-movel');
       ligarAutocomplete(atEl, () => projeto().uf, () => {});
-      ligarAutocomplete(baseEl, () => projeto().uf, c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+      ligarAutocomplete(baseEl, () => projeto().uf, c => { if (!atEl.value && !movelEl.checked) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+      ligarAtuacao(el, 'novo');
       async function adicionar() {
         const btn = el.querySelector('#novo-add');
         btn.disabled = true;
         try {
           tipoPadrao = tipoEl.value; ufPadrao = ufEl.value; salvarPref();
           const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-          const at = await resolverEntrada(atEl, projeto().uf, 'cidade de atuação');
+          const movel = movelEl.checked;
+          const at = movel ? null : await resolverEntrada(atEl, projeto().uf, 'cidade de trabalho');
           const base = baseEl.value.trim() ? await resolverEntrada(baseEl, projeto().uf, 'base de contratação') : at;
-          const r = Store.adicionarRegistro({ projetoId, tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
-          UI.toast(`${UI.rotuloTipo(r.tipo)} — ${c.nome}/${c.uf} → ${r.cidadeAtuacao ? r.cidadeAtuacao.nome : '?'} adicionado.`, 'sucesso', 1800);
+          const r = Store.adicionarRegistro({ projetoId, tipo: tipoEl.value, cidadeId: c.id, atuacao: movel ? Store.MOVEL : at.id, baseContratacao: base ? base.id : null }, App.usuario);
+          UI.toast(`${UI.rotuloTipo(r.tipo)} — ${c.nome}/${c.uf} → ${r.atuacaoMovel ? 'todo o estado' : (r.cidadeAtuacao ? r.cidadeAtuacao.nome : '?')} adicionado.`, 'sucesso', 1800);
           const manterAt = { valor: atEl.value, id: atEl.dataset.cidadeId };
           const manterBase = { valor: baseEl.value, id: baseEl.dataset.cidadeId };
           pagina = 0; renderLinhas();
@@ -171,7 +190,7 @@ Paginas.cadastro = {
           <td class="editando"><select class="ed-tipo"><option value="LOCAL" ${r.tipo === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${r.tipo === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
           <td class="editando"><input class="ed-cidade" value="${UI.esc(r.cidade.nome)}" data-cidade-id="${r.cidade.id}"></td>
           <td class="editando"><select class="ed-uf" style="min-width:70px">${UI.opcoesUF(r.cidade.uf)}</select></td>
-          <td class="editando">${campoCidadeHTML('ed', 'atuacao', r.cidadeAtuacao?.nome, r.cidadeAtuacao?.id, `Cidade em ${projeto().uf}…`)}</td>
+          <td class="editando">${campoAtuacaoHTML('ed', r.cidadeAtuacao?.nome, r.cidadeAtuacao?.id, r.atuacaoMovel)}</td>
           <td class="editando">${campoCidadeHTML('ed', 'base', r.cidadeBase?.nome, r.cidadeBase?.id, `Base em ${projeto().uf}…`)}</td>
           <td class="direita">${UI.fmtKm(r.distancia)}</td>
           <td class="muted small">${UI.fmtDataHora(r.criadoEm)}</td>
@@ -197,8 +216,11 @@ Paginas.cadastro = {
       const fatia = lista.slice(inicio, inicio + TAM_PAGINA);
       const corpo = el.querySelector('#cad-corpo');
       corpo.innerHTML = (App.podeEditar() ? linhaEntradaHTML() : '') +
-        (fatia.length ? fatia.map(linhaHTML).join('') : `<tr><td colspan="8" class="vazio">${busca ? 'Nenhum registro corresponde à busca.' : 'Nenhuma contratação cadastrada neste projeto. Use a linha acima para adicionar ou clique em "Colar / importar planilha".'}</td></tr>`);
+        (fatia.length ? fatia.map(linhaHTML).join('') : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhum registro corresponde à busca.' : 'Nenhuma contratação cadastrada neste projeto. Use a linha acima para adicionar ou clique em "Colar / importar planilha".'}</td></tr>`);
       ligarEntrada();
+      // a seleção vale só para as linhas visíveis: trocar de página ou buscar limpa o que saiu da tela
+      const visiveis = new Set(fatia.map(r => r.id));
+      [...selecionados].forEach(id => { if (!visiveis.has(id)) selecionados.delete(id); });
       corpo.querySelectorAll('input.sel').forEach(c => c.addEventListener('change', () => { if (c.checked) selecionados.add(c.value); else selecionados.delete(c.value); renderRodape(); }));
       corpo.querySelectorAll('.ed-editar').forEach(b => b.addEventListener('click', () => { editandoId = b.closest('tr').dataset.id; renderLinhas(); }));
       corpo.querySelectorAll('.ed-excluir').forEach(b => b.addEventListener('click', async () => {
@@ -214,12 +236,15 @@ Paginas.cadastro = {
         ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
         ligarAutocomplete(atEl, () => projeto().uf, () => {});
         ligarAutocomplete(baseEl, () => projeto().uf, c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+        ligarAtuacao(trEd, 'ed');
+        const movelEd = trEd.querySelector('.ed-movel');
         const salvar = async () => {
           try {
             const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-            const at = await resolverEntrada(atEl, projeto().uf, 'cidade de atuação');
+            const movel = movelEd && movelEd.checked;
+            const at = movel ? null : await resolverEntrada(atEl, projeto().uf, 'cidade de trabalho');
             const base = baseEl.value.trim() ? await resolverEntrada(baseEl, projeto().uf, 'base de contratação') : at;
-            Store.atualizarRegistro(editandoId, { tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
+            Store.atualizarRegistro(editandoId, { tipo: tipoEl.value, cidadeId: c.id, atuacao: movel ? Store.MOVEL : at.id, baseContratacao: base ? base.id : null }, App.usuario);
             editandoId = null; renderLinhas(); UI.toast('Registro atualizado.', 'sucesso', 1500);
           } catch (e) { UI.toast(e.message, 'erro', 6000); }
         };
@@ -239,11 +264,10 @@ Paginas.cadastro = {
       const paginas = Math.max(1, Math.ceil(lista.length / TAM_PAGINA));
       el.querySelector('#cad-rodape').innerHTML = `
         <span>Total: <b>${UI.fmtNum(lista.length)}</b></span>
-        <span>LOCAL: <b>${UI.fmtNum(local)}</b> (${UI.fmtPct(lista.length ? local / lista.length * 100 : 0)})</span>
-        <span>MÓVEL: <b>${UI.fmtNum(lista.length - local)}</b></span>
-        <span>Atuação em todo o estado: <b>${UI.fmtNum(movelEstado)}</b></span>
-        <span>Origem fora do estado: <b>${UI.fmtNum(fora)}</b></span>
-        ${App.filtros.tipo ? `<span class="badge badge-amarelo">filtro: somente ${UI.rotuloTipo(App.filtros.tipo)}</span>` : ''}
+        <span>Local: <b>${UI.fmtNum(local)}</b> (${UI.fmtPct(lista.length ? local / lista.length * 100 : 0)})</span>
+        <span>Móvel: <b>${UI.fmtNum(lista.length - local)}</b></span>
+        <span>Trabalham em todo o estado: <b>${UI.fmtNum(movelEstado)}</b></span>
+        <span>Vêm de fora do estado: <b>${UI.fmtNum(fora)}</b></span>
         <span class="espaco"></span>
         ${selecionados.size && App.podeEditar() ? `<button class="btn btn-perigo btn-pequeno" id="excluir-sel">Excluir ${selecionados.size} selecionado(s)</button>` : ''}
         ${paginas > 1 ? `<span class="nao-imprimir"><button class="btn btn-pequeno" id="pg-ant" ${pagina === 0 ? 'disabled' : ''}>&lsaquo;</button> página ${pagina + 1} de ${paginas} <button class="btn btn-pequeno" id="pg-prox" ${pagina >= paginas - 1 ? 'disabled' : ''}>&rsaquo;</button></span>` : ''}`;
@@ -323,11 +347,14 @@ Paginas.cadastro = {
       return linhas;
     }
 
+    // Guarda o que foi digitado/analisado: fechar a janela sem querer não pode jogar fora o trabalho
+    let rascunhoImportacao = null, ultimaImportacao = null;
     function abrirImportacao() {
       const p = projeto();
       const m = UI.modal({
         titulo: 'Colar / importar planilha',
         largura: '900px',
+        fecharAoClicarFora: false,
         corpo: `
           <p class="muted small">Copie as linhas da planilha (colunas <b>MOVEL/LOCAL</b>, <b>CIDADE DE ORIGEM</b>, <b>ESTADO</b>, <b>CIDADE DE ATUAÇÃO</b>, <b>BASE DE CONTRATAÇÃO</b>) e cole abaixo, ou escolha um arquivo .xlsx / .csv. Quando CIDADE DE ATUAÇÃO for <b>MOVEL</b>, o sistema usa a BASE DE CONTRATAÇÃO como atuação. O cabeçalho é reconhecido automaticamente.</p>
           <div class="form-linha">
@@ -346,6 +373,13 @@ Paginas.cadastro = {
       btnImportar.disabled = true;
       let linhas = [];
       let matrizArquivo = null;
+      const txt = m.corpo.querySelector('#imp-texto');
+      if (rascunhoImportacao) { // volta o que estava aberto da última vez
+        txt.value = rascunhoImportacao.texto || '';
+        linhas = rascunhoImportacao.linhas || [];
+        if (linhas.length) setTimeout(() => renderResultado('Continuando de onde você parou.'), 0);
+      }
+      txt.addEventListener('input', () => { rascunhoImportacao = { texto: txt.value, linhas }; });
       m.corpo.querySelector('#imp-arquivo').addEventListener('change', async e => {
         const arq = e.target.files[0]; if (!arq) return;
         try { matrizArquivo = await UI.lerArquivo(arq); UI.toast(`${matrizArquivo.length} linha(s) lida(s) do arquivo.`, 'sucesso'); }
@@ -353,14 +387,21 @@ Paginas.cadastro = {
       });
       m.corpo.querySelector('#imp-analisar').addEventListener('click', async () => {
         const texto = m.corpo.querySelector('#imp-texto').value;
-        const matriz = texto.trim() ? UI.csvParse(texto) : matrizArquivo;
+        if (texto.trim() && matrizArquivo) { // os dois preenchidos: o usuário escolhe, nada é ignorado em silêncio
+          const usarArquivo = await UI.confirmar('Você colou um texto e também escolheu um arquivo. Qual deles usar?', { textoOk: 'Usar o arquivo', textoCancelar: 'Usar o texto colado' });
+          if (usarArquivo) m.corpo.querySelector('#imp-texto').value = '';
+          else matrizArquivo = null;
+        }
+        const t2 = m.corpo.querySelector('#imp-texto').value;
+        const matriz = t2.trim() ? UI.csvParse(t2) : matrizArquivo;
         if (!matriz || !matriz.length) { UI.toast('Cole as linhas ou escolha um arquivo.', 'aviso'); return; }
         linhas = interpretar(matriz, m.corpo.querySelector('#imp-tipo').value, m.corpo.querySelector('#imp-uf').value);
         await resolverLinhas();
+        rascunhoImportacao = { texto: m.corpo.querySelector('#imp-texto').value, linhas };
       });
       function situacao(l) {
         if (l.status === 'ok') {
-          const at = l.atuacaoObj ? UI.esc(l.atuacaoObj.nome) : '?';
+          const at = l.ehMovelAtuacao ? 'todo o estado' : (l.atuacaoObj ? UI.esc(l.atuacaoObj.nome) : '?');
           const base = l.baseObj ? ` · base: ${UI.esc(l.baseObj.nome)}` : '';
           return `<span class="status-ok">OK</span> <span class="muted small">${UI.esc(l.cidadeObj.nome)}/${l.cidadeObj.uf} → ${at}${base}${l.ajustes.length ? ' · ajustado: ' + UI.esc(l.ajustes.join(', ')) : ''}</span>`;
         }
@@ -378,7 +419,7 @@ Paginas.cadastro = {
               { titulo: 'Tipo', render: l => l.tipo ? UI.badgeTipo(l.tipo) : '<span class="status-erro">?</span>' },
               { titulo: 'Origem', render: l => UI.esc(l.cidade) },
               { titulo: 'UF', render: l => UI.esc(l.uf) },
-              { titulo: 'Atuação', render: l => UI.esc(l.atuacao || '—') },
+              { titulo: 'Onde trabalha', render: l => l.ehMovelAtuacao ? '<span class="badge">todo o estado</span>' : UI.esc(l.atuacao || '—') },
               { titulo: 'Base contratação', render: l => UI.esc(l.base || '—') },
               { titulo: 'Situação', render: situacao }
             ], linhas
@@ -404,7 +445,7 @@ Paginas.cadastro = {
           l.cidadeObj = null; l.atuacaoObj = null; l.baseObj = null; l.erro = ''; l.ajustes = []; l.status = 'ok';
           if (!l.cidade) { l.status = 'erro'; l.erro = 'cidade de origem vazia'; continue; }
           if (!l.tipo) { l.status = 'erro'; l.erro = 'tipo (LOCAL/MÓVEL) não informado'; continue; }
-          if (!l.atuacao && !l.base) { l.status = 'erro'; l.erro = 'cidade de atuação não informada'; continue; }
+          if (!l.atuacao && !l.base) { l.status = 'erro'; l.erro = 'cidade de trabalho não informada'; continue; }
           // origem
           if (!l.uf) {
             const cands = Store.candidatasCidade(l.cidade);
@@ -419,12 +460,10 @@ Paginas.cadastro = {
             l.baseObj = resolverLocal(l.base, p.uf, l.ajustes);
             if (!l.baseObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'baseObj', nome: l.base, uf: p.uf }); }
           }
-          // atuação: se MOVEL → usa base de contratação; senão resolve normalmente
-          const ehMovelAtuacao = Store.ehMovel(l.atuacao) || /^m[oó]vel/i.test(l.atuacao);
-          if (ehMovelAtuacao) {
-            // atuação = base de contratação (resolvido acima)
-            l.atuacaoObj = l.baseObj || null;
-            if (!l.atuacaoObj && !l.base) { l.status = 'erro'; l.erro = 'Atuação "MOVEL" requer BASE DE CONTRATAÇÃO'; continue; }
+          // atuação "MOVEL" = trabalha em todo o estado; a base é opcional e fica só como ponto de partida
+          l.ehMovelAtuacao = Store.ehMovel(l.atuacao) || /^m[oó]vel/i.test(l.atuacao);
+          if (l.ehMovelAtuacao) {
+            l.atuacaoObj = null;
           } else if (l.atuacao) {
             l.atuacaoObj = resolverLocal(l.atuacao, p.uf, l.ajustes);
             if (!l.atuacaoObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'atuacaoObj', nome: l.atuacao, uf: p.uf }); }
@@ -451,7 +490,7 @@ Paginas.cadastro = {
           }
           feitas++;
         }
-        for (const l of linhas) if (l.status === 'buscando') l.status = l.cidadeObj && l.atuacaoObj ? 'ok' : 'erro';
+        for (const l of linhas) if (l.status === 'buscando') l.status = l.cidadeObj && (l.ehMovelAtuacao || l.atuacaoObj) ? 'ok' : 'erro';
         renderResultado(distintas.length ? 'Busca concluída.' : '');
       }
       async function importar() {
@@ -459,11 +498,24 @@ Paginas.cadastro = {
         if (!validas.length) throw new Error('Nenhuma linha válida para importar.');
         const invalidas = linhas.length - validas.length;
         if (invalidas && !(await UI.confirmar(`${invalidas} linha(s) com problema serão ignoradas. Importar as ${validas.length} válidas?`))) return false;
-        const n = Store.adicionarRegistros(validas.map(l => ({
+        const novos = validas.map(l => ({
           projetoId, tipo: l.tipo, cidadeId: l.cidadeObj.id,
-          atuacao: l.atuacaoObj.id,
-          baseContratacao: l.baseObj ? l.baseObj.id : l.atuacaoObj.id
-        })), App.usuario);
+          atuacao: l.ehMovelAtuacao ? Store.MOVEL : l.atuacaoObj.id,
+          baseContratacao: l.baseObj ? l.baseObj.id : (l.ehMovelAtuacao ? null : l.atuacaoObj.id)
+        }));
+        // Avisa quando a planilha parece já ter sido importada (mesmo projeto, mesma combinação e mesma quantidade)
+        const chave = r => [r.tipo, r.cidadeId, r.atuacao, r.baseContratacao || ''].join('|');
+        const jaTem = new Map();
+        Store.registrosFiltrados({ projetoId, usuario: App.usuario }).forEach(r => {
+          const k = [r.tipo, r.cidadeId, r.atuacaoMovel ? Store.MOVEL : (r.cidadeAtuacao ? r.cidadeAtuacao.id : ''), r.cidadeBase ? r.cidadeBase.id : ''].join('|');
+          jaTem.set(k, (jaTem.get(k) || 0) + 1);
+        });
+        const repetidas = novos.filter(r => jaTem.get(chave(r))).length;
+        if (repetidas && !(await UI.confirmar(
+          `${repetidas} das ${novos.length} linhas já existem neste projeto (mesma origem, mesmo destino e mesmo tipo). Isso costuma acontecer quando a mesma planilha é importada duas vezes. Importar assim mesmo?`,
+          { textoOk: 'Importar mesmo assim' }))) return false;
+        const n = Store.adicionarRegistros(novos, App.usuario);
+        ultimaImportacao = { quando: Date.now(), quantidade: n };
         UI.toast(`${n} contratação(ões) importada(s).`, 'sucesso');
         pagina = 0; renderLinhas();
       }
