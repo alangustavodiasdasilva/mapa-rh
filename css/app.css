@@ -336,6 +336,15 @@ textarea.colar { min-height: 160px; font-family: ui-monospace, Consolas, monospa
 .legenda-item .ponto-cor { margin: 0; }
 .legenda-traco { display: inline-block; width: 18px; border-top: 3px solid var(--origem); flex-shrink: 0; position: relative; }
 .legenda-traco::after { content: ''; position: absolute; right: -2px; top: -6px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 7px solid var(--atuacao); }
+.mt-p { margin-top: var(--e2); }
+.mb-p { margin-bottom: var(--e2); }
+.normal { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.col-larga { min-width: 220px; }
+.kpi-compacto { padding: var(--e2) var(--e3); }
+.kpi-compacto .valor, .valor-medio { font-size: var(--t-secao); }
+.grade-3-fixa { grid-template-columns: repeat(3, 1fr); gap: var(--e2); }
+.resumo-titulo { cursor: pointer; font-weight: 600; }
+.mapa-controles .silo-marcador.legenda-simbolo, .legenda-item .silo-marcador.legenda-simbolo { background: var(--tinta-media); width: 12px; height: 12px; }
 .legenda-simbolo { width: 16px; height: 16px; flex-shrink: 0; font-size: 0; box-shadow: none; }
 .legenda-quadrado { display: inline-block; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(26, 23, 20, .18); }
 .legenda-vazio { width: 16px; flex-shrink: 0; }

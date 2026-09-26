@@ -656,15 +656,15 @@ Paginas.mapa = {
         const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor), pane: 'silos' })
           .bindTooltip(balao({ cor, titulo: UI.esc(s.nome), sub: local, dica: 'clique para ver os detalhes' }), { ...TT, offset: [0, -13] })
           .bindPopup(`
-            <div style="min-width:220px">
-              <div class="linha" style="gap:6px;margin-bottom:6px;align-items:center">
+            <div class="col-larga">
+              <div class="linha" class="mb-p">
                 <span class="silo-marcador legenda-simbolo"></span>
-                <b style="font-size:14px;color:#1e293b">${UI.esc(s.nome)}</b>
+                <b >${UI.esc(s.nome)}</b>
               </div>
               ${s.cidade ? `<div>Cidade: <b>${UI.esc(s.cidade)}</b></div>` : ''}
               ${linhaMicro}
-              ${extras ? `<div style="margin-top:6px">${extras}</div>` : ''}
-              <div class="muted small" style="margin-top:8px;border-top:1px solid #eee;padding-top:4px">Mapa: ${UI.esc(s.mapaNome)}</div>
+              ${extras ? `<div class="mt-p">${extras}</div>` : ''}
+              <div class="muted small" class="legenda-rodape">Mapa: ${UI.esc(s.mapaNome)}</div>
             </div>
           `);
         camadas.silos.addLayer(m);
@@ -756,7 +756,7 @@ Paginas.mapa = {
           ...(cadastro ? [{ titulo: 'Cadastro', render: r => `${UI.fmtData(r.criadoEm)}${r.criadoPor ? ` <span class="muted small">${UI.esc(r.criadoPor)}</span>` : ''}` }] : [])
         ],
         linhas: ordenada.slice(0, limite)
-      }) + (lista.length > limite ? `<div class="muted small" style="margin-top:6px">Mostrando ${limite} de ${lista.length}. Use os filtros do topo para reduzir.</div>` : '');
+      }) + (lista.length > limite ? `<div class="muted small mt-p">Mostrando ${limite} de ${lista.length}. Use os filtros do topo para reduzir.</div>` : '');
     }
     // nomes de cidade dentro das listas são clicáveis: origem → "são daqui"; trabalho → "trabalham aqui"
     function ligarListas() {
@@ -765,7 +765,7 @@ Paginas.mapa = {
     }
     const botaoFicha = cid => `<button class="btn btn-pequeno" id="painel-ficha">Ficha de ${UI.esc(cid.nome)} (IBGE, SINE, anotações)</button>`;
     const ligarFicha = cid => { const b = painel.querySelector('#painel-ficha'); if (b) b.addEventListener('click', () => abrirPainelCidade(cid, {})); };
-    const resumo = (titulo, html) => `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600">${titulo}</summary>${html}</details>`;
+    const resumo = (titulo, html) => `<details class="mt-p"><summary class="small resumo-titulo">${titulo}</summary>${html}</details>`;
     function tabelaOrigens(lista, totalRef, cidadeRef) {
       return UI.tabela({
         vazio: 'Nenhuma contratação para o filtro atual.',
@@ -803,7 +803,7 @@ Paginas.mapa = {
       const cidades = new Set(lista.map(r => r.cidadeId)).size;
       painel.innerHTML = cabecalhoPainel(`<span class="marc-atuacao mini"><span>${lista.length}</span></span>Trabalham em ${UI.esc(a.cidade.nome)}`,
         `<b>${lista.length}</b> pessoa(s) trabalham em ${UI.esc(a.cidade.nome)}/${a.cidade.uf}: ${daqui ? `${daqui} são daqui mesmo` : ''}${daqui && lista.length - daqui ? ' e ' : ''}${lista.length - daqui ? `${lista.length - daqui} vieram de ${cidades - (daqui ? 1 : 0)} outra(s) cidade(s)` : ''} · ${a.local} local · ${a.movel} móvel`) +
-        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(a.cidade)}</div>` +
+        `<div class="linha mb">${botaoFicha(a.cidade)}</div>` +
         listaPessoas(lista, { destino: false, referencia: a.cidade.id }) +
         resumo('Resumo por cidade de origem', tabelaOrigens(a.fluxos, a.total, a.cidade));
       ligarFechar(); ligarListas(); ligarFicha(a.cidade);
@@ -816,7 +816,7 @@ Paginas.mapa = {
       const s = saidasDe(g);
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini">${lista.length}</span>São de ${UI.esc(g.cidade.nome)}`,
         `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(g.cidade.nome)}/${g.cidade.uf}: ${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' e ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''} · ${g.local} local · ${g.movel} móvel`) +
-        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(g.cidade)}</div>` +
+        `<div class="linha mb">${botaoFicha(g.cidade)}</div>` +
         listaPessoas(lista, { origem: false, referencia: g.cidade.id }) +
         resumo('Resumo por cidade de trabalho', tabelaDestinos(g.fluxos));
       ligarFechar(); ligarListas(); ligarFicha(g.cidade);
@@ -852,11 +852,11 @@ Paginas.mapa = {
       const lista = pessoasDoFluxo(f);
       painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>De ${UI.esc(o.nome)} para ${destNome}`,
         `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
-        `<div class="ficha-grade" style="margin-bottom:10px">
-          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
-          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
+        `<div class="ficha-grade mb">
+          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
+          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
         </div>
-        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
+        <div class="linha mb"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
         listaPessoas(lista, { origem: false, destino: false, cadastro: true });
       ligarFechar(); ligarListas();
       destacarLinhas([linha]);
@@ -905,16 +905,16 @@ Paginas.mapa = {
           ${(a.telefones || []).length ? `<div><b>${(a.telefones || []).map(t => `<a href="tel:${t.replace(/\D/g, '')}">${UI.esc(t)}</a>`).join(' · ')}</b></div>` : '<div class="muted">telefone não informado</div>'}
           ${a.email ? `<div><a href="mailto:${UI.esc(a.email)}">${UI.esc(a.email)}</a></div>` : ''}
           ${a.horario ? `<div class="muted small">Atendimento: ${UI.esc(a.horario)}</div>` : ''}
-          <div class="small linha" style="gap:10px"><a href="${UI.esc(a.url || '#')}" target="_blank" rel="noopener">página da agência</a>${a.lat != null ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">ver no Google Maps</a>` : ''}</div></div>`;
+          <div class="small linha" ><a href="${UI.esc(a.url || '#')}" target="_blank" rel="noopener">página da agência</a>${a.lat != null ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">ver no Google Maps</a>` : ''}</div></div>`;
       let blocoSine;
       if (sineLocal.length) blocoSine = sineLocal.map(fmtAg).join('');
-      else if (sinePerto) blocoSine = `<div class="muted small" style="margin-bottom:4px">Esta cidade não tem agência própria. A mais próxima fica a <b>${UI.fmtKm(sinePerto.distancia)}</b>:</div>` + fmtAg(sinePerto.agencia);
+      else if (sinePerto) blocoSine = `<div class="muted small" class="mb-p">Esta cidade não tem agência própria. A mais próxima fica a <b>${UI.fmtKm(sinePerto.distancia)}</b>:</div>` + fmtAg(sinePerto.agencia);
       else blocoSine = `<div class="muted small">Sem agência cadastrada na base (a base embutida cobre o RS). Use "Procurar SINE" abaixo e anote o que encontrar.</div>`;
       const primeira = sineLocal[0] || (sinePerto && sinePerto.distancia <= 60 ? sinePerto.agencia : null);
       const notas = { ...notasSalvas };
       if (primeira && !notas.sineTelefone) notas.sineTelefone = (primeira.telefones || []).join(' / ');
       if (primeira && !notas.sineEndereco) notas.sineEndereco = [primeira.endereco, primeira.cidade && Store.normalizar(primeira.cidade) !== Store.normalizar(cid.nome) ? primeira.cidade : '', primeira.cep ? 'CEP ' + primeira.cep : ''].filter(Boolean).join(' — ');
-      const campo = (k, rotulo, placeholder, area) => `<label style="margin-bottom:6px">${rotulo}${area
+      const campo = (k, rotulo, placeholder, area) => `<label>${rotulo}${area
         ? `<textarea class="ficha-campo" data-k="${k}" rows="2" placeholder="${UI.esc(placeholder)}" ${editar ? '' : 'readonly'}>${UI.esc(notas[k] || '')}</textarea>`
         : `<input class="ficha-campo" data-k="${k}" placeholder="${UI.esc(placeholder)}" value="${UI.esc(notas[k] || '')}" ${editar ? '' : 'readonly'}>`}</label>`;
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
@@ -922,37 +922,37 @@ Paginas.mapa = {
         info ? `Microrregião <b>${UI.esc(info.micro.nome)}</b> · distrito ${UI.esc(info.distrito.nome)} <a href="#" id="ficha-micro">ver números da microrregião</a>` : 'Cidade fora das microrregiões cadastradas') +
         `<div class="ficha">
           <div class="ficha-secao">Contratações <span class="muted small">no filtro atual · clique para ver quem</span></div>
-          <div class="ficha-grade" style="margin-bottom:4px">
+          <div class="ficha-grade">
             <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${a.fluxos.length} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
             <button class="ficha-dado ficha-botao" id="ficha-ver-origem" ${g ? '' : 'disabled'}><div class="rotulo"><span class="bolha-origem mini">&nbsp;</span>São daqui</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${resumoDestinos(g).replace(/<[^>]+>/g, '')} · ver quem` : 'ninguém contratado daqui'}</div></button>
           </div>
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
           <div class="ficha-grade" id="ficha-ibge"><span class="muted small">Buscando no IBGE…</span></div>
-          <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
+          <div class="muted small mt-p">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
 
 
           <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? 'dados oficiais da FGTAS' : (sinePerto ? 'agência mais próxima' : '')}</span></div>
           ${blocoSine}
           <div class="ficha-secao">Anotações do RH <span class="muted small">edite à vontade; fica salvo</span></div>
-          <div class="form-linha" style="gap:8px">
+          <div class="form-linha">
             ${campo('sineTelefone', 'Telefone do SINE / agência', '(54) 0000-0000')}
             ${campo('sineEndereco', 'Endereço do SINE', 'Rua, nº — bairro')}
           </div>
           ${campo('canais', 'Onde divulgar vagas', 'Ex.: rádio local, grupo de WhatsApp da prefeitura, mural do SINE, jornal…', true)}
           ${campo('contatos', 'Contatos úteis', 'Ex.: prefeitura, sindicato, escolas técnicas…', true)}
           ${campo('observacoes', 'Observações', 'O que o RH precisa lembrar sobre esta cidade', true)}
-          <div class="linha" style="gap:6px;flex-wrap:wrap">
+          <div class="linha" >
             ${editar ? '<button class="btn btn-primario btn-pequeno" id="ficha-salvar">Salvar anotações</button>' : ''}
             ${notas.atualizadoEm ? `<span class="muted small">atualizado em ${UI.fmtData(notas.atualizadoEm)}${notas.atualizadoPor ? ' por ' + UI.esc(notas.atualizadoPor) : ''}</span>` : ''}
           </div>
-          <div class="linha small" style="gap:10px;margin-top:8px;flex-wrap:wrap">
+          <div class="linha small mt-p">
             <a href="${busca(`SINE ${cid.nome} ${cid.uf} telefone endereço`)}" target="_blank" rel="noopener">Procurar SINE</a>
             ${cid.uf === 'RS' ? '<a href="https://fgtas.rs.gov.br/agencias-fgtas-sine" target="_blank" rel="noopener">Agências FGTAS/Sine (RS)</a>' : ''}
             <a href="${busca(`prefeitura ${cid.nome} ${cid.uf} telefone`)}" target="_blank" rel="noopener">Prefeitura</a>
             <a href="${busca(`rádio ${cid.nome} ${cid.uf}`)}" target="_blank" rel="noopener">Rádios locais</a>
             <a href="${IbgeCidade.urlCidades(cid.nome, cid.uf)}" target="_blank" rel="noopener">IBGE Cidades</a>
           </div>
-          ${window.SINE_SEED ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
+          ${window.SINE_SEED ? `<div class="muted small mt-p">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
       ligarFechar();
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
@@ -1010,12 +1010,12 @@ Paginas.mapa = {
       const filtrado = App.filtros.distritoId === d.id && !App.filtros.microId;
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(d.cor)}"></span>Distrito ${UI.esc(d.nome)}`,
         `${(d.micros || []).length} microrregião(ões) · ${ids.size} município(s) · ${unidades} unidade(s) PDR · total pela cidade de atuação`) +
-        `<div class="grade" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Contratações</div><div class="valor" style="font-size:20px">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Moram no distrito</div><div class="valor" style="font-size:20px">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Dist. média</div><div class="valor" style="font-size:20px">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
+        `<div class="grade grade-3-fixa mb">
+          <div class="card kpi kpi-compacto"><div class="rotulo">Contratações</div><div class="valor valor-medio">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
+          <div class="card kpi kpi-compacto"><div class="rotulo">Moram no distrito</div><div class="valor valor-medio">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
+          <div class="card kpi kpi-compacto"><div class="rotulo">Dist. média</div><div class="valor valor-medio">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
         </div>
-        <div class="linha" style="gap:6px;margin-bottom:10px">
+        <div class="linha mb">
           <button class="btn btn-pequeno" id="painel-focar">Aproximar</button>
           ${filtrado ? '<span class="badge badge-azul">filtro do topo ativo neste distrito</span>' : `<button class="btn btn-pequeno btn-primario" id="painel-filtrar">Filtrar tudo por este distrito</button>`}
         </div>
@@ -1042,7 +1042,7 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 30)
-        }) + (origens.size > 30 ? `<div class="muted small" style="margin-top:6px">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        }) + (origens.size > 30 ? `<div class="muted small mt-p">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '') +
         resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
       ligarFechar(); ligarListas();
       // bolinhas e linhas de todo o distrito
@@ -1069,14 +1069,14 @@ Paginas.mapa = {
         o[r.tipo === 'LOCAL' ? 'local' : 'movel']++; o.total++;
       }
       const filtrada = App.filtros.microId === m.id;
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(m.cor)}"></span>${UI.esc(m.nome)} <span class="muted small" style="font-weight:400">· ${UI.esc(d.nome)}</span>`,
+      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(m.cor)}"></span>${UI.esc(m.nome)} <span class="muted small" class="normal">· ${UI.esc(d.nome)}</span>`,
         `${(m.cidadeIds || []).length} município(s) · ${unidades} unidade(s) PDR`) +
-        `<div class="grade" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Contratações</div><div class="valor" style="font-size:20px">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Moram na micro</div><div class="valor" style="font-size:20px">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
-          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Dist. média</div><div class="valor" style="font-size:20px">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
+        `<div class="grade grade-3-fixa mb">
+          <div class="card kpi kpi-compacto"><div class="rotulo">Contratações</div><div class="valor valor-medio">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
+          <div class="card kpi kpi-compacto"><div class="rotulo">Moram na micro</div><div class="valor valor-medio">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
+          <div class="card kpi kpi-compacto"><div class="rotulo">Dist. média</div><div class="valor valor-medio">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
         </div>
-        <div class="linha" style="gap:6px;margin-bottom:10px">
+        <div class="linha mb">
           <button class="btn btn-pequeno" id="painel-focar">Aproximar</button>
           ${filtrada ? '<span class="badge badge-azul">filtro do topo ativo nesta microrregião</span>' : `<button class="btn btn-pequeno btn-primario" id="painel-filtrar">Filtrar tudo por esta microrregião</button>`}
         </div>` +
@@ -1090,7 +1090,7 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 40)
-        }) + (origens.size > 40 ? `<div class="muted small" style="margin-top:6px">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        }) + (origens.size > 40 ? `<div class="muted small mt-p">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '') +
         resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
       ligarFechar(); ligarListas();
       destacarLinhas([...ids].flatMap(id => linhasPorChave.get('A:' + id) || []));
@@ -1193,13 +1193,13 @@ Paginas.mapa = {
       const simb = (marca, titulo, texto) => `<div class="legenda-item ajuda-simbolo"><span class="ajuda-marca">${marca}</span><span><b>${titulo}</b><br><span class="muted">${texto}</span></span></div>`;
       UI.modal({
         titulo: 'Como ler o mapa', largura: '620px',
-        corpo: `<p class="muted small" style="margin-top:0">Cada pessoa contratada tem uma <b>cidade de onde vem</b> (origem) e uma <b>cidade onde trabalha</b> (atuação). O mapa mostra as duas coisas com símbolos diferentes; o número de cada símbolo é sempre <b>quantidade de pessoas</b>, e clicando aparece a lista dessas pessoas, uma por linha.</p>` +
+        corpo: `<p class="muted small">Cada pessoa contratada tem uma <b>cidade de onde vem</b> (origem) e uma <b>cidade onde trabalha</b> (atuação). O mapa mostra as duas coisas com símbolos diferentes; o número de cada símbolo é sempre <b>quantidade de pessoas</b>, e clicando aparece a lista dessas pessoas, uma por linha.</p>` +
           simb('<span class="marc-atuacao legenda-simbolo"></span>', 'Quadrado azul — trabalham aqui', 'O número é quantas pessoas trabalham nesta cidade. Clique para ver a lista dessas pessoas, uma por linha, com a cidade de onde cada uma vem.') +
           simb('<span class="bolha-origem legenda-simbolo"></span>', 'Círculo terracota — são daqui', 'O número é quantas pessoas contratadas vêm desta cidade. Clique para ver a lista delas com a cidade onde cada uma trabalha. A mesma pessoa aparece duas vezes de propósito: no círculo da cidade de onde vem e no quadrado da cidade onde trabalha.') +
           simb('<span class="legenda-traco"></span>', 'Linha com seta — o trajeto', 'Sai do círculo (de onde vêm) e a seta aponta para o quadrado (onde trabalham). Clique na linha para ver quem faz esse trajeto, com os dois pontos enquadrados no mapa.') +
           simb('<span class="marc-movel legenda-simbolo"></span>', 'Quadrado tracejado — todo o estado', 'Quem tem atuação móvel não trabalha numa cidade fixa: aparece no centro do estado, com linha tracejada.') +
           simb('<span class="rotulo-distrito mini"><b>n</b></span>', 'Etiqueta escura — total do distrito', 'Soma de quem trabalha nas cidades do distrito. Clique para ver o painel do distrito com os círculos e as linhas dele. O nome de cada microrregião também mostra o total dela e é clicável.') +
-          `<p class="muted small" style="margin-bottom:0">Com muita gente, cidades de origem vizinhas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município (mesmo sem contratação) para abrir a ficha dele: IBGE, SINE e anotações do RH.</p>`,
+          `<p class="muted small" >Com muita gente, cidades de origem vizinhas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município (mesmo sem contratação) para abrir a ficha dele: IBGE, SINE e anotações do RH.</p>`,
         botoes: [{ texto: 'Entendi', classe: 'btn-primario' }]
       });
     });
@@ -1260,10 +1260,13 @@ Paginas.mapa = {
     {
       const r = Analise.resumo(regs);
       const reg = App.regiaoFiltrada();
-      const chip = (v, t) => `<span class="kpi-chip"><b>${v}</b> ${t}</span>`;
-      kpis.innerHTML = (reg.micro || reg.distrito ? `<span class="kpi-chip kpi-chip-regiao">${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span>` : '') +
-        chip(UI.fmtNum(r.total), 'contratações') + (r.total ? chip(UI.fmtPct(r.pctLocal, 0), 'local') : '') +
-        chip(UI.fmtNum(r.cidadesOrigem), 'cidades de origem') + (r.distMedia != null ? chip(UI.fmtKm(r.distMedia), 'dist. média') : '') +
+      const chip = (v, t) => `<span class="kpi-chip"><span class="n">${v}</span> ${t}</span>`;
+      kpis.innerHTML = (reg.micro || reg.distrito ? `<span class="kpi-chip destaque-regiao"><span class="n">${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span></span>` : '') +
+        chip(UI.fmtNum(r.total), 'contratações no mapa') +
+        chip(UI.fmtNum(r.cidadesOrigem), 'cidades de onde vêm') +
+        chip(UI.fmtNum(r.cidadesAtuacao), 'cidades onde trabalham') +
+        (r.atuacaoMovel ? chip(UI.fmtNum(r.atuacaoMovel), 'em todo o estado') : '') +
+        (r.distMedia != null ? chip(UI.fmtKm(r.distMedia), 'de casa até o trabalho, em média') : '') +
         (todosSilos.length ? chip(UI.fmtNum(todosSilos.length), 'unidades') : '');
     }
     // localizar cidade
