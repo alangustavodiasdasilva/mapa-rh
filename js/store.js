@@ -552,10 +552,11 @@ const Store = (() => {
   // Cor do texto que fica legível sobre a cor informada
   function corTexto(hex) { return hexParaHsl(hex)[2] > 58 ? '#0f172a' : '#ffffff'; }
   // Reparte os tons da cor do distrito entre as microrregiões (em ordem alfabética: da mais escura à mais clara)
-  function aplicarTons(d) {
+  // apenasSemCor: não mexe na cor que o usuário escolheu à mão; só preenche micros sem cor
+  function aplicarTons(d, apenasSemCor = false) {
     const micros = (d.micros || []).slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
     const tons = gerarTons(d.cor, micros.length);
-    micros.forEach((m, i) => { m.cor = tons[i]; });
+    micros.forEach((m, i) => { if (!apenasSemCor || !corValida(m.cor)) m.cor = tons[i]; });
   }
   function distritos() { return dados.distritos; }
   function distrito(id) { return dados.distritos.find(d => d.id === id) || null; }
@@ -727,7 +728,7 @@ const Store = (() => {
       }
       try { importarEstrutura(d.id, itens, null, { mover: true }); } catch (e) { console.warn('Estrutura inicial do distrito não aplicada', sd.nome, e); }
       d.micros = d.micros.filter(m => (m.cidadeIds || []).length); // microrregiões que ficaram vazias após a mesclagem
-      aplicarTons(d);
+      aplicarTons(d, true);
     }
   }
   function distritoDaCidade(cidadeId) {
@@ -1139,7 +1140,7 @@ const Store = (() => {
       const itens = ed.micros.flatMap(m => m.cidadeIds.map(id => ({ micro: m.nome, cidadeId: id, polo: id === m.polo })));
       const r = importarEstrutura(d.id, itens, autor, { mover });
       res.micros += r.microsCriadas + r.microsAtualizadas; res.cidades += r.cidades; res.movidas += r.movidas; res.ignoradas += r.ignoradas;
-      aplicarTons(d);
+      aplicarTons(d, true);
     }
     salvar();
     return res;

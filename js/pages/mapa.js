@@ -457,7 +457,7 @@ Paginas.mapa = {
     // ---------- distritos e microrregiões (malha dos municípios do IBGE) ----------
     // Os polígonos ficam em um "pane" próprio, abaixo dos marcadores, para nunca cobrirem as bolhas de atuação/origem.
     mapa.createPane('malha').style.zIndex = 350;
-    mapa.createPane('rotulos').style.zIndex = 450;
+    mapa.createPane('rotulos').style.zIndex = 405; // abaixo das unidades e dos losangos: o nome da micro não cobre nada
     // com filtro de distrito/microrregião no topo, a malha e a legenda mostram só a região filtrada
     const regiaoFiltro = App.regiaoFiltrada();
     const distritos = App.distritosFiltrados().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
@@ -532,7 +532,7 @@ Paginas.mapa = {
               .bindTooltip(balao({ cor, titulo: `👑 ${UI.esc(m.nome)}`, tipo: 'cidade polo', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
             const totalM = totaisMicro.get(m.id) || 0;
             const aPolo = porAtuacao.get(polo.id); // com losango na cidade polo, o nome desce para não ficar por baixo dele
-            const dy = aPolo ? Math.round((ladoAtuacao(aPolo.total) + 4) * 0.71 + 3) : 9;
+            const dy = (aPolo ? Math.round((ladoAtuacao(aPolo.total) + 4) * 0.71 + 3) : 9) + 12; // mais abaixo: não fica em cima das unidades da cidade polo
             const marcM = L.marker([polo.lat, polo.lng], {
               icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)};transform:translate(-50%,${dy}px)">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
               interactive: true, pane: 'rotulos', keyboard: false
