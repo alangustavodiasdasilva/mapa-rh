@@ -58,17 +58,19 @@ Paginas.pdrs = {
       const corpo = document.createElement('div');
       corpo.innerHTML = `
         <p class="muted small">Cole o conteúdo do arquivo .kml (o texto que começa com <code>&lt;kml</code>) ou o link do mapa no Google My Maps.</p>
-        <textarea id="kml-colado" class="colar" placeholder="<kml xmlns=…   ou   https://www.google.com/maps/d/viewer?mid=…" style="min-height:150px;white-space:pre-wrap"></textarea>
-        <label style="margin-top:10px">Nome do mapa (opcional)<input id="kml-nome-manual" placeholder="Ex.: Mapa Canguçu"></label>`;
+        <textarea id="kml-colado" class="colar" autofocus placeholder="COLE AQUI o link do Google My Maps (https://www.google.com/maps/d/viewer?mid=…) ou o texto do arquivo .kml" style="min-height:180px;white-space:pre-wrap;border:2px solid var(--primaria)"></textarea>
+        <label style="margin-top:10px">Nome do mapa (opcional — só o nome, ex.: "PDRs Paraná")<input id="kml-nome-manual" placeholder="Ex.: PDRs Paraná"></label>`;
       UI.modal({
         titulo: 'Colar KML ou link do Google',
         corpo, largura: '600px', fecharAoClicarFora: false,
         botoes: [
           { texto: 'Cancelar' },
           { texto: 'Adicionar mapa', classe: 'btn-primario', acao: async () => {
-            const texto = corpo.querySelector('#kml-colado').value.trim();
-            const nomeManual = corpo.querySelector('#kml-nome-manual').value.trim();
-            if (!texto) throw new Error('Cole o KML ou o link.');
+            let texto = corpo.querySelector('#kml-colado').value.trim();
+            let nomeManual = corpo.querySelector('#kml-nome-manual').value.trim();
+            // colou no campo errado? aceita do mesmo jeito
+            if (!texto && /<kml|<\?xml|^https?:\/\//i.test(nomeManual)) { texto = nomeManual; nomeManual = ''; }
+            if (!texto) throw new Error('Cole o KML ou o link na caixa grande.');
             if (/^https?:\/\//i.test(texto)) {
               const url = linkKmlDoGoogle(texto) || texto;
               const ok = await tentarBaixar(url, nomeManual || 'Mapa do Google');
