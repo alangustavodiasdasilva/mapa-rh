@@ -52,6 +52,7 @@ Paginas.vagas = {
         const acao = b.dataset.acao;
         if (acao === 'divulgar') modalDivulgar(v);
         else if (acao === 'candidatos') { localStorage.setItem('maparh:cand-vaga', v.id); App.ir('candidatos'); }
+        else if (acao === 'procurar') { if (v.cidade) UI.modalBuscaCandidatos(v.cidade.nome, v.cidade.uf, v.titulo); }
         else if (acao === 'editar') formVaga(v);
         else if (acao === 'mapa') { App.filtros.projetoId = v.projetoId; sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ cidadeId: v.cidadeId })); App.aoMudarFiltros(); App.ir('mapa'); }
         else if (acao === 'status') mudarStatus(v, b.dataset.status);
@@ -89,6 +90,7 @@ Paginas.vagas = {
         <div class="linha nao-imprimir" style="margin-top:auto">
           ${podeEditar && !fechada ? '<button class="btn btn-pequeno btn-primario" data-acao="divulgar">Divulgar</button>' : ''}
           <button class="btn btn-pequeno" data-acao="candidatos">Candidatos</button>
+          ${!fechada ? '<button class="btn btn-pequeno" data-acao="procurar" title="Bancos de currículos e buscas já filtradas pela cidade da vaga">Procurar candidatos</button>' : ''}
           <button class="btn btn-pequeno" data-acao="mapa" title="Abre o mapa na cidade da vaga">Mapa</button>
           ${podeEditar ? `<button class="btn btn-pequeno" data-acao="editar">Editar</button>` : ''}
           ${podeEditar && !fechada ? `<button class="btn btn-pequeno" data-acao="status" data-status="cancelada" title="Cancelar a vaga">Cancelar</button>` : ''}

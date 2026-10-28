@@ -250,6 +250,29 @@ const UI = (() => {
       ufs.map(u => `<option value="${u}" ${u === selecionada ? 'selected' : ''}>${u}</option>`).join('');
   }
 
-  return { esc, fmtNum, fmtPct, fmtKm, fmtDataHora, fmtData, rotuloTipo, badgeTipo, debounce, toast, modal, confirmar,
+  // Onde procurar candidatos que moram numa cidade, sem publicar vaga: bancos de currículos das plataformas (abrem já filtrados)
+  function linksBuscaCandidatos(cidade, uf, cargo = '') {
+    const enc = encodeURIComponent, local = `${cidade} ${uf}`;
+    const q = cargo ? `${cargo} ${local}` : local;
+    return [
+      { grupo: 'Gratuito', nome: 'SINE — Buscar trabalhador (Emprega Brasil)', url: 'https://empregabrasil.mte.gov.br/', dica: 'Com o cadastro da empresa como empregador, o portal lista trabalhadores cadastrados no SINE por cidade e ocupação, sem precisar anunciar.' },
+      { grupo: 'Gratuito', nome: 'LinkedIn — pessoas em ' + cidade, url: `https://www.linkedin.com/search/results/people/?keywords=${enc(q)}`, dica: 'Busca de perfis por cargo e cidade; contato por mensagem.' },
+      { grupo: 'Gratuito', nome: 'Google — currículos / grupos de emprego', url: `https://www.google.com/search?q=${enc('"' + cidade + '" ' + (cargo ? '"' + cargo + '" ' : '') + 'currículo OR "procuro emprego" OR "grupo de vagas"')}`, dica: 'Grupos de WhatsApp/Facebook de vagas da cidade e currículos públicos.' },
+      { grupo: 'Banco de currículos (conta de empresa)', nome: 'Indeed — currículos', url: `https://resumes.indeed.com/search?q=${enc(cargo || '')}&l=${enc(local)}`, dica: 'Busca de currículos por cidade; contato pago por candidato.' },
+      { grupo: 'Banco de currículos (conta de empresa)', nome: 'Catho — banco de currículos', url: 'https://www.catho.com.br/empresas/', dica: 'Plano de empresa dá acesso ao banco de currículos filtrado por cidade.' },
+      { grupo: 'Banco de currículos (conta de empresa)', nome: 'InfoJobs — currículos', url: 'https://www.infojobs.com.br/empresas/', dica: 'Plano de empresa; busca por cidade e cargo.' },
+      { grupo: 'Banco de currículos (conta de empresa)', nome: 'Vagas.com — currículos', url: 'https://www.vagas.com.br/empresas', dica: 'Plano de empresa; busca por cidade e cargo.' }
+    ];
+  }
+  function modalBuscaCandidatos(cidade, uf, cargo = '') {
+    const links = linksBuscaCandidatos(cidade, uf, cargo);
+    const grupos = [...new Set(links.map(l => l.grupo))];
+    modal({ titulo: `Procurar candidatos em ${cidade}/${uf}${cargo ? ' — ' + cargo : ''}`, largura: '640px',
+      corpo: `<p class="small muted">As plataformas não deixam o sistema puxar currículos sozinho (é dado pessoal e cada uma exige login da empresa). O que dá: abrir a busca <b>já filtrada pela cidade${cargo ? ' e pelo cargo' : ''}</b> em cada lugar.</p>` +
+        grupos.map(g => `<div class="etiqueta-grupo">${esc(g)}</div>` + links.filter(l => l.grupo === g).map(l => `<div class="canal"><a class="btn btn-pequeno" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.nome)}</a><div class="small muted" style="margin-top:4px">${esc(l.dica)}</div></div>`).join('')).join(''),
+      botoes: [{ texto: 'Fechar' }] });
+  }
+
+  return { esc, fmtNum, fmtPct, fmtKm, fmtDataHora, fmtData, rotuloTipo, badgeTipo, debounce, toast, modal, confirmar, linksBuscaCandidatos, modalBuscaCandidatos,
     autocompleteCidade, csvSerializar, baixarArquivo, baixarCSV, csvParse, lerArquivo, tabela, opcoesUF };
 })();

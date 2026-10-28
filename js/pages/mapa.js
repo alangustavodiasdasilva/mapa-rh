@@ -944,6 +944,7 @@ Paginas.mapa = {
             ${notas.atualizadoEm ? `<span class="muted small">atualizado em ${UI.fmtData(notas.atualizadoEm)}${notas.atualizadoPor ? ' por ' + UI.esc(notas.atualizadoPor) : ''}</span>` : ''}
           </div>
           <div class="linha small" style="gap:10px;margin-top:8px;flex-wrap:wrap">
+            <a href="#" id="ficha-procurar-candidatos"><b>Procurar candidatos aqui</b></a>
             <a href="${busca(`SINE ${cid.nome} ${cid.uf} telefone endereço`)}" target="_blank" rel="noopener">Procurar SINE</a>
             <a href="${UI.esc(Store.portalSine(cid.uf).url)}" target="_blank" rel="noopener">${UI.esc(Store.portalSine(cid.uf).nome)}</a>
             <a href="${busca(`prefeitura ${cid.nome} ${cid.uf} telefone`)}" target="_blank" rel="noopener">Prefeitura</a>
@@ -970,6 +971,8 @@ Paginas.mapa = {
       }
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
       if (a && !fluxosOrigem) destacarLinhas(linhasPorChave.get('A:' + cid.id) || []);
+      const bpc = painel.querySelector('#ficha-procurar-candidatos');
+      if (bpc) bpc.addEventListener('click', e => { e.preventDefault(); UI.modalBuscaCandidatos(cid.nome, cid.uf); });
       const bm = painel.querySelector('#ficha-micro');
       if (bm) bm.addEventListener('click', e => { e.preventDefault(); abrirPainelMicro(info.distrito, info.micro); });
       const bva = painel.querySelector('#ficha-ver-atuacao'), bvo = painel.querySelector('#ficha-ver-origem');
