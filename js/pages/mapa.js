@@ -433,8 +433,14 @@ Paginas.mapa = {
       desenharOrigens();
     });
     // Aplica o foco: esconde bolhas, cidades de atuação, hubs e unidades que não se ligam à seleção
+    const polysMalha = []; // { poly, cidadeId, normal } — para apagar as outras cidades quando uma está selecionada
+    const estiloMalha = (cidadeId, normal) => (!foco || foco.has(cidadeId)) ? normal : { ...normal, fillOpacity: 0.08, opacity: 0.25 };
     function aplicarFoco(chaves) {
       foco = chaves ? new Set(chaves) : null;
+      for (const pm of polysMalha) pm.poly.setStyle(estiloMalha(pm.cidadeId, pm.normal));
+      if (typeof ajustarRotulos === 'function') ajustarRotulos();
+      if (foco) { if (camadas.calor) { mapa.removeLayer(camadas.calor); camadas.calor = null; } }
+      else if (typeof montarCalor === 'function') montarCalor();
       desenharOrigens();
       // com uma cidade selecionada o mapa mostra só o que é dela: as cidades ligadas a ela, as unidades e a agência do SINE dela
       camadas.atuacao.clearLayers();
@@ -462,7 +468,10 @@ Paginas.mapa = {
     function ajustarRotulos() {
       // zoom afastado: etiqueta do distrito só com o losango e o total, rótulos das micros menores
       mapa.getContainer().classList.toggle('mapa-longe', mapa.getZoom() < 9);
-      const itens = rotulosMapa.filter(r => r.marcador._icon);
+      // com uma cidade selecionada ficam só os rótulos da microrregião dela (os totais de distrito somem)
+      const noFoco = r => !foco || (!r.distrito && (r.cidadeIds || []).some(id => foco.has(id)));
+      for (const r of rotulosMapa.filter(r => r.marcador._icon && !noFoco(r))) r.marcador._icon.style.display = 'none';
+      const itens = rotulosMapa.filter(r => r.marcador._icon && noFoco(r));
       for (const r of itens) r.marcador._icon.style.display = '';
       const aceitos = [];
       for (const r of itens.sort((a, b) => b.prioridade - a.prioridade)) {
@@ -506,7 +515,7 @@ Paginas.mapa = {
           }).bindTooltip(balao({ cor: COR_ATUACAO, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
           marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
           camadaRotulos.addLayer(marcD);
-          rotulosMapa.push({ marcador: marcD, prioridade: Infinity });
+          rotulosMapa.push({ marcador: marcD, prioridade: Infinity, cidadeIds: cidsDist.map(c => c.id), distrito: true });
         }
         for (const m of (d.micros || [])) {
           const poloId = m.poloCidadeId || (m.cidadeIds || [])[0];
@@ -530,7 +539,7 @@ Paginas.mapa = {
             }).bindTooltip(balao({ cor, titulo: UI.esc(m.nome), tipo: `microrregião · distrito ${UI.esc(d.nome)}`, sub: `${(m.cidadeIds || []).length} município(s) · polo ${UI.esc(polo.nome)}`, total: totalM, dica: 'clique para ver as contratações da microrregião' }), { ...TT, offset: [0, -8] });
             marcM.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelMicro(d, m); });
             camadaRotulos.addLayer(marcM);
-            rotulosMapa.push({ marcador: marcM, prioridade: totalM });
+            rotulosMapa.push({ marcador: marcM, prioridade: totalM, cidadeIds: m.cidadeIds || [] });
           }
         }
       }
@@ -553,9 +562,10 @@ Paginas.mapa = {
             continue;
           }
           const normal = { color: '#fff', weight: 1, opacity: 0.9, fillColor: it.cor, fillOpacity: 0.72 };
-          const poly = L.geoJSON(f, { pane: 'malha', style: normal }).bindTooltip(tooltip, { ...TT, sticky: true });
-          poly.on('mouseover', () => poly.setStyle({ fillOpacity: 0.9 }));
-          poly.on('mouseout', () => poly.setStyle(normal));
+          const poly = L.geoJSON(f, { pane: 'malha', style: estiloMalha(it.cidade.id, normal) }).bindTooltip(tooltip, { ...TT, sticky: true });
+          polysMalha.push({ poly, cidadeId: it.cidade.id, normal });
+          poly.on('mouseover', () => { if (!foco || foco.has(it.cidade.id)) poly.setStyle({ fillOpacity: 0.9 }); });
+          poly.on('mouseout', () => poly.setStyle(estiloMalha(it.cidade.id, normal)));
           poly.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelCidade(it.cidade, { feature: f }); });
           camadas.distritos.addLayer(poly);
         }
