@@ -155,7 +155,7 @@ Paginas.pdrs = {
           </div>
         </div>
         <p class="muted small">Cada <b>pasta</b> do My Maps vira um distrito; o campo "microrreg" vira a microrregião (sem ele, o distrito fica com uma microrregião só, que você divide depois em Distritos). A cidade de cada unidade vem do KML ou é descoberta pelo ponto no mapa.</p>
-        <div id="imp-progresso" class="muted small"></div>`;
+        <div id="imp-progresso" class="caixa caixa-info" hidden></div>`;
       UI.modal({
         titulo: 'Adicionar mapa', corpo, largura: '640px', fecharAoClicarFora: false,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Adicionar', classe: 'btn-primario', acao: async () => {
@@ -163,16 +163,26 @@ Paginas.pdrs = {
           const ufs = corpo.querySelector('#imp-ufs').value.split(/[,/ ]+/).map(x => x.trim().toUpperCase()).filter(x => Store.UFS[x]);
           if (!ufs.length) throw new Error('Informe o estado (UF) das unidades.');
           const criar = corpo.querySelector('#imp-estrutura').checked, mover = corpo.querySelector('#imp-mover').checked;
+          // o nome não pode repetir: avisa antes de gastar tempo baixando
+          if (Store.mapasPdr().some(x => Store.normalizar(x.nome) === Store.normalizar(nome))) throw new Error(`Já existe um mapa chamado "${nome}". Exclua o antigo ou mude o nome.`);
           const prog = corpo.querySelector('#imp-progresso');
-          const est = await Store.estruturaDoKML(res.pontos, ufs, t => { prog.textContent = t; });
+          prog.hidden = false;
+          const mostrar = t => { prog.innerHTML = `<b>Aguarde…</b> ${UI.esc(t)}<br><span class="muted small">Na primeira vez o sistema baixa a lista de municípios do IBGE e os limites do estado (pode levar até 1 minuto).</span>`; };
+          mostrar('Começando…');
+          let est;
+          try { est = await Store.estruturaDoKML(res.pontos, ufs, mostrar); }
+          catch (e) { prog.hidden = true; throw new Error('Não consegui identificar as cidades: ' + e.message + ' (verifique a internet e tente de novo).'); }
           Store.adicionarMapaPdr({ nome, pontos: res.pontos }, App.usuario);
-          let msg = `Mapa "${nome}": ${res.pontos.length} unidade(s) — cidade pelo nome: ${est.porNome}, pelos limites do IBGE: ${est.porMalha}, pela proximidade: ${est.porProximidade}${est.semCidade ? `, sem cidade: ${est.semCidade}` : ''}.`;
+          const linhas = [`<li><b>${res.pontos.length}</b> unidade(s) gravada(s) no mapa "${UI.esc(nome)}".</li>`,
+            `<li>Cidade identificada pelo nome: <b>${est.porNome}</b> · pelos limites do IBGE: <b>${est.porMalha}</b> · pela cidade mais perto: <b>${est.porProximidade}</b>${est.semCidade ? ` · <span class="erro">sem cidade: ${est.semCidade}</span>` : ''}.</li>`];
           if (criar && est.distritos.length) {
             const r = Store.aplicarEstruturaKML(est, App.usuario, { mover });
-            msg += ` Distritos: ${r.distritosCriados} criado(s), ${r.distritosAtualizados} atualizado(s); ${r.micros} microrregião(ões); ${r.cidades} cidade(s) vinculada(s)${r.movidas ? `, ${r.movidas} movida(s)` : ''}${r.ignoradas ? `, ${r.ignoradas} já em outra micro (não movidas)` : ''}.`;
+            linhas.push(`<li>Distritos: <b>${r.distritosCriados}</b> criado(s), <b>${r.distritosAtualizados}</b> atualizado(s) · <b>${r.micros}</b> microrregião(ões) · <b>${r.cidades}</b> cidade(s) vinculada(s)${r.movidas ? ` · ${r.movidas} movida(s)` : ''}${r.ignoradas ? ` · ${r.ignoradas} já estava(m) em outra microrregião (não movida(s))` : ''}.</li>`);
+            linhas.push(`<li>${est.distritos.map(d => `<b>${UI.esc(d.nome)}</b> (${d.micros.length} micro, ${d.micros.reduce((n, mm) => n + mm.cidadeIds.length, 0)} cidades)`).join(' · ')}</li>`);
           }
-          UI.toast(msg, 'sucesso', 9000);
           App.recarregar();
+          UI.modal({ titulo: 'Mapa adicionado', largura: '620px', corpo: `<ul style="padding-left:20px;line-height:1.7">${linhas.join('')}</ul><p class="muted small">Confira e ajuste as microrregiões em Distritos e micros; as unidades já aparecem no Mapa.</p>`,
+            botoes: [{ texto: 'Fechar' }, { texto: 'Ver distritos', acao: () => App.ir('distritos') }, { texto: 'Ver no mapa', classe: 'btn-primario', acao: () => App.ir('mapa') }] });
         } }]
       });
     }
