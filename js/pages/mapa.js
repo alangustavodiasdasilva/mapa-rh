@@ -591,16 +591,17 @@ Paginas.mapa = {
           <path d="M12 4v17" stroke="${fundo}" stroke-width="1.2"/>
         </svg>`;
     }
-    function criarIconeSilo(cor) {
+    function criarIconeSilo(cor, apagado = false) {
       const svg = `<div style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;background:${cor};border:1.5px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer">${glifoSilo(Store.corTexto(cor), cor, 9)}</div>`;
-      return L.divIcon({ className: 'silo-marcador-div', html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
+      return L.divIcon({ className: 'silo-marcador-div' + (apagado ? ' silo-apagado' : ''), html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
     }
 
     function renderSilos() {
       camadas.silos.clearLayers();
       const qtdEl = el.querySelector('#qtd-silos');
       if (!el.querySelector('#c-silos').checked) { if (qtdEl) qtdEl.textContent = '0'; return; }
-      if (foco) return; // com uma cidade selecionada, as unidades saem do mapa para não poluir
+      // com uma cidade selecionada as unidades continuam no mapa: as da seleção em destaque, as outras apagadas
+      const siloEmFoco = s => { if (!foco) return true; const c = Store.cidadeDoSilo(s, s.uf || ''); return !!(c && foco.has(c.id)); };
       const mapaSel = el.querySelector('#mapa-filtro-silos-mapa').value || '';
       let silos = Store.silosNaRegiao(Store.todosSilosPdr(), App.filtros.distritoId, App.filtros.microId);
       if (mapaSel) silos = silos.filter(s => s.mapaId === mapaSel);
@@ -615,7 +616,7 @@ Paginas.mapa = {
         infos.forEach(i => { const k = i ? i.cor : COR_SILO_FORA; contagem.set(k, (contagem.get(k) || 0) + 1); });
         const cor = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]; // cor da microrregião predominante
         const nomes = gr.itens.slice(0, 6).map(s => UI.esc(s.nome)).join('<br>');
-        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
+        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div' + (gr.itens.some(siloEmFoco) ? '' : ' silo-apagado'), html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
           .bindTooltip(balao({ cor, titulo: `🌾 ${gr.itens.length} unidades próximas`, sub: nomes.replace(/<br>/g, ' · ') + (gr.itens.length > 6 ? ' …' : ''), dica: 'clique para aproximar' }), { ...TT, offset: [0, -16] });
         m.on('click', () => mapa.setView(gr.latLng, Math.min(mapa.getZoom() + 2, 14)));
         camadas.silos.addLayer(m);
@@ -630,7 +631,7 @@ Paginas.mapa = {
         let linhaMicro = '<div class="muted small">Cidade fora das microrregiões cadastradas</div>';
         if (microNome) linhaMicro = `<div><span class="ponto-cor" style="background:${UI.esc(cor)}"></span>Microrregião: <b>${UI.esc(microNome)}</b>${distNome ? ` <span class="muted">(${UI.esc(distNome)})</span>` : ''}</div>`;
         else if (distNome) linhaMicro = `<div>Distrito: <b>${UI.esc(distNome)}</b></div>`;
-        const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor), pane: 'silos' })
+        const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor, !siloEmFoco(s)), pane: 'silos' })
           .bindTooltip(balao({ cor, titulo: `🌾 ${UI.esc(s.nome)}`, sub: local, dica: 'clique para ver os detalhes' }), { ...TT, offset: [0, -13] })
           .bindPopup(`
             <div style="min-width:220px">

@@ -115,9 +115,9 @@ PRIMEIROS PASSOS
    população ocupada como referência e confirme no SINE. A base das agências foi
    coletada do site da FGTAS (data no arquivo data/sine_seed.js); confirme por
    telefone antes de divulgar vagas.
-   Enquanto uma cidade/microrregião está selecionada, o mapa mostra só o que se
-   liga a ela (as outras bolhas, cidades e unidades somem); feche o painel ou
-   clique em "mostrar tudo" para voltar.
+   Enquanto uma cidade/microrregião está selecionada, o mapa mostra só as
+   contratações ligadas a ela (as outras bolhas somem; as unidades PDR ficam,
+   só mais apagadas); feche o painel ou clique em "mostrar tudo" para voltar.
    Na legenda, clique no nome de uma microrregião para ver os números dela
    (contratações, quantos moram na própria micro, distância média) e filtrar
    tudo por ela. No painel do mapa
