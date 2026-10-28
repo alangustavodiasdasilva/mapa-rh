@@ -59,7 +59,7 @@ const App = {
   },
   // Tudo que o sistema consegue buscar sozinho: bases do SINE dos estados em uso e a lista completa de municípios do IBGE
   prepararBases() {
-    Store.carregarBasesSineEmUso().then(r => { if (r.some(Boolean) && this.paginaAtual === 'mapa') this.rotear(true); });
+    Store.carregarBasesSineEmUso(); // a ficha da cidade também carrega sob demanda; não re-renderiza a tela
     if (!Store.temIBGE() && typeof Geo !== 'undefined' && navigator.onLine && !this._baixandoIBGE) {
       this._baixandoIBGE = true;
       Geo.importarIBGE(() => {}).then(n => { UI.toast(`Lista de municípios do IBGE carregada (${UI.fmtNum(n)} cidades).`, 'sucesso'); this.atualizarBanner(); if (['cidades', 'dashboard'].includes(this.paginaAtual)) this.rotear(true); })
