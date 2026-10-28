@@ -1,6 +1,7 @@
 // Mapas PDRs: importação de arquivos KML (Google My Maps) com as unidades/silos, listados aqui e mostrados no Mapa.
 Paginas.pdrs = {
   titulo: 'Mapas PDRs',
+  filtrosUsados: ['regiao'],
   render(el) {
     const podeEditar = App.podeEditar();
     let busca = '', filtroMapa = '';

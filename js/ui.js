@@ -18,9 +18,8 @@ const UI = (() => {
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
   function fmtData(iso) { return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'; }
-  function rotuloTipo(t) { return t === 'MOVEL' ? 'Móvel' : 'Local'; }
-  // Marcador cheio = LOCAL, vazado = MÓVEL: a mesma leitura no mapa, na tabela, no gráfico e na impressão
-  function badgeTipo(t) { return `<span class="tipo ${t === 'MOVEL' ? 'tipo-movel' : 'tipo-local'}">${rotuloTipo(t)}</span>`; }
+  function rotuloTipo(t) { return t === 'MOVEL' ? 'MÓVEL' : t === 'LOCAL' ? 'LOCAL' : '?'; }
+  function badgeTipo(t) { return `<span class="badge ${t === 'MOVEL' ? 'badge-movel' : 'badge-local'}">${rotuloTipo(t)}</span>`; }
 
   function debounce(fn, ms) {
     let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -46,7 +45,7 @@ const UI = (() => {
       <div class="modal" style="max-width:${largura}" role="dialog" aria-modal="true">
         <div class="modal-cabecalho">
           <h3>${esc(titulo)}</h3>
-          <button class="btn-icone modal-fechar" title="Fechar" aria-label="Fechar">${icone('fechar', 18)}</button>
+          <button class="btn-icone modal-fechar" title="Fechar" aria-label="Fechar">&times;</button>
         </div>
         <div class="modal-corpo"></div>
         <div class="modal-rodape"></div>
@@ -86,7 +85,7 @@ const UI = (() => {
     return api;
   }
 
-  function confirmar(mensagem, { titulo = 'Confirmação', textoOk = 'Confirmar', textoCancelar = 'Cancelar', perigo = false } = {}) {
+  function confirmar(mensagem, { titulo = 'Confirmação', textoOk = 'Confirmar', perigo = false } = {}) {
     return new Promise(resolve => {
       let respondido = false;
       modal({
@@ -95,7 +94,7 @@ const UI = (() => {
         largura: '440px',
         aoFechar: () => { if (!respondido) resolve(false); },
         botoes: [
-          { texto: textoCancelar, classe: 'btn-secundario', acao: () => { respondido = true; resolve(false); } },
+          { texto: 'Cancelar', classe: 'btn-secundario', acao: () => { respondido = true; resolve(false); } },
           { texto: textoOk, classe: perigo ? 'btn-perigo' : 'btn-primario', acao: () => { respondido = true; resolve(true); } }
         ]
       });

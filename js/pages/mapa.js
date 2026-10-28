@@ -2,83 +2,66 @@ Paginas.mapa = {
   titulo: 'Mapa',
   render(el) {
     el.innerHTML = `
-      <div class="mapa-kpis nao-imprimir" id="mapa-kpis"></div>
       <div class="mapa-wrap">
         <div id="mapa"></div>
-
-        <div class="mapa-controles nao-imprimir" id="controles">
-          <div class="painel-abas">
-            <button data-aba="mostrar" class="ativa">Mostrar</button>
-            <button data-aba="legenda">Legenda</button>
-          </div>
-
-          <div class="painel-aba-corpo" data-aba="mostrar">
-            <input id="c-busca-cidade" placeholder="Localizar cidade no mapa…" autocomplete="off">
-
-            <div class="secao">O que aparece</div>
-            <label title="Quadrado azul com o número de pessoas que trabalham na cidade"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"></span>Onde trabalham</label>
-            <label title="Círculo terracota: quantas pessoas contratadas são daquela cidade"><input type="checkbox" id="c-origens" checked> <span class="bolha-origem mini"></span>De onde vêm</label>
-            <label class="sub">Mostrar quem é de cada cidade como
-              <select id="c-estilo">
-                <option value="bolhas">Círculo com a quantidade</option>
-                <option value="pontos">Ponto pequeno</option>
-                <option value="pintar">Município pintado (mais escuro = mais gente)</option>
-              </select></label>
-            <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> Microrregiões</label>
-            <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
-            <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> <span class="silo-marcador legenda-simbolo"></span>Unidades PDR (<span id="qtd-silos">0</span>)</label>
-            <select id="mapa-filtro-silos-mapa" class="sub" hidden>
-              <option value="">Todos os mapas</option>
-            </select>
-            <label id="c-sine-wrap" title="Agências FGTAS/Sine do RS (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
-            <label><input type="checkbox" id="c-limites" checked> Limite do estado</label>
-
-            <div class="secao">Linhas de trajeto</div>
-            <select id="c-modo-linhas">
-              <option value="selecionada">Só da cidade que eu clicar</option>
-              <option value="todas">Todas as linhas</option>
-              <option value="nenhuma">Nenhuma linha</option>
-            </select>
-            <div class="muted small" id="c-aviso-linhas"></div>
-
-            <div class="secao">Como o mapa aparece</div>
-            <label class="sub">Fundo
-              <select id="c-fundo">
-                <option value="claro">Claro (limpo)</option>
-                <option value="ruas">Ruas (OpenStreetMap)</option>
-                <option value="satelite">Satélite</option>
-              </select></label>
-            <label class="sub">Tamanho dos marcadores
-              <select id="c-tamanho">
-                <option value="p">Pequeno</option>
-                <option value="m">Médio</option>
-                <option value="g">Grande</option>
-              </select></label>
-            <label><input type="checkbox" id="c-calor"> Mapa de calor</label>
-            <select id="c-modo-calor" class="sub" hidden>
-              <option value="origem">Concentração de quem é de cada cidade</option>
-              <option value="atuacao">Concentração de quem trabalha em cada cidade</option>
-            </select>
-            <div class="malha-status" id="malha-status" hidden></div>
-          </div>
-
-          <div class="painel-aba-corpo" data-aba="legenda" hidden id="legenda"></div>
-
-          <div class="painel-rodape">
-            <button class="btn btn-pequeno" id="c-ajustar" title="Enquadrar tudo, inclusive origens distantes">Ajustar</button>
-            <button class="btn btn-pequeno" id="c-brasil">Brasil</button>
+        <div class="card mapa-controles nao-imprimir" id="controles">
+          <div class="painel-cab"><b>Mostrar no mapa</b><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></div>
+          <div class="painel-corpo">
+          <p class="muted small" style="margin:0 0 8px">Os filtros do topo escolhem <b>quais contratações</b> entram. Aqui você liga e desliga <b>o que aparece</b>.</p>
+          <div style="margin-bottom:8px"><input id="c-busca-cidade" placeholder="Localizar cidade no mapa…" autocomplete="off" style="font-size:12px;padding:5px 8px"></div>
+          <div class="linha" style="gap:6px;margin-bottom:8px;flex-wrap:nowrap"><span class="muted small" style="white-space:nowrap">Fundo:</span>
+            <select id="c-fundo" style="font-size:12px;padding:3px 6px">
+              <option value="claro">Claro (limpo)</option>
+              <option value="ruas">Ruas (OpenStreetMap)</option>
+              <option value="satelite">Satélite</option>
+            </select></div>
+          <label title="Losango azul com o número de pessoas que trabalham na cidade"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
+          <label title="Cidade de origem: de onde a pessoa vem (laranja; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>De onde vêm <span class="muted small">(origem)</span></label>
+          <label class="sub" style="display:block">Mostrar as origens como
+            <select id="c-estilo" style="margin-top:2px">
+              <option value="bolhas">Bolhas com a quantidade</option>
+              <option value="pontos">Pontos pequenos</option>
+              <option value="pintar">Municípios pintados (mais escuro = mais gente)</option>
+            </select></label>
+          <label class="sub" style="display:block">Tamanho dos marcadores
+            <select id="c-tamanho" style="margin-top:2px">
+              <option value="p">Pequeno</option>
+              <option value="m">Médio</option>
+              <option value="g">Grande</option>
+            </select></label>
+          <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> <span class="ponto-cor" style="background:#16a34a"></span>Microrregiões (malha)</label>
+          <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
+          <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> 🌾 Unidades PDR (<span id="qtd-silos">0</span>)</label>
+          <select id="mapa-filtro-silos-mapa" class="sub" style="width:calc(100% - 18px);font-size:11px;padding:2px 4px" hidden>
+            <option value="">Todos os mapas</option>
+          </select>
+          <label><input type="checkbox" id="c-limites" checked> Limite do estado</label>
+          <label id="c-sine-wrap" title="Agências FGTAS/Sine do RS (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
+          <div class="secao">Linhas: de onde vêm → onde trabalham</div>
+          <select id="c-modo-linhas">
+            <option value="selecionada">Só da cidade que eu clicar</option>
+            <option value="todas">Todas as linhas</option>
+            <option value="nenhuma">Nenhuma linha</option>
+          </select>
+          <div class="muted small" id="c-aviso-linhas" style="margin-top:4px"></div>
+          <div class="secao">Mapa de calor</div>
+          <label><input type="checkbox" id="c-calor"> Ligar mapa de calor</label>
+          <select id="c-modo-calor" class="sub" style="width:calc(100% - 18px)" hidden>
+            <option value="origem">Concentração por cidade de origem</option>
+            <option value="atuacao">Concentração por cidade de atuação</option>
+          </select>
+          <div class="linha mt" style="gap:6px">
+            <button class="btn btn-pequeno" id="c-ajustar" title="Enquadrar tudo, inclusive origens distantes">Ajustar zoom</button>
+            <button class="btn btn-pequeno" id="c-brasil">Ver Brasil</button>
             <button class="btn btn-pequeno" id="c-tela-cheia" title="Mapa ocupando a tela inteira (Esc para sair)">Tela cheia</button>
           </div>
+          </div>
         </div>
-
+        <div class="card mapa-legenda nao-imprimir" id="legenda"></div>
+        <div class="malha-status nao-imprimir" id="malha-status" hidden></div>
+        <div class="mapa-kpis nao-imprimir" id="mapa-kpis"></div>
         <div class="card mapa-painel" id="painel" hidden></div>
       </div>`;
-
-    // abas do painel (Mostrar / Legenda)
-    el.querySelectorAll('.painel-abas button').forEach(b => b.addEventListener('click', () => {
-      el.querySelectorAll('.painel-abas button').forEach(x => x.classList.toggle('ativa', x === b));
-      el.querySelectorAll('.painel-aba-corpo').forEach(c => { c.hidden = c.dataset.aba !== b.dataset.aba; });
-    }));
 
     if (typeof L === 'undefined') {
       el.querySelector('#mapa').innerHTML = '<div class="mapa-aviso">O mapa precisa de conexão com a internet para carregar. Verifique a conexão e recarregue a página.</div>';
@@ -88,9 +71,7 @@ Paginas.mapa = {
     const regs = App.regs();
     const fluxos = Analise.fluxos(regs);
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
-    // Duas cores de dado no app inteiro: terracota = de onde vêm, petróleo = onde trabalham.
-    // Quem atua em todo o estado usa o MESMO petróleo, tracejado (cor diz o conceito, traço diz o tipo).
-    const COR_ATUACAO = '#14506e', COR_ORIGEM = '#b4441c', COR_HUB = '#14506e';
+    const COR_ATUACAO = '#1d4ed8', COR_ORIGEM = '#ea580c', COR_HUB = '#7c3aed';
 
     // balão padronizado: título com bolinha colorida, linha de contexto, número e etiquetas LOCAL/MÓVEL
     function balao({ cor, titulo, tipo, sub, total, local, movel, dica }) {
@@ -120,7 +101,6 @@ Paginas.mapa = {
       fundoAtual = FUNDOS[nome]().addTo(mapa);
       localStorage.setItem('maparh:mapa-fundo', nome);
       el.querySelector('#c-fundo').value = nome;
-      el.querySelector('.mapa-wrap').classList.toggle('fundo-satelite', nome === 'satelite'); // imagem recua para o dado aparecer
     }
     definirFundo(localStorage.getItem('maparh:mapa-fundo') || 'claro');
     el.querySelector('#c-fundo').addEventListener('change', e => definirFundo(e.target.value));
@@ -166,7 +146,7 @@ Paginas.mapa = {
     el.querySelector('#c-estilo').value = estilo;
     const fator = () => FATOR_TAMANHO[tamanho];
     const raioAtuacao = n => Math.round(Math.min(24, 8 + 2.2 * Math.sqrt(n)) * fator());
-    const ladoAtuacao = n => Math.round(Math.min(34, 18 + Math.sqrt(n || 1) * 2.4) * (0.7 + fator() * 0.5)); // quadrado "trabalham aqui", com o número dentro
+    const ladoAtuacao = n => Math.round(Math.max(22, raioAtuacao(n || 1) * 1.7) * fator()); // losango "trabalham aqui", com o número dentro
     const raioOrigem = n => Math.round(Math.min(20, 5 + 2.0 * Math.sqrt(n)) * fator());
 
     // linha curva entre dois pontos (arco leve para não sobrepor)
@@ -195,7 +175,7 @@ Paginas.mapa = {
       const destino = f.atuacaoMovel ? porHub.get(f.uf) : f.cidadeAtuacao;
       if (!f.atuacaoMovel && f.cidadeAtuacao.id === f.cidadeOrigem.id) continue;
       const infoCor = f.cidadeAtuacao ? Store.corDaCidade(f.cidadeAtuacao.id) : null;
-      const corLinha = COR_ORIGEM; // a linha pertence a quem sai; o projeto é filtro, não cor
+      const corLinha = f.projeto.cor || COR_ATUACAO;
       const rotuloDistrito = infoCor ? ` (${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''})` : '';
       const linha = L.polyline(curva(destino, f.cidadeOrigem), {
         color: corLinha, weight: 1.5 + Math.log2(f.total + 1) * 1.2, opacity: 0.65, dashArray: f.atuacaoMovel ? '6 6' : null,
@@ -226,8 +206,7 @@ Paginas.mapa = {
     let foco = null;
     function aplicarModoLinhas() {
       const modo = selModoLinhas.value;
-      if (modo === 'nenhuma') mostrarLinhas(null); // o usuário pediu para não ver linha nenhuma
-      else if (foco && linhasSelecionadas) mostrarLinhas(linhasSelecionadas, true); // em foco, só as linhas da seleção
+      if (foco && linhasSelecionadas) mostrarLinhas(linhasSelecionadas, true); // em foco, só as linhas da seleção
       else if (modo === 'todas') {
         mostrarLinhas(todasLinhas, false);
         if (linhasSelecionadas) { camadas.linhas.eachLayer(l => l.setStyle({ opacity: 0.08 })); linhasSelecionadas.forEach(l => { l.setStyle({ opacity: 0.95 }); l.bringToFront(); }); }
@@ -317,7 +296,7 @@ Paginas.mapa = {
     }
     function selecionarOrigem(g) { abrirPainelOrigem(g); destacarLinhas(linhasPorChave.get('O:' + g.cidade.id) || []); }
     function selecionarAtuacao(a) { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); }
-    const COR_CLASSES = ['#f7e9e2', '#e8c0ac', '#d18c63', '#b4441c', '#71280f']; // mesma família da origem
+    const COR_CLASSES = ['#fed7aa', '#fdba74', '#fb923c', '#ea580c', '#9a3412'];
     let cortesCoropleto = [];
     function classeDe(n) { let k = 0; for (const c of cortesCoropleto) if (n > c) k++; return Math.min(k, COR_CLASSES.length - 1); }
     mapa.createPane('coropleto').style.zIndex = 360;
@@ -378,7 +357,7 @@ Paginas.mapa = {
       const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${d ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${g.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - d, r] });
       const tip = balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'são daqui', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver quem são e onde trabalham' });
       const m = L.marker([g.cidade.lat, g.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
-      m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); selecionarOrigem(g); });
+      m.on('click', () => selecionarOrigem(g));
       camadas.origens.addLayer(m);
     }
     function desenharOrigens() {
@@ -388,10 +367,9 @@ Paginas.mapa = {
         for (const g of porOrigem.values()) {
           if (foco && !foco.has(g.cidade.id)) continue;
           const rp = Math.round(4 * fator() + 2), dp = deslocamentoOrigem(g.cidade.id, rp);
-          // o alvo de clique é maior que o ponto desenhado, senão é quase impossível acertar
           const m = dp
             ? L.marker([g.cidade.lat, g.cidade.lng], { pane: 'origens', keyboard: false, icon: L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem encostada" style="width:${2 * rp}px;height:${2 * rp}px"></div>`, iconSize: [2 * rp, 2 * rp], iconAnchor: [rp - dp, rp] }) })
-            : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: rp, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95, bubblingMouseEvents: false });
+            : L.circleMarker([g.cidade.lat, g.cidade.lng], { pane: 'origens', radius: rp, color: '#fff', weight: 1.5, fillColor: COR_ORIGEM, fillOpacity: 0.95 });
           m.bindTooltip(balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver para onde foram' }), TT);
           m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); selecionarOrigem(g); });
           camadas.origens.addLayer(m);
@@ -408,7 +386,7 @@ Paginas.mapa = {
           ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
           : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(gr.itens[0]), total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver para onde foram' });
         const m = L.marker([gr.cidade.lat, gr.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
-        m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); varias ? abrirPainelGrupoOrigem(gr) : selecionarOrigem(gr.itens[0]); });
+        m.on('click', () => varias ? abrirPainelGrupoOrigem(gr) : selecionarOrigem(gr.itens[0]));
         camadas.origens.addLayer(m);
       }
     }
@@ -418,10 +396,8 @@ Paginas.mapa = {
     const marcadoresHub = new Map(), marcadoresAtuacao = new Map();
     for (const h of porHub.values()) {
       pontos.push([h.lat, h.lng]); pontosFoco.push([h.lat, h.lng]);
-      const lado = Math.round(ladoAtuacao(h.total) * 1.15);
-      const m = L.marker([h.lat, h.lng], { pane: 'atuacao', keyboard: false,
-        icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-movel" style="width:${lado}px;height:${lado}px;font-size:${lado >= 26 ? 11 : 9}px">${h.total}</div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] }) })
-        .bindTooltip(balao({ cor: COR_HUB, titulo: `Todo o estado — ${UI.esc(Store.UFS[h.uf] || h.uf)}`, tipo: 'trabalham em todo o estado', sub: 'atuação móvel, sem cidade fixa', total: h.total, local: h.local, movel: h.movel, dica: 'clique para ver quem são' }), TT);
+      const m = L.circleMarker([h.lat, h.lng], { pane: 'atuacao', radius: raioAtuacao(h.total), color: COR_HUB, weight: 2, dashArray: '4 3', fillColor: COR_HUB, fillOpacity: 0.35 })
+        .bindTooltip(balao({ cor: COR_HUB, titulo: `${h.uf} — ${UI.esc(Store.UFS[h.uf] || h.uf)}`, tipo: 'atuação móvel', sub: 'podem atuar em qualquer lugar do estado', total: h.total, local: h.local, movel: h.movel }), TT);
       m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); abrirPainelHub(h); destacarLinhas(linhasPorChave.get('H:' + h.uf) || []); });
       m._total = h.total;
       marcadoresHub.set('H:' + h.uf, m);
@@ -436,24 +412,24 @@ Paginas.mapa = {
         .bindTooltip(() => {
           const proprias = a.fluxos.filter(f => f.cidadeOrigem.id === a.cidade.id).reduce((n, f) => n + f.total, 0);
           return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'trabalham aqui',
-            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias ? `${a.total - proprias} vieram de ${new Set(a.fluxos.map(f => f.cidadeOrigem.id)).size - (proprias ? 1 : 0)} outra(s) cidade(s)` : ''}${a.total - proprias && proprias ? ' · ' : ''}${proprias ? `${proprias} são daqui mesmo` : ''}`,
+            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias ? `${a.total - proprias} vieram de ${a.fluxos.length - (proprias ? 1 : 0)} outra(s) cidade(s)` : ''}${a.total - proprias && proprias ? ' · ' : ''}${proprias ? `${proprias} são daqui mesmo` : ''}`,
             total: a.total, local: a.local, movel: a.movel, dica: 'clique para ver quem são e de onde vêm' });
         }, { ...TT, offset: [0, -ladoAtuacao(a.total) * 0.71 - 4] });
-      m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); selecionarAtuacao(a); });
+      m.on('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
       m._total = a.total;
       marcadoresAtuacao.set(a.cidade.id, m);
       camadas.atuacao.addLayer(m);
     }
     function iconeAtuacao(total) {
       const lado = ladoAtuacao(total);
-      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px;font-size:${lado >= 26 ? 11 : 9}px">${lado >= 22 ? total : ''}</div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
+      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-atuacao" style="width:${lado}px;height:${lado}px;font-size:${lado >= 26 ? 11 : 9}px"><span>${total}</span></div>`, iconSize: [lado, lado], iconAnchor: [lado / 2, lado / 2] });
     }
     // mudança de estilo / tamanho pelo painel
     el.querySelector('#c-estilo').addEventListener('change', e => { estilo = e.target.value; localStorage.setItem('maparh:mapa-estilo', estilo); desenharOrigens(); atualizarLegendaOrigens(); atualizarSetas(); });
     el.querySelector('#c-tamanho').addEventListener('change', e => {
       tamanho = e.target.value; localStorage.setItem('maparh:mapa-tamanho', tamanho);
       for (const m of marcadoresAtuacao.values()) m.setIcon(iconeAtuacao(m._total));
-      for (const m of marcadoresHub.values()) { const l = Math.round(ladoAtuacao(m._total) * 1.15); m.setIcon(L.divIcon({ className: 'silo-marcador-div', html: `<div class="marc-movel" style="width:${l}px;height:${l}px;font-size:${l >= 26 ? 11 : 9}px">${m._total}</div>`, iconSize: [l, l], iconAnchor: [l / 2, l / 2] })); }
+      for (const m of marcadoresHub.values()) m.setRadius(raioAtuacao(m._total));
       desenharOrigens();
     });
     // Aplica o foco: esconde bolhas, cidades de atuação, hubs e unidades que não se ligam à seleção
@@ -523,9 +499,9 @@ Paginas.mapa = {
           const topo = [Math.max(...lats) + 0.06, (Math.min(...lngs) + Math.max(...lngs)) / 2];
           const totalD = totaisDistrito.get(d.id) || 0;
           const marcD = L.marker(topo, {
-            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito"><i style="background:${Store.tomForte(d.cor)}"></i><em>Distrito ${UI.esc(d.nome)}</em><b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+            icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-distrito"><i></i><em>Distrito ${UI.esc(d.nome)}</em><b>${UI.fmtNum(totalD)}</b></span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
             interactive: true, pane: 'rotulos', keyboard: false
-          }).bindTooltip(balao({ cor: Store.tomForte(d.cor), titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
+          }).bindTooltip(balao({ cor: COR_ATUACAO, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'total de quem trabalha nas cidades do distrito', total: totalD, dica: 'clique para ver as contratações do distrito inteiro' }), { ...TT, offset: [0, -30] });
           marcD.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelDistrito(d); });
           camadaRotulos.addLayer(marcD);
           rotulosMapa.push({ marcador: marcD, prioridade: Infinity });
@@ -541,13 +517,13 @@ Paginas.mapa = {
           // bolha e rótulo na cidade polo
           const polo = Store.cidade(poloId);
           if (polo) {
-            camadas.distritos.addLayer(L.circleMarker([polo.lat, polo.lng], { pane: 'malha', radius: 4, color: '#fff', weight: 1.5, fillColor: Store.tomForte(cor), fillOpacity: 0.9 })
-              .bindTooltip(balao({ cor: Store.tomForte(cor), titulo: UI.esc(m.nome), tipo: 'cidade polo da microrregião', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
+            camadas.distritos.addLayer(L.circleMarker([polo.lat, polo.lng], { radius: 5, color: '#fff', weight: 1.5, fillColor: '#0f172a', fillOpacity: 0.85 })
+              .bindTooltip(balao({ cor, titulo: `👑 ${UI.esc(m.nome)}`, tipo: 'cidade polo', sub: `${UI.esc(polo.nome)}/${polo.uf} · distrito ${UI.esc(d.nome)} · ${(m.cidadeIds || []).length} município(s)` }), TT));
             const totalM = totaisMicro.get(m.id) || 0;
             const aPolo = porAtuacao.get(polo.id); // com losango na cidade polo, o nome desce para não ficar por baixo dele
             const dy = aPolo ? Math.round((ladoAtuacao(aPolo.total) + 4) * 0.71 + 3) : 9;
             const marcM = L.marker([polo.lat, polo.lng], {
-              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${Store.tomForte(cor)};color:#fff;transform:translate(-50%,${dy}px)">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
+              icon: L.divIcon({ className: 'rotulo-micro', html: `<span style="background:${UI.esc(cor)};color:${Store.corTexto(cor)};transform:translate(-50%,${dy}px)">${UI.esc(m.nome)} · ${UI.fmtNum(totalM)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }),
               interactive: true, pane: 'rotulos', keyboard: false
             }).bindTooltip(balao({ cor, titulo: UI.esc(m.nome), tipo: `microrregião · distrito ${UI.esc(d.nome)}`, sub: `${(m.cidadeIds || []).length} município(s) · polo ${UI.esc(polo.nome)}`, total: totalM, dica: 'clique para ver as contratações da microrregião' }), { ...TT, offset: [0, -8] });
             marcM.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelMicro(d, m); });
@@ -567,16 +543,16 @@ Paginas.mapa = {
         if (!ativo) return;
         for (const it of itens) {
           const f = dadosUF ? Malha.featureDaCidade(it.cidade, dadosUF) : null;
-          const tooltip = balao({ cor: Store.tomForte(it.cor), titulo: `${UI.esc(it.cidade.nome)}/${it.cidade.uf}${it.polo ? ' — polo' : ''}`, sub: `${UI.esc(it.micro.nome)} (${UI.fmtNum(totaisMicro.get(it.micro.id) || 0)} contratações) · distrito ${UI.esc(it.distrito.nome)} (${UI.fmtNum(totaisDistrito.get(it.distrito.id) || 0)})` });
+          const tooltip = balao({ cor: it.cor, titulo: `${it.polo ? '👑 ' : ''}${UI.esc(it.cidade.nome)}/${it.cidade.uf}`, sub: `${UI.esc(it.micro.nome)} (${UI.fmtNum(totaisMicro.get(it.micro.id) || 0)} contratações) · distrito ${UI.esc(it.distrito.nome)} (${UI.fmtNum(totaisDistrito.get(it.distrito.id) || 0)})` });
           if (!f) {
             // sem limite oficial (sem internet ou nome diferente do IBGE): mostra um círculo no lugar
             semMalha++;
-            camadas.distritos.addLayer(L.circleMarker([it.cidade.lat, it.cidade.lng], { pane: 'malha', radius: 10, color: '#fff', weight: 1.5, fillColor: Store.tomMancha(it.cor), fillOpacity: 0.7 }).bindTooltip(tooltip, { ...TT, sticky: true }));
+            camadas.distritos.addLayer(L.circleMarker([it.cidade.lat, it.cidade.lng], { pane: 'malha', radius: 10, color: '#fff', weight: 1.5, fillColor: it.cor, fillOpacity: 0.8 }).bindTooltip(tooltip, { ...TT, sticky: true }));
             continue;
           }
-          const normal = { color: '#fff', weight: 1, opacity: 0.9, fillColor: Store.tomMancha(it.cor), fillOpacity: 0.55 };
+          const normal = { color: '#fff', weight: 1, opacity: 0.9, fillColor: it.cor, fillOpacity: 0.72 };
           const poly = L.geoJSON(f, { pane: 'malha', style: normal }).bindTooltip(tooltip, { ...TT, sticky: true });
-          poly.on('mouseover', () => poly.setStyle({ fillOpacity: 0.72, color: '#1a1714', weight: 1.5 }));
+          poly.on('mouseover', () => poly.setStyle({ fillOpacity: 0.9 }));
           poly.on('mouseout', () => poly.setStyle(normal));
           poly.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelCidade(it.cidade, { feature: f }); });
           camadas.distritos.addLayer(poly);
@@ -616,7 +592,8 @@ Paginas.mapa = {
         </svg>`;
     }
     function criarIconeSilo(cor) {
-      return L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-marcador" style="background:${Store.tomForte(cor)}"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+      const svg = `<div style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;background:${cor};border:1.5px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer">${glifoSilo(Store.corTexto(cor), cor, 9)}</div>`;
+      return L.divIcon({ className: 'silo-marcador-div', html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
     }
 
     function renderSilos() {
@@ -638,8 +615,8 @@ Paginas.mapa = {
         infos.forEach(i => { const k = i ? i.cor : COR_SILO_FORA; contagem.set(k, (contagem.get(k) || 0) + 1); });
         const cor = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]; // cor da microrregião predominante
         const nomes = gr.itens.slice(0, 6).map(s => UI.esc(s.nome)).join('<br>');
-        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${Store.tomForte(cor)}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
-          .bindTooltip(balao({ cor, titulo: `${gr.itens.length} unidades próximas`, sub: nomes.replace(/<br>/g, ' · ') + (gr.itens.length > 6 ? ' …' : ''), dica: 'clique para aproximar' }), { ...TT, offset: [0, -16] });
+        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
+          .bindTooltip(balao({ cor, titulo: `🌾 ${gr.itens.length} unidades próximas`, sub: nomes.replace(/<br>/g, ' · ') + (gr.itens.length > 6 ? ' …' : ''), dica: 'clique para aproximar' }), { ...TT, offset: [0, -16] });
         m.on('click', () => mapa.setView(gr.latLng, Math.min(mapa.getZoom() + 2, 14)));
         camadas.silos.addLayer(m);
       }
@@ -654,17 +631,17 @@ Paginas.mapa = {
         if (microNome) linhaMicro = `<div><span class="ponto-cor" style="background:${UI.esc(cor)}"></span>Microrregião: <b>${UI.esc(microNome)}</b>${distNome ? ` <span class="muted">(${UI.esc(distNome)})</span>` : ''}</div>`;
         else if (distNome) linhaMicro = `<div>Distrito: <b>${UI.esc(distNome)}</b></div>`;
         const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor), pane: 'silos' })
-          .bindTooltip(balao({ cor, titulo: UI.esc(s.nome), sub: local, dica: 'clique para ver os detalhes' }), { ...TT, offset: [0, -13] })
+          .bindTooltip(balao({ cor, titulo: `🌾 ${UI.esc(s.nome)}`, sub: local, dica: 'clique para ver os detalhes' }), { ...TT, offset: [0, -13] })
           .bindPopup(`
-            <div class="col-larga">
-              <div class="linha" class="mb-p">
-                <span class="silo-marcador legenda-simbolo"></span>
-                <b >${UI.esc(s.nome)}</b>
+            <div style="min-width:220px">
+              <div class="linha" style="gap:6px;margin-bottom:6px;align-items:center">
+                <span style="font-size:18px">🌾</span>
+                <b style="font-size:14px;color:#1e293b">${UI.esc(s.nome)}</b>
               </div>
               ${s.cidade ? `<div>Cidade: <b>${UI.esc(s.cidade)}</b></div>` : ''}
               ${linhaMicro}
-              ${extras ? `<div class="mt-p">${extras}</div>` : ''}
-              <div class="muted small" class="legenda-rodape">Mapa: ${UI.esc(s.mapaNome)}</div>
+              ${extras ? `<div style="margin-top:6px">${extras}</div>` : ''}
+              <div class="muted small" style="margin-top:8px;border-top:1px solid #eee;padding-top:4px">Mapa: ${UI.esc(s.mapaNome)}</div>
             </div>
           `);
         camadas.silos.addLayer(m);
@@ -719,8 +696,6 @@ Paginas.mapa = {
       return `<h3><span>${titulo}</span><button class="btn-icone" id="painel-fechar" title="Fechar e mostrar tudo de novo">&times;</button></h3><div class="muted small mb">${sub}</div>` +
         `<div class="painel-foco-aviso small">Mostrando no mapa só o que se liga a esta seleção · <a href="#" id="painel-mostrar-tudo">mostrar tudo</a></div>`;
     }
-    // Todo painel começa do zero: sem contorno preso na tela e sem as linhas da seleção anterior
-    function prepararPainel() { camadaDestaque.clearLayers(); linhasSelecionadas = null; }
     function ligarFechar() {
       painel.querySelector('#painel-fechar').addEventListener('click', fecharPainel);
       painel.hidden = false;
@@ -729,7 +704,7 @@ Paginas.mapa = {
     }
     // ---------- painéis: sempre listam as PESSOAS (uma linha por contratação), para o número do mapa bater com a lista ----------
     const colProjeto = { titulo: 'Projeto', render: f => `<span class="ponto-cor" style="background:${UI.esc(f.projeto.cor)}"></span>${UI.esc(f.projeto.nome)}${f.projeto.ano ? ' <span class="muted small">' + f.projeto.ano + '</span>' : ''}` };
-    const badgeTipo = r => `<span class="badge ${r.tipo === 'LOCAL' ? 'badge-verde' : 'badge-roxo'}" title="${r.tipo === 'LOCAL' ? 'Contratação local' : 'Contratação móvel'}">${r.tipo === 'LOCAL' ? 'Local' : 'Móvel'}</span>`;
+    const badgeTipo = r => UI.badgeTipo(r.tipo);
     const nomeCidade = c => c ? `${UI.esc(c.nome)}/${c.uf}` : '—';
     const regiaoCurta = id => { const i = Store.corDaCidade(id); return i ? `<span class="muted small"> · ${UI.esc(i.micro.nome)}</span>` : ''; };
     const rotuloMovel = r => `<span class="badge badge-roxo">MÓVEL · todo o estado ${UI.esc(r.projeto.uf)}</span>`;
@@ -756,7 +731,7 @@ Paginas.mapa = {
           ...(cadastro ? [{ titulo: 'Cadastro', render: r => `${UI.fmtData(r.criadoEm)}${r.criadoPor ? ` <span class="muted small">${UI.esc(r.criadoPor)}</span>` : ''}` }] : [])
         ],
         linhas: ordenada.slice(0, limite)
-      }) + (lista.length > limite ? `<div class="muted small mt-p">Mostrando ${limite} de ${lista.length}. Use os filtros do topo para reduzir.</div>` : '');
+      }) + (lista.length > limite ? `<div class="muted small" style="margin-top:6px">Mostrando ${limite} de ${lista.length}. Use os filtros do topo para reduzir.</div>` : '');
     }
     // nomes de cidade dentro das listas são clicáveis: origem → "são daqui"; trabalho → "trabalham aqui"
     function ligarListas() {
@@ -765,7 +740,7 @@ Paginas.mapa = {
     }
     const botaoFicha = cid => `<button class="btn btn-pequeno" id="painel-ficha">Ficha de ${UI.esc(cid.nome)} (IBGE, SINE, anotações)</button>`;
     const ligarFicha = cid => { const b = painel.querySelector('#painel-ficha'); if (b) b.addEventListener('click', () => abrirPainelCidade(cid, {})); };
-    const resumo = (titulo, html) => `<details class="mt-p"><summary class="small resumo-titulo">${titulo}</summary>${html}</details>`;
+    const resumo = (titulo, html) => `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600">${titulo}</summary>${html}</details>`;
     function tabelaOrigens(lista, totalRef, cidadeRef) {
       return UI.tabela({
         vazio: 'Nenhuma contratação para o filtro atual.',
@@ -797,13 +772,12 @@ Paginas.mapa = {
     }
     // Losango azul: quem TRABALHA na cidade
     function abrirPainelAtuacao(a) {
-      prepararPainel();
       const lista = pessoasDeAtuacao(a.cidade.id);
       const daqui = lista.filter(r => r.cidadeId === a.cidade.id).length;
       const cidades = new Set(lista.map(r => r.cidadeId)).size;
       painel.innerHTML = cabecalhoPainel(`<span class="marc-atuacao mini"><span>${lista.length}</span></span>Trabalham em ${UI.esc(a.cidade.nome)}`,
         `<b>${lista.length}</b> pessoa(s) trabalham em ${UI.esc(a.cidade.nome)}/${a.cidade.uf}: ${daqui ? `${daqui} são daqui mesmo` : ''}${daqui && lista.length - daqui ? ' e ' : ''}${lista.length - daqui ? `${lista.length - daqui} vieram de ${cidades - (daqui ? 1 : 0)} outra(s) cidade(s)` : ''} · ${a.local} local · ${a.movel} móvel`) +
-        `<div class="linha mb">${botaoFicha(a.cidade)}</div>` +
+        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(a.cidade)}</div>` +
         listaPessoas(lista, { destino: false, referencia: a.cidade.id }) +
         resumo('Resumo por cidade de origem', tabelaOrigens(a.fluxos, a.total, a.cidade));
       ligarFechar(); ligarListas(); ligarFicha(a.cidade);
@@ -811,12 +785,11 @@ Paginas.mapa = {
     }
     // Bola laranja: quem É da cidade (e onde cada um trabalha)
     function abrirPainelOrigem(g) {
-      prepararPainel();
       const lista = pessoasDeOrigem(g.cidade.id);
       const s = saidasDe(g);
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini">${lista.length}</span>São de ${UI.esc(g.cidade.nome)}`,
         `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(g.cidade.nome)}/${g.cidade.uf}: ${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' e ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''} · ${g.local} local · ${g.movel} móvel`) +
-        `<div class="linha mb">${botaoFicha(g.cidade)}</div>` +
+        `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(g.cidade)}</div>` +
         listaPessoas(lista, { origem: false, referencia: g.cidade.id }) +
         resumo('Resumo por cidade de trabalho', tabelaDestinos(g.fluxos));
       ligarFechar(); ligarListas(); ligarFicha(g.cidade);
@@ -824,7 +797,6 @@ Paginas.mapa = {
     }
     // Ponto roxo: atuação móvel em todo o estado
     function abrirPainelHub(h) {
-      prepararPainel();
       const lista = pessoasDoHub(h.uf);
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>Atuação móvel em ${UI.esc(Store.UFS[h.uf] || h.uf)}`,
         `<b>${lista.length}</b> pessoa(s) podem atuar em qualquer lugar do estado · vêm de ${h.fluxos.length} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
@@ -834,7 +806,6 @@ Paginas.mapa = {
     }
     // Várias cidades de origem juntas numa bola (zoom afastado)
     function abrirPainelGrupoOrigem(gr) {
-      prepararPainel();
       const lista = gr.itens.flatMap(g => pessoasDeOrigem(g.cidade.id));
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini varias">${lista.length}</span>${gr.itens.length} cidades próximas`,
         `<b>${lista.length}</b> pessoa(s) são de ${gr.itens.length} cidades vizinhas, juntas numa bola só neste zoom · aproxime para separar, ou clique no nome de uma cidade`) +
@@ -844,7 +815,6 @@ Paginas.mapa = {
     }
     // Clique em uma linha: quem faz aquele trajeto (de onde vêm ➜ onde trabalham), com as duas pontas enquadradas
     function abrirPainelFluxo(f, linha) {
-      prepararPainel();
       const o = f.cidadeOrigem, infoO = Store.corDaCidade(o.id);
       const infoA = f.atuacaoMovel ? null : Store.corDaCidade(f.cidadeAtuacao.id);
       const destNome = f.atuacaoMovel ? `todo o estado ${UI.esc(f.uf)} (móvel)` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}`;
@@ -852,11 +822,11 @@ Paginas.mapa = {
       const lista = pessoasDoFluxo(f);
       painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>De ${UI.esc(o.nome)} para ${destNome}`,
         `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
-        `<div class="ficha-grade mb">
-          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
-          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
+        `<div class="ficha-grade" style="margin-bottom:10px">
+          <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
+          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
         </div>
-        <div class="linha mb"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
+        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
         listaPessoas(lista, { origem: false, destino: false, cadastro: true });
       ligarFechar(); ligarListas();
       destacarLinhas([linha]);
@@ -874,7 +844,7 @@ Paginas.mapa = {
         try { const dadosUF = await Malha.carregarUF(cid.uf); feature = Malha.featureDaCidade(cid, dadosUF); } catch (e) { feature = null; }
       }
       if (!feature || painel.hidden) return null;
-      const contorno = L.geoJSON(feature, { pane: 'destaque', interactive: false, style: { color: '#0f172a', weight: 3, opacity: 0.9, dashArray: '7 5', fill: true, fillColor: '#1a1714', fillOpacity: 0.08 } });
+      const contorno = L.geoJSON(feature, { pane: 'destaque', interactive: false, style: { color: '#0f172a', weight: 3, opacity: 0.9, dashArray: '7 5', fill: true, fillColor: '#fde047', fillOpacity: 0.08 } });
       camadaDestaque.addLayer(contorno);
       return contorno;
     }
@@ -890,7 +860,6 @@ Paginas.mapa = {
       return `<div class="ficha-dado" ${ind.ajuda ? `title="${UI.esc(ind.ajuda)}"` : ''}><div class="rotulo">${ind.rotulo} <span class="muted">(${v.ano})</span></div><div class="valor">${txt}</div></div>`;
     }
     async function abrirPainelCidade(cid, { feature = null, codigo = null, fluxosOrigem = null, aproximar = false } = {}) {
-      prepararPainel();
       const info = Store.corDaCidade(cid.id);
       const g = porOrigem.get(cid.id), a = porAtuacao.get(cid.id);
       const fluxos = fluxosOrigem || (g ? g.fluxos : null);
@@ -905,16 +874,16 @@ Paginas.mapa = {
           ${(a.telefones || []).length ? `<div><b>${(a.telefones || []).map(t => `<a href="tel:${t.replace(/\D/g, '')}">${UI.esc(t)}</a>`).join(' · ')}</b></div>` : '<div class="muted">telefone não informado</div>'}
           ${a.email ? `<div><a href="mailto:${UI.esc(a.email)}">${UI.esc(a.email)}</a></div>` : ''}
           ${a.horario ? `<div class="muted small">Atendimento: ${UI.esc(a.horario)}</div>` : ''}
-          <div class="small linha" ><a href="${UI.esc(a.url || '#')}" target="_blank" rel="noopener">página da agência</a>${a.lat != null ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">ver no Google Maps</a>` : ''}</div></div>`;
+          <div class="small linha" style="gap:10px"><a href="${UI.esc(a.url || '#')}" target="_blank" rel="noopener">página da agência</a>${a.lat != null ? `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">ver no Google Maps</a>` : ''}</div></div>`;
       let blocoSine;
       if (sineLocal.length) blocoSine = sineLocal.map(fmtAg).join('');
-      else if (sinePerto) blocoSine = `<div class="muted small" class="mb-p">Esta cidade não tem agência própria. A mais próxima fica a <b>${UI.fmtKm(sinePerto.distancia)}</b>:</div>` + fmtAg(sinePerto.agencia);
+      else if (sinePerto) blocoSine = `<div class="muted small" style="margin-bottom:4px">Esta cidade não tem agência própria. A mais próxima fica a <b>${UI.fmtKm(sinePerto.distancia)}</b>:</div>` + fmtAg(sinePerto.agencia);
       else blocoSine = `<div class="muted small">Sem agência cadastrada na base (a base embutida cobre o RS). Use "Procurar SINE" abaixo e anote o que encontrar.</div>`;
       const primeira = sineLocal[0] || (sinePerto && sinePerto.distancia <= 60 ? sinePerto.agencia : null);
       const notas = { ...notasSalvas };
       if (primeira && !notas.sineTelefone) notas.sineTelefone = (primeira.telefones || []).join(' / ');
       if (primeira && !notas.sineEndereco) notas.sineEndereco = [primeira.endereco, primeira.cidade && Store.normalizar(primeira.cidade) !== Store.normalizar(cid.nome) ? primeira.cidade : '', primeira.cep ? 'CEP ' + primeira.cep : ''].filter(Boolean).join(' — ');
-      const campo = (k, rotulo, placeholder, area) => `<label>${rotulo}${area
+      const campo = (k, rotulo, placeholder, area) => `<label style="margin-bottom:6px">${rotulo}${area
         ? `<textarea class="ficha-campo" data-k="${k}" rows="2" placeholder="${UI.esc(placeholder)}" ${editar ? '' : 'readonly'}>${UI.esc(notas[k] || '')}</textarea>`
         : `<input class="ficha-campo" data-k="${k}" placeholder="${UI.esc(placeholder)}" value="${UI.esc(notas[k] || '')}" ${editar ? '' : 'readonly'}>`}</label>`;
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
@@ -922,37 +891,37 @@ Paginas.mapa = {
         info ? `Microrregião <b>${UI.esc(info.micro.nome)}</b> · distrito ${UI.esc(info.distrito.nome)} <a href="#" id="ficha-micro">ver números da microrregião</a>` : 'Cidade fora das microrregiões cadastradas') +
         `<div class="ficha">
           <div class="ficha-secao">Contratações <span class="muted small">no filtro atual · clique para ver quem</span></div>
-          <div class="ficha-grade">
+          <div class="ficha-grade" style="margin-bottom:4px">
             <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${a.fluxos.length} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
             <button class="ficha-dado ficha-botao" id="ficha-ver-origem" ${g ? '' : 'disabled'}><div class="rotulo"><span class="bolha-origem mini">&nbsp;</span>São daqui</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${resumoDestinos(g).replace(/<[^>]+>/g, '')} · ver quem` : 'ninguém contratado daqui'}</div></button>
           </div>
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
           <div class="ficha-grade" id="ficha-ibge"><span class="muted small">Buscando no IBGE…</span></div>
-          <div class="muted small mt-p">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
+          <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
 
 
           <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? 'dados oficiais da FGTAS' : (sinePerto ? 'agência mais próxima' : '')}</span></div>
           ${blocoSine}
           <div class="ficha-secao">Anotações do RH <span class="muted small">edite à vontade; fica salvo</span></div>
-          <div class="form-linha">
+          <div class="form-linha" style="gap:8px">
             ${campo('sineTelefone', 'Telefone do SINE / agência', '(54) 0000-0000')}
             ${campo('sineEndereco', 'Endereço do SINE', 'Rua, nº — bairro')}
           </div>
           ${campo('canais', 'Onde divulgar vagas', 'Ex.: rádio local, grupo de WhatsApp da prefeitura, mural do SINE, jornal…', true)}
           ${campo('contatos', 'Contatos úteis', 'Ex.: prefeitura, sindicato, escolas técnicas…', true)}
           ${campo('observacoes', 'Observações', 'O que o RH precisa lembrar sobre esta cidade', true)}
-          <div class="linha" >
+          <div class="linha" style="gap:6px;flex-wrap:wrap">
             ${editar ? '<button class="btn btn-primario btn-pequeno" id="ficha-salvar">Salvar anotações</button>' : ''}
             ${notas.atualizadoEm ? `<span class="muted small">atualizado em ${UI.fmtData(notas.atualizadoEm)}${notas.atualizadoPor ? ' por ' + UI.esc(notas.atualizadoPor) : ''}</span>` : ''}
           </div>
-          <div class="linha small mt-p">
+          <div class="linha small" style="gap:10px;margin-top:8px;flex-wrap:wrap">
             <a href="${busca(`SINE ${cid.nome} ${cid.uf} telefone endereço`)}" target="_blank" rel="noopener">Procurar SINE</a>
             ${cid.uf === 'RS' ? '<a href="https://fgtas.rs.gov.br/agencias-fgtas-sine" target="_blank" rel="noopener">Agências FGTAS/Sine (RS)</a>' : ''}
             <a href="${busca(`prefeitura ${cid.nome} ${cid.uf} telefone`)}" target="_blank" rel="noopener">Prefeitura</a>
             <a href="${busca(`rádio ${cid.nome} ${cid.uf}`)}" target="_blank" rel="noopener">Rádios locais</a>
             <a href="${IbgeCidade.urlCidades(cid.nome, cid.uf)}" target="_blank" rel="noopener">IBGE Cidades</a>
           </div>
-          ${window.SINE_SEED ? `<div class="muted small mt-p">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
+          ${window.SINE_SEED ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
       ligarFechar();
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
@@ -988,7 +957,6 @@ Paginas.mapa = {
     // Painel de uma microrregião: números das contratações com atuação nas cidades dela
     // Painel do distrito: contratações de quem trabalha nas cidades dele, por microrregião e por cidade de origem
     function abrirPainelDistrito(d) {
-      prepararPainel();
       const ids = new Set(Store.cidadesDoDistrito(d).map(c => c.id));
       const lista = regs.filter(r => r.cidadeAtuacao && ids.has(r.cidadeAtuacao.id));
       const local = lista.filter(r => r.tipo === 'LOCAL').length;
@@ -1010,12 +978,12 @@ Paginas.mapa = {
       const filtrado = App.filtros.distritoId === d.id && !App.filtros.microId;
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(d.cor)}"></span>Distrito ${UI.esc(d.nome)}`,
         `${(d.micros || []).length} microrregião(ões) · ${ids.size} município(s) · ${unidades} unidade(s) PDR · total pela cidade de atuação`) +
-        `<div class="grade grade-3-fixa mb">
-          <div class="card kpi kpi-compacto"><div class="rotulo">Contratações</div><div class="valor valor-medio">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
-          <div class="card kpi kpi-compacto"><div class="rotulo">Moram no distrito</div><div class="valor valor-medio">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
-          <div class="card kpi kpi-compacto"><div class="rotulo">Dist. média</div><div class="valor valor-medio">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
+        `<div class="grade" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Contratações</div><div class="valor" style="font-size:20px">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Moram no distrito</div><div class="valor" style="font-size:20px">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Dist. média</div><div class="valor" style="font-size:20px">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
         </div>
-        <div class="linha mb">
+        <div class="linha" style="gap:6px;margin-bottom:10px">
           <button class="btn btn-pequeno" id="painel-focar">Aproximar</button>
           ${filtrado ? '<span class="badge badge-azul">filtro do topo ativo neste distrito</span>' : `<button class="btn btn-pequeno btn-primario" id="painel-filtrar">Filtrar tudo por este distrito</button>`}
         </div>
@@ -1042,7 +1010,7 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 30)
-        }) + (origens.size > 30 ? `<div class="muted small mt-p">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        }) + (origens.size > 30 ? `<div class="muted small" style="margin-top:6px">Mostrando as 30 maiores de ${origens.size} cidades de origem.</div>` : '') +
         resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
       ligarFechar(); ligarListas();
       // bolinhas e linhas de todo o distrito
@@ -1054,7 +1022,6 @@ Paginas.mapa = {
       painel.querySelectorAll('.painel-micro').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const m = (d.micros || []).find(x => x.id === a.dataset.m); if (m) abrirPainelMicro(d, m); }));
     }
     function abrirPainelMicro(d, m) {
-      prepararPainel();
       const ids = new Set(m.cidadeIds || []);
       const lista = regs.filter(r => r.cidadeAtuacao && ids.has(r.cidadeAtuacao.id));
       const local = lista.filter(r => r.tipo === 'LOCAL').length;
@@ -1069,14 +1036,14 @@ Paginas.mapa = {
         o[r.tipo === 'LOCAL' ? 'local' : 'movel']++; o.total++;
       }
       const filtrada = App.filtros.microId === m.id;
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(m.cor)}"></span>${UI.esc(m.nome)} <span class="muted small" class="normal">· ${UI.esc(d.nome)}</span>`,
+      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${UI.esc(m.cor)}"></span>${UI.esc(m.nome)} <span class="muted small" style="font-weight:400">· ${UI.esc(d.nome)}</span>`,
         `${(m.cidadeIds || []).length} município(s) · ${unidades} unidade(s) PDR`) +
-        `<div class="grade grade-3-fixa mb">
-          <div class="card kpi kpi-compacto"><div class="rotulo">Contratações</div><div class="valor valor-medio">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
-          <div class="card kpi kpi-compacto"><div class="rotulo">Moram na micro</div><div class="valor valor-medio">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
-          <div class="card kpi kpi-compacto"><div class="rotulo">Dist. média</div><div class="valor valor-medio">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
+        `<div class="grade" style="grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Contratações</div><div class="valor" style="font-size:20px">${UI.fmtNum(lista.length)}</div><div class="sub">${local} local · ${lista.length - local} móvel</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Moram na micro</div><div class="valor" style="font-size:20px">${UI.fmtNum(propria)}</div><div class="sub">${UI.fmtPct(lista.length ? propria / lista.length * 100 : 0, 0)} do total</div></div>
+          <div class="card kpi" style="padding:8px 10px"><div class="rotulo">Dist. média</div><div class="valor" style="font-size:20px">${UI.fmtKm(distMedia)}</div><div class="sub">${origens.size} cidade(s) de origem</div></div>
         </div>
-        <div class="linha mb">
+        <div class="linha" style="gap:6px;margin-bottom:10px">
           <button class="btn btn-pequeno" id="painel-focar">Aproximar</button>
           ${filtrada ? '<span class="badge badge-azul">filtro do topo ativo nesta microrregião</span>' : `<button class="btn btn-pequeno btn-primario" id="painel-filtrar">Filtrar tudo por esta microrregião</button>`}
         </div>` +
@@ -1090,7 +1057,7 @@ Paginas.mapa = {
             { titulo: 'Dist.', classe: 'direita', render: o => UI.fmtKm(o.dist) }
           ],
           linhas: [...origens.values()].sort((a, b) => b.total - a.total).slice(0, 40)
-        }) + (origens.size > 40 ? `<div class="muted small mt-p">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '') +
+        }) + (origens.size > 40 ? `<div class="muted small" style="margin-top:6px">Mostrando as 40 maiores de ${origens.size} cidades de origem.</div>` : '') +
         resumo(`Ver as ${lista.length} pessoas (uma por linha)`, listaPessoas(lista));
       ligarFechar(); ligarListas();
       destacarLinhas([...ids].flatMap(id => linhasPorChave.get('A:' + id) || []));
@@ -1150,27 +1117,25 @@ Paginas.mapa = {
     const legenda = el.querySelector('#legenda');
     const item = (marca, texto) => `<div class="legenda-item">${marca}<span>${texto}</span></div>`;
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
-    const quadrado = (cor, tam = 10) => `<span class="legenda-quadrado" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
-    legenda.innerHTML =
+    legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><span class="linha" style="gap:6px"><button class="btn-link small" id="legenda-ajuda" title="Como ler o mapa">como ler?</button><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></span></div><div class="painel-corpo">` +
       `<div class="legenda-secao">Em cada cidade</div>` +
-      item('<span class="marc-atuacao legenda-simbolo"></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique para ver quem são e de onde vêm.') +
+      item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique: quem são e de onde vêm') +
       `<div id="legenda-origens"></div>` +
-      (porHub.size ? item('<span class="marc-movel legenda-simbolo"></span>', '<b>Trabalham em todo o estado</b> — atuação móvel, sem cidade fixa.') : '') +
-      `<div class="legenda-secao">Trajeto</div>` +
-      item('<span class="legenda-traco"></span>', 'A linha <b>sai de onde a pessoa vem</b> e a seta aponta para <b>onde ela trabalha</b>. Clique na linha para ver quem faz esse trajeto.') +
-      item('<span class="tipo tipo-local"></span>', 'Marcador cheio = contratação <b>local</b>; vazado = <b>móvel</b>.') +
-      (distritos.length ? item('<span class="rotulo-distrito mini"><b>n</b></span>', '<b>Total do distrito</b> — soma de quem trabalha nas cidades dele.') : '') +
-      (todosSilos.length ? `<div class="legenda-secao">Unidades PDR (${todosSilos.length})</div>` +
-        item('<span class="silo-marcador legenda-simbolo"></span>', 'Unidade, na cor da microrregião onde ela fica.') +
-        Store.mapasPdr().map(m => item('<span class="legenda-vazio"></span>', `<span class="muted">${UI.esc(m.nome)} (${(m.pontos || []).length})</span>`)).join('')
+      `<div class="legenda-secao">Ligações</div>` +
+      projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} — <b>de onde vêm ➜ onde trabalham</b>; a seta aponta para o trabalho. Clique na linha para ver o trajeto`)).join('') +
+      (distritos.length ? item('<span class="rotulo-distrito mini"><b>n</b></span>', '<b>Total do distrito</b> — soma de quem trabalha nas cidades dele; clique para ver tudo do distrito') : '') +
+      (porHub.size ? item(bola(COR_HUB, 14), 'Atuação móvel em todo o estado') : '') +
+      (todosSilos.length ? `<div class="legenda-secao">🌾 Unidades PDR (${todosSilos.length})</div>` +
+        item(`<span class="silo-grupo" style="background:#16a34a;width:18px;height:18px;border-width:1.5px;box-shadow:none;flex-shrink:0"></span>`, 'Unidade — cor da microrregião da cidade') +
+        item(bola(COR_SILO_FORA, 12), 'Fora das microrregiões cadastradas') +
+        Store.mapasPdr().map(m => item('<span style="width:12px;flex-shrink:0"></span>', `<span class="muted">${UI.esc(m.nome)} (${(m.pontos || []).length})</span>`)).join('')
       : '') +
-      (distritos.length ? `<div class="legenda-secao">Regiões <span class="muted">· clique para aproximar</span></div>` +
+      (distritos.length ? `<div class="legenda-secao">Distritos e microrregiões <span style="font-weight:400;text-transform:none;letter-spacing:0">· total pela cidade de atuação · clique para aproximar</span></div>` +
         distritos.map(d =>
-          `<a href="#" class="legenda-micro legenda-distrito" data-d="${d.id}">${quadrado(Store.tomForte(d.cor), 11)}${UI.esc(d.nome)} <span class="muted"> · <b>${UI.fmtNum(totaisDistrito.get(d.id) || 0)}</b></span></a>` +
-          (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${quadrado(Store.tomForte(m.cor || d.cor), 9)}${UI.esc(m.nome)} <span class="muted"> · <b>${UI.fmtNum(totaisMicro.get(m.id) || 0)}</b></span></a>`).join('')
+          `<a href="#" class="legenda-micro" data-d="${d.id}" style="padding-left:2px;font-weight:600">${bola(d.cor || '#2563eb', 10)}${UI.esc(d.nome)} <span class="muted small" style="font-weight:400">· <b>${UI.fmtNum(totaisDistrito.get(d.id) || 0)}</b> contratações · ${Store.cidadesDoDistrito(d).length} cid</span></a>` +
+          (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${bola(m.cor || d.cor, 9)}${UI.esc(m.nome)} <span class="muted small">· <b>${UI.fmtNum(totaisMicro.get(m.id) || 0)}</b> · ${(m.cidadeIds || []).length} cid</span></a>`).join('')
         ).join('') : '') +
-      `<div class="legenda-rodape muted small">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) · ${porOrigem.size} cidade(s) de origem</div>` +
-      `<div class="mt"><button class="btn btn-pequeno btn-bloco" id="legenda-ajuda">Como ler o mapa</button></div>`;
+      `<div class="muted small" style="margin-top:6px;border-top:1px solid var(--borda);padding-top:5px">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) · ${porOrigem.size} cid. de origem</div></div>`;
     function atualizarLegendaOrigens() {
       const alvo = el.querySelector('#legenda-origens');
       if (!alvo) return;
@@ -1179,30 +1144,36 @@ Paginas.mapa = {
         let ini = 1;
         cortesCoropleto.forEach(c => { faixas.push(ini === c ? `${c}` : `${ini}–${c}`); ini = c + 1; });
         faixas.push(`${ini}+`);
-        alvo.innerHTML = item(quadrado(COR_ORIGEM, 11), '<b>De onde vêm</b> — município pintado: quanto mais escuro, mais gente') +
-          `<div class="legenda-item legenda-escala">${faixas.map((f, i) => `<span class="legenda-faixa" style="background:${COR_CLASSES[Math.min(i, COR_CLASSES.length - 1)]}">${f}</span>`).join('')}</div>`;
+        alvo.innerHTML = item(bola(COR_ORIGEM, 12), '<b>De onde vêm</b> (cidade de origem) — município pintado') +
+          `<div class="legenda-item" style="gap:4px;flex-wrap:wrap;padding-left:20px">${faixas.map((f, i) => `<span class="legenda-faixa" style="background:${COR_CLASSES[Math.min(i, COR_CLASSES.length - 1)]}">${f}</span>`).join('')}</div>`;
       } else if (estilo === 'pontos') {
-        alvo.innerHTML = item(bola(COR_ORIGEM, 10), '<b>De onde vêm</b> — a quantidade aparece ao passar o mouse');
+        alvo.innerHTML = item(bola(COR_ORIGEM, 10), '<b>De onde vêm</b> (cidade de origem) — a quantidade aparece ao passar o mouse');
       } else {
-        alvo.innerHTML = item('<span class="bolha-origem legenda-simbolo"></span>', '<b>São daqui</b> — quantas pessoas contratadas vêm desta cidade. Clique para ver quem são e onde trabalham.');
+        alvo.innerHTML = item(`<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px;flex-shrink:0">n</span>`, '<b>São daqui</b> — quantas pessoas contratadas são desta cidade (as linhas partem daqui). Clique: quem são e onde trabalham');
       }
     }
     atualizarLegendaOrigens();
     // "Como ler o mapa": explicação curta dos símbolos e do que cada clique faz
     legenda.querySelector('#legenda-ajuda').addEventListener('click', () => {
-      const simb = (marca, titulo, texto) => `<div class="legenda-item ajuda-simbolo"><span class="ajuda-marca">${marca}</span><span><b>${titulo}</b><br><span class="muted">${texto}</span></span></div>`;
+      const simb = (marca, titulo, texto) => `<div class="legenda-item" style="align-items:flex-start;margin-bottom:10px"><span style="width:26px;display:flex;justify-content:center;flex-shrink:0;padding-top:2px">${marca}</span><span><b>${titulo}</b><br><span class="muted">${texto}</span></span></div>`;
       UI.modal({
         titulo: 'Como ler o mapa', largura: '620px',
-        corpo: `<p class="muted small">Cada pessoa contratada tem uma <b>cidade de onde vem</b> (origem) e uma <b>cidade onde trabalha</b> (atuação). O mapa mostra as duas coisas com símbolos diferentes; o número de cada símbolo é sempre <b>quantidade de pessoas</b>, e clicando aparece a lista dessas pessoas, uma por linha.</p>` +
-          simb('<span class="marc-atuacao legenda-simbolo"></span>', 'Quadrado azul — trabalham aqui', 'O número é quantas pessoas trabalham nesta cidade. Clique para ver a lista dessas pessoas, uma por linha, com a cidade de onde cada uma vem.') +
-          simb('<span class="bolha-origem legenda-simbolo"></span>', 'Círculo terracota — são daqui', 'O número é quantas pessoas contratadas vêm desta cidade. Clique para ver a lista delas com a cidade onde cada uma trabalha. A mesma pessoa aparece duas vezes de propósito: no círculo da cidade de onde vem e no quadrado da cidade onde trabalha.') +
-          simb('<span class="legenda-traco"></span>', 'Linha com seta — o trajeto', 'Sai do círculo (de onde vêm) e a seta aponta para o quadrado (onde trabalham). Clique na linha para ver quem faz esse trajeto, com os dois pontos enquadrados no mapa.') +
-          simb('<span class="marc-movel legenda-simbolo"></span>', 'Quadrado tracejado — todo o estado', 'Quem tem atuação móvel não trabalha numa cidade fixa: aparece no centro do estado, com linha tracejada.') +
-          simb('<span class="rotulo-distrito mini"><b>n</b></span>', 'Etiqueta escura — total do distrito', 'Soma de quem trabalha nas cidades do distrito. Clique para ver o painel do distrito com os círculos e as linhas dele. O nome de cada microrregião também mostra o total dela e é clicável.') +
-          `<p class="muted small" >Com muita gente, cidades de origem vizinhas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município (mesmo sem contratação) para abrir a ficha dele: IBGE, SINE e anotações do RH.</p>`,
+        corpo: `<p class="muted small" style="margin-top:0">Cada pessoa contratada tem uma <b>cidade de onde vem</b> (origem) e uma <b>cidade onde trabalha</b> (atuação). O mapa mostra as duas coisas com símbolos diferentes; o número de cada símbolo é sempre <b>quantidade de pessoas</b>, e clicando aparece a lista dessas pessoas, uma por linha.</p>` +
+          simb('<span class="marc-atuacao mini" style="margin:0"><span>n</span></span>', 'Losango azul — trabalham aqui', 'O número é quantas pessoas trabalham nesta cidade. Clique: a lista dessas pessoas, uma por linha, com a cidade de onde cada uma vem.') +
+          simb('<span class="bolha-origem" style="width:20px;height:20px;line-height:17px;font-size:10px">n</span>', 'Bola laranja — são daqui', 'O número é quantas pessoas contratadas são desta cidade (moram / vieram daqui). Clique: a lista delas com a cidade onde cada uma trabalha. Uma mesma pessoa aparece na bola laranja da cidade de onde vem e no losango azul da cidade onde trabalha.') +
+          simb('<span class="legenda-traco" style="color:#dc2626;width:22px"></span>', 'Linha com seta — o trajeto', 'Sai da bola laranja (de onde vêm) e a seta aponta para o losango azul (onde trabalham). O número no balão é quantas pessoas fazem esse trajeto. Clique: a lista delas, com os dois pontos enquadrados no mapa.') +
+          simb('<span class="rotulo-distrito mini" style="margin:0"><b>n</b></span>', 'Etiqueta azul — total do distrito', 'Soma de todos os losangos (quem trabalha) nas cidades do distrito. Clique: painel do distrito com as bolas e linhas dele. O nome de cada microrregião também mostra o total dela e é clicável.') +
+          `<p class="muted small" style="margin-bottom:0">Com muita gente, cidades de origem vizinhas viram uma bola só (laranja escura) — aproxime o zoom para separar. Por padrão as linhas só aparecem para a cidade clicada; mude em "Linhas" no painel do mapa. Clique em qualquer município (mesmo sem contratação) para abrir a ficha dele: IBGE, SINE e anotações do RH.</p>`,
         botoes: [{ texto: 'Entendi', classe: 'btn-primario' }]
       });
     });
+    // painéis recolhíveis (estado lembrado na sessão)
+    for (const painelEl of [el.querySelector('#controles'), legenda]) {
+      const chave = 'maparh:mapa-recolhido:' + painelEl.id;
+      const aplicar = () => { const rec = sessionStorage.getItem(chave) === '1'; painelEl.classList.toggle('painel-recolhido', rec); painelEl.querySelector('.painel-toggle').innerHTML = rec ? '&#43;' : '&#8722;'; };
+      painelEl.querySelector('.painel-toggle').addEventListener('click', () => { sessionStorage.setItem(chave, painelEl.classList.contains('painel-recolhido') ? '0' : '1'); aplicar(); });
+      aplicar();
+    }
     legenda.querySelectorAll('.legenda-micro').forEach(a => a.addEventListener('click', e => {
       e.preventDefault();
       const d = Store.distrito(a.dataset.d);
@@ -1260,13 +1231,10 @@ Paginas.mapa = {
     {
       const r = Analise.resumo(regs);
       const reg = App.regiaoFiltrada();
-      const chip = (v, t) => `<span class="kpi-chip"><span class="n">${v}</span> ${t}</span>`;
-      kpis.innerHTML = (reg.micro || reg.distrito ? `<span class="kpi-chip destaque-regiao"><span class="n">${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span></span>` : '') +
-        chip(UI.fmtNum(r.total), 'contratações no mapa') +
-        chip(UI.fmtNum(r.cidadesOrigem), 'cidades de onde vêm') +
-        chip(UI.fmtNum(r.cidadesAtuacao), 'cidades onde trabalham') +
-        (r.atuacaoMovel ? chip(UI.fmtNum(r.atuacaoMovel), 'em todo o estado') : '') +
-        (r.distMedia != null ? chip(UI.fmtKm(r.distMedia), 'de casa até o trabalho, em média') : '') +
+      const chip = (v, t) => `<span class="kpi-chip"><b>${v}</b> ${t}</span>`;
+      kpis.innerHTML = (reg.micro || reg.distrito ? `<span class="kpi-chip kpi-chip-regiao">${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span>` : '') +
+        chip(UI.fmtNum(r.total), 'contratações') + (r.total ? chip(UI.fmtPct(r.pctLocal, 0), 'local') : '') +
+        chip(UI.fmtNum(r.cidadesOrigem), 'cidades de origem') + (r.distMedia != null ? chip(UI.fmtKm(r.distMedia), 'dist. média') : '') +
         (todosSilos.length ? chip(UI.fmtNum(todosSilos.length), 'unidades') : '');
     }
     // localizar cidade
@@ -1275,7 +1243,7 @@ Paginas.mapa = {
     UI.autocompleteCidade(buscaCidade, {
       aoSelecionar(c) {
         if (marcadorBusca) mapa.removeLayer(marcadorBusca);
-        marcadorBusca = L.circleMarker([c.lat, c.lng], { radius: 14, color: '#0f172a', weight: 2, fillColor: '#1a1714', fillOpacity: 0.6, pane: 'rotulos' })
+        marcadorBusca = L.circleMarker([c.lat, c.lng], { radius: 14, color: '#0f172a', weight: 2, fillColor: '#fde047', fillOpacity: 0.6, pane: 'rotulos' })
           .bindTooltip(balao({ titulo: `${UI.esc(c.nome)}/${c.uf}`, tipo: 'cidade localizada' }), { ...TT, permanent: true }).addTo(mapa);
         mapa.setView([c.lat, c.lng], Math.max(mapa.getZoom(), 10));
         buscaCidade.value = '';
@@ -1299,21 +1267,18 @@ Paginas.mapa = {
     try { focoInicial = JSON.parse(sessionStorage.getItem('maparh:mapa-foco') || 'null'); } catch (e) { focoInicial = null; }
     sessionStorage.removeItem('maparh:mapa-foco');
     const distritoFoco = focoInicial && focoInicial.distritoId ? Store.distrito(focoInicial.distritoId) : null;
-    // O mapa é redesenhado a cada mudança de filtro; guardar o enquadramento evita jogar o
-    // usuário de volta ao começo toda vez ("me perco no mapa").
-    const CHAVE_VISTA = 'maparh:mapa-vista';
-    let vistaSalva = null;
-    try { vistaSalva = JSON.parse(sessionStorage.getItem(CHAVE_VISTA) || 'null'); } catch (e) { vistaSalva = null; }
-    mapa.on('moveend zoomend', () => {
-      if (!ativo) return;
-      const c = mapa.getCenter();
-      sessionStorage.setItem(CHAVE_VISTA, JSON.stringify({ lat: c.lat, lng: c.lng, z: mapa.getZoom() }));
-    });
     setTimeout(() => {
       mapa.invalidateSize();
+      const cidadeFoco = focoInicial && focoInicial.cidadeId ? Store.cidade(focoInicial.cidadeId) : null;
       if (distritoFoco && Store.cidadesDoDistrito(distritoFoco).length) { focar(Store.cidadesDoDistrito(distritoFoco)); if (selFoco) selFoco.value = 'd:' + distritoFoco.id; }
-      else if (vistaSalva && isFinite(vistaSalva.lat) && isFinite(vistaSalva.lng)) mapa.setView([vistaSalva.lat, vistaSalva.lng], vistaSalva.z, { animate: false });
+      else if (cidadeFoco) { mapa.setView([cidadeFoco.lat, cidadeFoco.lng], 10); abrirPainelCidade(cidadeFoco, { aproximar: false }); }
       else enquadrarInicial();
+      // vindo de Distritos ("Mapa" do distrito / da micro) ou com micro filtrada no topo: já abre o painel dela
+      const microFocoId = (focoInicial && focoInicial.microId) || App.filtros.microId;
+      if (microFocoId) {
+        const dm = distritos.map(d => [d, (d.micros || []).find(x => x.id === microFocoId)]).find(([, x]) => x);
+        if (dm) { const cs = (dm[1].cidadeIds || []).map(id => Store.cidade(id)).filter(Boolean); if (cs.length) focar(cs); abrirPainelMicro(dm[0], dm[1]); }
+      } else if (distritoFoco && focoInicial.abrirPainel) abrirPainelDistrito(distritoFoco);
     }, 50);
     if (!regs.length && !todosSilos.length && !distritos.length) {
       UI.toast(Store.projetos().length ? 'Nenhuma contratação para o filtro atual.' : 'Cadastre um projeto e as contratações para ver o mapa.', 'aviso');

@@ -1,24 +1,26 @@
-// Visão geral: um número de destaque com a frase que o explica, quatro números de apoio,
-// os gráficos que respondem "de onde vêm / onde trabalham" e o resumo por projeto.
-// Cores: terracota = de onde vêm · petróleo = onde trabalham. Cheio = local, hachurado = móvel.
+// Início: o fluxo do RH em quatro passos com os números de hoje, e abaixo os indicadores das contratações.
 Paginas.dashboard = {
-  titulo: 'Visão geral',
+  titulo: 'Início',
   render(el) {
     const regs = App.regs();
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
     const r = Analise.resumo(regs);
     const graficos = [];
-    const COR_ORIGEM = '#b4441c', COR_ATUACAO = '#1077a0', TINTA = '#1a1714', TINTA_FRACA = '#6f6a62', LINHA = '#e3dfd7';
+    const podeEditar = App.podeEditar();
 
     if (!Store.projetos().length) {
       el.innerHTML = `
-        <div class="card destaque">
+        <div class="card boas-vindas">
           <h2>Bem-vindo ao Mapa RH</h2>
-          <p class="frase">Aqui você acompanha <b>de onde vêm</b> e <b>onde trabalham</b> as pessoas contratadas.
-            Para começar, crie um <b>projeto</b> — é o estado e o ano das contratações, por exemplo "Contratações RS 2024".
-            Depois cole a planilha de contratações na tela Contratações.</p>
+          <p>O sistema acompanha o RH do começo ao fim: <b>abrir a vaga</b>, <b>divulgar</b>, <b>selecionar os candidatos</b> e, ao admitir, <b>ver no mapa</b> de onde as pessoas vêm e onde trabalham.</p>
+          <ol class="passos-inicio">
+            <li><b>Crie um projeto</b> — é o estado e o ano das contratações (ex.: "Contratações RS 2026").</li>
+            <li><b>Confira os distritos e microrregiões</b> — o distrito Lagoa Vermelha já vem montado.</li>
+            <li><b>Abra as vagas</b> e divulgue nos canais (SINE, LinkedIn, Indeed, WhatsApp, rádio…).</li>
+            <li><b>Cadastre os candidatos</b> e avance cada um até a admissão. Quem já foi contratado antes pode ser importado da planilha em Contratações.</li>
+          </ol>
           <div class="linha mt">
-            ${App.podeEditar() ? `<button class="btn btn-primario" id="btn-novo-projeto">Criar o primeiro projeto</button>
+            ${podeEditar ? `<button class="btn btn-primario" id="btn-novo-projeto">Criar o primeiro projeto</button>
             <button class="btn" id="btn-exemplo">Carregar dados de exemplo</button>` : '<span class="muted">Peça a um gestor ou administrador para cadastrar os projetos.</span>'}
           </div>
         </div>`;
@@ -30,164 +32,130 @@ Paginas.dashboard = {
       return;
     }
 
+    const rec = Store.resumoRecrutamento(App.usuario, App.filtros.projetoId);
     const temAno = regs.some(x => x.projeto.ano);
-    const temMicro = Store.distritos().length > 0;
-    const temOutroEstado = r.ufsOrigem > 1;
-    const pctPropria = r.total ? r.mesmaCidade / r.total * 100 : 0;
-    const frase = r.total
-      ? `São <b>${UI.fmtNum(r.total)}</b> contratações em ${UI.fmtNum(r.projetos)} projeto(s).
-         ${UI.fmtNum(r.mesmaCidade)} pessoas (${UI.fmtPct(pctPropria, 0)}) moram na mesma cidade onde trabalham;
-         as demais vêm de ${UI.fmtNum(r.cidadesOrigem)} cidades diferentes, a ${UI.fmtKm(r.distMedia)} de distância em média.`
-      : 'Nenhuma contratação no filtro atual. Mude o filtro na faixa acima ou cadastre contratações.';
-
+    const pendencias = [];
+    if (rec.semDivulgacao) pendencias.push(`<a href="#/vagas">${rec.semDivulgacao} vaga(s) aberta(s) sem divulgação</a>`);
+    if (rec.emDocumentos) pendencias.push(`<a href="#/candidatos">${rec.emDocumentos} candidato(s) esperando documentos</a>`);
+    if (!Store.temIBGE()) pendencias.push(`<a href="#/cidades">baixar a lista de cidades do IBGE</a> (uma vez só, reconhece qualquer cidade do Brasil)`);
     el.innerHTML = `
-      <section>
-        <div class="card destaque mb">
-          <div class="etiqueta">Contratações</div>
-          <div class="valor">${UI.fmtNum(r.total)}</div>
-          <div class="frase">${frase}</div>
-        </div>
-        <div class="grade kpis">
-          <div class="card kpi"><div class="rotulo"><span class="tipo tipo-local"></span>Local</div><div class="valor">${UI.fmtNum(r.local)}</div><div class="sub">${UI.fmtPct(r.pctLocal, 0)} do total</div></div>
-          <div class="card kpi"><div class="rotulo"><span class="tipo tipo-movel"></span>Móvel</div><div class="valor">${UI.fmtNum(r.movel)}</div><div class="sub">${UI.fmtPct(r.pctMovel, 0)} do total</div></div>
-          <div class="card kpi"><div class="rotulo"><span class="bolha-origem mini"></span>Cidades de origem</div><div class="valor">${UI.fmtNum(r.cidadesOrigem)}</div><div class="sub">de onde as pessoas vêm</div></div>
-          <div class="card kpi"><div class="rotulo"><span class="marc-atuacao mini"></span>Cidades de trabalho</div><div class="valor">${UI.fmtNum(r.cidadesAtuacao)}</div><div class="sub">onde elas trabalham</div></div>
-        </div>
-      </section>
-      <section id="graficos">
-        <div class="grade grade-2">
-          <div class="card"><h2>De onde vêm</h2><p class="muted small">As 10 cidades que mais forneceram pessoas.</p><div class="grafico-wrap"><canvas id="g-origem"></canvas></div></div>
-          <div class="card"><h2>Onde trabalham</h2><p class="muted small">As 10 cidades com mais pessoas trabalhando.</p><div class="grafico-wrap"><canvas id="g-atuacao"></canvas></div></div>
-          <div class="card"><h2>Distância de casa até o trabalho</h2><p class="muted small">Quantas pessoas em cada faixa de distância.</p><div class="grafico-wrap"><canvas id="g-dist"></canvas></div></div>
-          ${temOutroEstado ? `<div class="card"><h2>Estados de origem</h2><p class="muted small">De quais estados as pessoas vêm.</p><div class="grafico-wrap"><canvas id="g-uf"></canvas></div></div>` : ''}
-          ${temMicro ? `<div class="card" style="grid-column:1/-1"><h2>Por microrregião</h2><p class="muted small">Pessoas que trabalham nas cidades de cada microrregião. O losango marca quantas moram na própria microrregião.</p><div class="grafico-wrap" id="g-micro-wrap"><canvas id="g-micro"></canvas></div></div>` : ''}
-          ${temAno ? '<div class="card" style="grid-column:1/-1"><h2>Por ano</h2><div class="grafico-wrap"><canvas id="g-ano"></canvas></div></div>' : ''}
-        </div>
-      </section>
-      <section>
-        <div class="card sem-padding">
-          <div class="card-titulo" style="padding:var(--e5) var(--e5) 0"><h2>Resumo por projeto</h2></div>
-          <div id="resumo-projetos"></div>
-        </div>
-      </section>`;
+      <div class="fluxo">
+        <a class="fluxo-passo" href="#/vagas">
+          <div class="fluxo-num">1</div>
+          <div><div class="fluxo-titulo">Vagas abertas</div><div class="fluxo-valor">${UI.fmtNum(rec.vagasAbertas)}</div><div class="fluxo-sub">${UI.fmtNum(rec.posicoes)} posição(ões) a preencher${rec.semDivulgacao ? ` · <span class="erro">${rec.semDivulgacao} sem divulgar</span>` : ''}</div></div>
+        </a>
+        <div class="fluxo-seta">→</div>
+        <a class="fluxo-passo" href="#/candidatos">
+          <div class="fluxo-num">2</div>
+          <div><div class="fluxo-titulo">Candidatos em processo</div><div class="fluxo-valor">${UI.fmtNum(rec.candidatos)}</div><div class="fluxo-sub">${rec.emDocumentos ? `${rec.emDocumentos} na etapa de documentos` : 'triagem, entrevista e documentos'}</div></div>
+        </a>
+        <div class="fluxo-seta">→</div>
+        <a class="fluxo-passo" href="#/cadastro">
+          <div class="fluxo-num">3</div>
+          <div><div class="fluxo-titulo">Contratações</div><div class="fluxo-valor">${UI.fmtNum(r.total)}</div><div class="fluxo-sub">${UI.fmtNum(r.local)} local · ${UI.fmtNum(r.movel)} móvel${rec.admitidos ? ` · ${rec.admitidos} vinda(s) da seleção` : ''}</div></div>
+        </a>
+        <div class="fluxo-seta">→</div>
+        <a class="fluxo-passo" href="#/mapa">
+          <div class="fluxo-num">4</div>
+          <div><div class="fluxo-titulo">No mapa</div><div class="fluxo-valor">${UI.fmtNum(r.cidadesOrigem)}</div><div class="fluxo-sub">cidades de origem · ${UI.fmtNum(r.cidadesAtuacao)} de trabalho</div></div>
+        </a>
+      </div>
+      ${pendencias.length ? `<div class="caixa caixa-aviso mb" style="margin-top:0"><b>Pendências:</b> ${pendencias.join(' · ')}.</div>` : ''}
+      <div class="secao-titulo">Indicadores das contratações <span class="muted small">${UI.esc(App.descricaoFiltro())}</span></div>
+      <div class="grade kpis mb">
+        <div class="card kpi"><div class="rotulo">Contratações</div><div class="valor">${UI.fmtNum(r.total)}</div><div class="sub">${UI.fmtNum(r.projetos)} projeto(s)</div></div>
+        <div class="card kpi kpi-local"><div class="rotulo">Local</div><div class="valor">${UI.fmtNum(r.local)}</div><div class="sub">${UI.fmtPct(r.pctLocal)} do total</div></div>
+        <div class="card kpi kpi-movel"><div class="rotulo">Móvel</div><div class="valor">${UI.fmtNum(r.movel)}</div><div class="sub">${UI.fmtPct(r.pctMovel)} do total</div></div>
+        <div class="card kpi"><div class="rotulo">Cidades de origem</div><div class="valor">${UI.fmtNum(r.cidadesOrigem)}</div><div class="sub">em ${UI.fmtNum(r.ufsOrigem)} estado(s)</div></div>
+        <div class="card kpi"><div class="rotulo">Vêm de fora do estado</div><div class="valor">${UI.fmtNum(r.foraDoEstado)}</div><div class="sub">${UI.fmtPct(r.pctForaDoEstado)} do total</div></div>
+        <div class="card kpi"><div class="rotulo">Moram onde trabalham</div><div class="valor">${UI.fmtNum(r.mesmaCidade)}</div><div class="sub">de ${UI.fmtNum(r.cidadesAtuacao)} cidades de trabalho</div></div>
+        <div class="card kpi"><div class="rotulo">Distância casa → trabalho</div><div class="valor">${UI.fmtKm(r.distMedia)}</div><div class="sub">média · máx. ${UI.fmtKm(r.distMax)}</div></div>
+      </div>
+      <div class="grade grade-2 mb" id="graficos">
+        <div class="card"><h2>De onde vêm (10 maiores cidades)</h2><div class="grafico-wrap"><canvas id="g-origem"></canvas></div></div>
+        <div class="card"><h2>Onde trabalham (10 maiores cidades)</h2><div class="grafico-wrap"><canvas id="g-atuacao"></canvas></div></div>
+        <div class="card"><h2>Estados de origem</h2><div class="grafico-wrap"><canvas id="g-uf"></canvas></div></div>
+        <div class="card"><h2>Distância de casa até o trabalho</h2><div class="grafico-wrap"><canvas id="g-dist"></canvas></div></div>
+        ${Store.distritos().length ? `<div class="card" style="grid-column:1/-1"><h2>Contratações por microrregião <span class="muted small" style="font-weight:400">(pela cidade onde trabalham)</span></h2><div class="grafico-wrap" id="g-micro-wrap"><canvas id="g-micro"></canvas></div></div>` : ''}
+        ${temAno ? '<div class="card" style="grid-column:1/-1"><h2>Evolução por ano</h2><div class="grafico-wrap"><canvas id="g-ano"></canvas></div></div>' : ''}
+      </div>
+      <div class="card">
+        <h2>Resumo por projeto</h2>
+        <div id="resumo-projetos"></div>
+      </div>`;
 
     if (!regs.length) {
-      el.querySelector('#graficos').innerHTML = `<div class="card vazio">Nenhuma contratação para o filtro atual. ${App.podeEditar() ? '<a href="#/cadastro">Cadastrar contratações</a>.' : ''}</div>`;
+      el.querySelector('#graficos').innerHTML = `<div class="card vazio" style="grid-column:1/-1">Nenhuma contratação cadastrada para o filtro atual. ${App.podeEditar() ? '<a href="#/cadastro">Ir para o cadastro</a>.' : ''}</div>`;
     } else if (typeof Chart === 'undefined') {
       el.querySelectorAll('.grafico-wrap').forEach(g => g.innerHTML = '<div class="vazio">Gráficos indisponíveis sem conexão com a internet.</div>');
     } else {
       Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-      Chart.defaults.font.size = 12;
-      Chart.defaults.color = TINTA_FRACA;
-      Chart.defaults.borderColor = LINHA;
+      Chart.defaults.color = '#475569';
+      const empilhado = (horizontal) => ({ indexAxis: horizontal ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+        scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true, ticks: { precision: 0 } } }, plugins: { legend: { position: 'bottom' } } });
+      const dsLM = (lista) => [
+        { label: 'LOCAL', data: lista.map(c => c.local), backgroundColor: '#16a34a', stack: 's' },
+        { label: 'MÓVEL', data: lista.map(c => c.movel), backgroundColor: '#ea580c', stack: 's' }];
 
-      // Hachura 45°: mesma leitura da etiqueta vazada de MÓVEL (funciona em p&b e no daltonismo)
-      const hachura = (cor) => {
-        const c = document.createElement('canvas'); c.width = c.height = 8;
-        const x = c.getContext('2d');
-        x.fillStyle = '#fff'; x.fillRect(0, 0, 8, 8);
-        x.strokeStyle = cor; x.lineWidth = 2.5;
-        x.beginPath(); x.moveTo(-2, 10); x.lineTo(10, -2); x.moveTo(2, 14); x.lineTo(14, 2); x.moveTo(-6, 6); x.lineTo(6, -6); x.stroke();
-        return x.createPattern(c, 'repeat');
-      };
-      const HACHURA_ATUACAO = hachura(COR_ATUACAO);
+      const origem = Analise.porCidadeOrigem(regs).slice(0, 10);
+      graficos.push(new Chart(el.querySelector('#g-origem'), { type: 'bar',
+        data: { labels: origem.map(c => `${c.cidade.nome}/${c.cidade.uf}`), datasets: dsLM(origem) }, options: empilhado(true) }));
 
-      const eixoQtd = { grid: { color: LINHA, drawTicks: false }, border: { display: false }, ticks: { precision: 0 } };
-      const eixoNome = { grid: { display: false }, border: { color: LINHA } };
-      const base = (horizontal) => ({
-        indexAxis: horizontal ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
-        scales: horizontal ? { x: eixoQtd, y: eixoNome } : { x: eixoNome, y: eixoQtd },
-        plugins: { legend: { display: false }, tooltip: { padding: 10, backgroundColor: TINTA, titleFont: { weight: '600' }, displayColors: false } },
-        elements: { bar: { borderRadius: 2 } }, maxBarThickness: 26
-      });
-      const empilhado = (horizontal) => {
-        const o = base(horizontal);
-        o.scales = horizontal ? { x: { ...eixoQtd, stacked: true }, y: { ...eixoNome, stacked: true } } : { x: { ...eixoNome, stacked: true }, y: { ...eixoQtd, stacked: true } };
-        o.plugins.legend = { display: true, position: 'bottom', labels: { usePointStyle: true, pointStyle: 'rect', boxWidth: 10, boxHeight: 10, padding: 16 } };
-        return o;
-      };
-      const localMovel = (lista) => [
-        { label: 'Local', data: lista.map(c => c.local), backgroundColor: COR_ATUACAO, borderWidth: 0, stack: 's' },
-        { label: 'Móvel', data: lista.map(c => c.movel), backgroundColor: HACHURA_ATUACAO, borderColor: COR_ATUACAO, borderWidth: 1, stack: 's' }
-      ];
+      const atuacao = Analise.porCidadeAtuacao(regs).slice(0, 10);
+      graficos.push(new Chart(el.querySelector('#g-atuacao'), { type: 'bar',
+        data: { labels: atuacao.map(a => a.rotulo), datasets: dsLM(atuacao) }, options: empilhado(true) }));
 
-      // De onde vêm — uma série só, na cor da origem
-      const origem = Analise.porCidadeOrigem(regs).slice(0, 10).reverse();
-      graficos.push(new Chart(el.querySelector('#g-origem'), {
-        type: 'bar',
-        data: { labels: origem.map(c => `${c.cidade.nome}/${c.cidade.uf}`), datasets: [{ data: origem.map(c => c.total), backgroundColor: COR_ORIGEM, borderWidth: 0 }] },
-        options: base(true)
-      }));
-
-      // Onde trabalham — uma série só, na cor da atuação
-      const atuacao = Analise.porCidadeAtuacao(regs).slice(0, 10).reverse();
-      graficos.push(new Chart(el.querySelector('#g-atuacao'), {
-        type: 'bar',
-        data: { labels: atuacao.map(a => a.rotulo), datasets: [{ data: atuacao.map(a => a.total), backgroundColor: COR_ATUACAO, borderWidth: 0 }] },
-        options: base(true)
-      }));
-
-      // Distância — magnitude em uma cor só (a distância é da viagem de casa até o trabalho)
-      const fx = Analise.faixasDistancia(regs);
-      graficos.push(new Chart(el.querySelector('#g-dist'), {
-        type: 'bar',
-        data: { labels: fx.map(f => f.faixa), datasets: [{ data: fx.map(f => f.total), backgroundColor: COR_ORIGEM, borderWidth: 0 }] },
-        options: base(false)
-      }));
-
-      // Estados de origem — barras (ranking), nunca rosca de 10 fatias
-      const cvUF = el.querySelector('#g-uf');
-      if (cvUF) {
-        const ufs = Analise.porUF(regs).slice(0, 8).reverse();
-        graficos.push(new Chart(cvUF, {
-          type: 'bar',
-          data: { labels: ufs.map(u => `${u.uf} — ${u.nome}`), datasets: [{ data: ufs.map(u => u.total), backgroundColor: ufs.map(u => u.foraDoEstado ? '#d18c63' : COR_ORIGEM), borderWidth: 0 }] },
-          options: base(true)
-        }));
-      }
+      const ufs = Analise.porUF(regs);
+      const cores = ['#1d4ed8', '#0891b2', '#7c3aed', '#db2777', '#f59e0b', '#65a30d', '#0f766e', '#9333ea', '#dc2626', '#475569'];
+      graficos.push(new Chart(el.querySelector('#g-uf'), { type: 'doughnut',
+        data: { labels: ufs.map(u => `${u.uf} — ${u.nome}${u.foraDoEstado ? ' (fora)' : ''}`), datasets: [{ data: ufs.map(u => u.total), backgroundColor: ufs.map((_, i) => cores[i % cores.length]) }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } }));
 
       const cvMicro = el.querySelector('#g-micro');
       if (cvMicro) {
         const micros = Analise.porMicro(regs);
         const variosDistritos = new Set(micros.map(m => m.distrito).filter(Boolean)).size > 1;
-        el.querySelector('#g-micro-wrap').style.height = Math.max(220, 48 + micros.length * 34) + 'px';
-        const o = empilhado(true);
-        o.plugins.tooltip.callbacks = { afterBody: itens => { const m = micros[itens[0].dataIndex]; return m.micro ? [`${m.propria} moram na própria microrregião (${m.pctPropria.toFixed(0)}%)`, `${m.cidadesOrigem} cidade(s) de origem · ${UI.fmtKm(m.distMedia)} em média`] : []; } };
-        graficos.push(new Chart(cvMicro, {
-          type: 'bar',
-          data: {
-            labels: micros.map(m => m.nome + (variosDistritos && m.distrito ? ' · ' + m.distrito : '')),
-            datasets: [...localMovel(micros), { label: 'Moram na própria microrregião', data: micros.map(m => m.micro ? m.propria : null), type: 'line', borderColor: TINTA, backgroundColor: TINTA, showLine: false, pointStyle: 'rectRot', pointRadius: 6, stack: 'p' }]
-          },
-          options: o
-        }));
+        el.querySelector('#g-micro-wrap').style.height = Math.max(220, 40 + micros.length * 30) + 'px';
+        graficos.push(new Chart(cvMicro, { type: 'bar',
+          data: { labels: micros.map(m => m.nome + (variosDistritos && m.distrito ? ' · ' + m.distrito : '')), datasets: [
+            { label: 'LOCAL', data: micros.map(m => m.local), backgroundColor: '#16a34a', stack: 's' },
+            { label: 'MÓVEL', data: micros.map(m => m.movel), backgroundColor: '#ea580c', stack: 's' },
+            { label: 'Moram na própria microrregião', data: micros.map(m => m.micro ? m.propria : null), type: 'line', borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', showLine: false, pointStyle: 'rectRot', pointRadius: 6, stack: 'p' }] },
+          options: { ...empilhado(true), plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { afterBody: itens => { const m = micros[itens[0].dataIndex]; return m.micro ? [`${m.propria} moram na própria micro (${m.pctPropria.toFixed(0)}%)`, `${m.cidadesOrigem} cidade(s) de origem · dist. média ${UI.fmtKm(m.distMedia)}`] : []; } } } } } }));
       }
+
+      const fx = Analise.faixasDistancia(regs);
+      graficos.push(new Chart(el.querySelector('#g-dist'), { type: 'bar',
+        data: { labels: fx.map(f => f.faixa), datasets: dsLM(fx) }, options: empilhado(false) }));
 
       if (temAno) {
         const anos = Analise.porAno(regs);
-        const o = empilhado(false);
-        graficos.push(new Chart(el.querySelector('#g-ano'), {
-          type: 'bar',
-          data: { labels: anos.map(a => String(a.ano)), datasets: localMovel(anos) },
-          options: o
-        }));
+        graficos.push(new Chart(el.querySelector('#g-ano'), { type: 'bar',
+          data: { labels: anos.map(a => String(a.ano)), datasets: [
+            { label: 'LOCAL', data: anos.map(a => a.local), backgroundColor: '#16a34a', stack: 's', yAxisID: 'y' },
+            { label: 'MÓVEL', data: anos.map(a => a.movel), backgroundColor: '#ea580c', stack: 's', yAxisID: 'y' },
+            { label: 'Cidades de origem', data: anos.map(a => a.cidadesOrigem), type: 'line', borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', yAxisID: 'y2', tension: .3 },
+            { label: 'Origem fora do estado', data: anos.map(a => a.foraDoEstado), type: 'line', borderColor: '#7c3aed', backgroundColor: '#7c3aed', yAxisID: 'y2', tension: .3, borderDash: [6, 4] }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } },
+            scales: { x: { stacked: true }, y: { stacked: true, ticks: { precision: 0 }, title: { display: true, text: 'Contratações' } },
+              y2: { position: 'right', grid: { drawOnChartArea: false }, ticks: { precision: 0 }, title: { display: true, text: 'Cidades' } } } } }));
       }
     }
 
     el.querySelector('#resumo-projetos').innerHTML = UI.tabela({
       vazio: 'Nenhum projeto para exibir.',
       colunas: [
-        { titulo: 'Projeto', render: p => `<span class="ponto-cor" style="background:${UI.esc(p.projeto.cor)}"></span>${UI.esc(p.projeto.nome)}${p.projeto.ativo ? '' : ' <span class="badge">inativo</span>'}` },
+        { titulo: 'Projeto', render: p => `<span class="ponto-cor" style="background:${UI.esc(p.projeto.cor)}"></span>${UI.esc(p.projeto.nome)}${p.projeto.ativo ? '' : ' <span class="badge badge-cinza">inativo</span>'}` },
         { titulo: 'Estado', render: p => `${p.projeto.uf}` },
         { titulo: 'Ano', render: p => p.projeto.ano || '<span class="muted">—</span>' },
         { titulo: 'Total', classe: 'direita', render: p => `<b>${UI.fmtNum(p.total)}</b>` },
         { titulo: 'Local', classe: 'direita', render: p => UI.fmtNum(p.local) },
         { titulo: 'Móvel', classe: 'direita', render: p => UI.fmtNum(p.movel) },
         { titulo: 'Cidades de origem', classe: 'direita', render: p => `${UI.fmtNum(p.cidadesOrigem)} <span class="muted small">(${p.ufsOrigem} UF)</span>` },
-        { titulo: 'Vêm de fora do estado', classe: 'direita', render: p => UI.fmtNum(p.foraDoEstado) },
-        { titulo: 'Cidades de trabalho', classe: 'direita', render: p => UI.fmtNum(p.cidadesAtuacao) },
-        { titulo: 'Atuam em todo o estado', classe: 'direita', render: p => UI.fmtNum(p.atuacaoMovel) },
-        { titulo: 'Distância média', classe: 'direita', render: p => UI.fmtKm(p.distMedia) }
+        { titulo: 'Fora do estado', classe: 'direita', render: p => UI.fmtNum(p.foraDoEstado) },
+        { titulo: 'Cidades de atuação', classe: 'direita', render: p => UI.fmtNum(p.cidadesAtuacao) },
+        { titulo: 'Todo o estado', classe: 'direita', render: p => UI.fmtNum(p.atuacaoMovel) },
+        { titulo: 'Dist. média', classe: 'direita', render: p => UI.fmtKm(p.distMedia) }
       ],
       linhas: Analise.porProjeto(regs, projetos)
     });

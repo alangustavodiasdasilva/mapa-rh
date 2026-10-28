@@ -1,5 +1,5 @@
-MAPA RH — Amplitude das contratações por cidade de origem e de atuação
-=======================================================================
+MAPA RH — Vagas, seleção e contratações por cidade de origem e de atuação
+=========================================================================
 
 COMO ABRIR
 ----------
@@ -10,19 +10,58 @@ COMO ABRIR
 Não precisa instalar nada. Só é necessária internet para carregar o mapa,
 os gráficos e para buscar cidades desconhecidas.
 
+
+O FLUXO DO RH (menu da esquerda, de cima para baixo)
+----------------------------------------------------
+O menu segue a ordem do trabalho:
+
+  RECRUTAMENTO
+    Vagas       -> o que precisa ser preenchido: cargo, cidade onde a pessoa vai
+                   trabalhar, unidade/PDR, LOCAL ou MÓVEL, quantidade, requisitos,
+                   salário, contato e prazo.
+                   Botão DIVULGAR: gera o texto do anúncio e dá os atalhos para cada
+                   canal — SINE / Emprega Brasil (com telefone e e-mail da agência da
+                   cidade), LinkedIn, Indeed, Gupy, Catho, InfoJobs, Vagas.com,
+                   WhatsApp (abre já com o texto), Facebook/Instagram, rádio local,
+                   prefeitura e cartaz para imprimir. Marque onde já divulgou; a vaga
+                   passa para "Em divulgação".
+    Candidatos  -> quadro por etapa: Triagem -> Entrevista -> Documentos -> Admitido.
+                   Cada candidato tem a cidade de onde vem (vai virar a origem no mapa).
+                   Na etapa Documentos há a lista de admissão (CTPS, RG/CPF, residência,
+                   PIS, título, reservista, certidões, escolaridade, ASO, foto, banco…)
+                   para marcar conforme entrega. Ao ADMITIR, a contratação é criada
+                   sozinha no projeto da vaga (de onde vem -> onde trabalha) e aparece
+                   em Contratações, no Mapa e nos Relatórios. Voltar a etapa desfaz.
+  CONTRATAÇÕES
+    Contratações -> a lista/planilha de quem já foi contratado (importação em lote).
+    Mapa, Relatórios -> acompanhamento.
+  CADASTROS
+    Projetos (estado/ano), Distritos e micros, Cidades, Unidades (PDR).
+  SISTEMA
+    Usuários e acesso, Auditoria, Backup.
+
+A tela INÍCIO mostra os quatro passos com os números de hoje (vagas abertas,
+candidatos em processo, contratações, cidades no mapa) e as pendências (vaga sem
+divulgação, candidato esperando documentos).
+
+Os filtros do topo valem para a tela aberta; cada tela mostra só os filtros que usa.
+Se alguma contratação gravada não aparece em nenhuma tela (cidade ou projeto não
+reconhecido), um aviso amarelo informa quantas são e o que fazer.
+
 COMO FUNCIONA
 -------------
 - PROJETO = um ESTADO (UF), com ano opcional. Ex.: "Contratações RS 2024".
   Crie um projeto por estado/ano para comparar a amplitude entre os anos.
-- CADASTRO = a planilha de contratações do projeto, com 4 colunas:
+- CONTRATAÇÕES = a planilha de contratações do projeto, com 5 colunas (a última
+  é opcional):
 
-    MOVEL/LOCAL | CIDADE DE ORIGEM | ESTADO | CIDADE DE ATUAÇÃO
-    LOCAL       | PIRATINI         | RS     | PELOTAS
-    MOVEL       | SANTA MARIA      | RS     | PELOTAS
-    MOVEL       | BAGE             | RS     | MOVEL
+    MOVEL/LOCAL | CIDADE DE ORIGEM | ESTADO | CIDADE DE ATUAÇÃO | BASE DE CONTRATAÇÃO
+    LOCAL       | PIRATINI         | RS     | PELOTAS           |
+    MOVEL       | SANTA MARIA      | RS     | PELOTAS           | PELOTAS
 
-  * CIDADE DE ATUAÇÃO = "MOVEL" significa que a pessoa pode atuar em
-    qualquer lugar do estado do projeto.
+  * LOCAL = a pessoa trabalha fixo na cidade de atuação.
+    MÓVEL = tem base na cidade de atuação (ou na base informada) e se desloca.
+    "Mora onde trabalha" é outra coisa: origem igual à atuação, seja local ou móvel.
   * Nomes em maiúsculas e sem acento são reconhecidos (SAO LUIZ -> São Luís).
 
 PRIMEIROS PASSOS

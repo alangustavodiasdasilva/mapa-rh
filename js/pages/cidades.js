@@ -75,10 +75,11 @@ Paginas.cidades = {
           { titulo: 'Longitude', classe: 'direita', render: c => c.lng.toFixed(4) },
           { titulo: 'Origem', render: c => `<span class="badge ${ORIGENS[c.origem][1]}">${ORIGENS[c.origem][0]}</span>` },
           { titulo: 'Uso', classe: 'direita', render: c => { const u = uso.get(c.id) || 0; const atu = Math.floor(u / 1000), regs = u % 1000; return [regs ? `${regs} como origem` : '', atu ? `${atu} como atuação` : ''].filter(Boolean).join(', ') || '<span class="muted">—</span>'; } },
-          { titulo: '', classe: 'acoes-col', render: c => podeEditar ? `<button class="btn-icone ed" data-id="${c.id}" title="Ajustar coordenadas">&#9998;</button>${(c.origem === 'manual' || c.origem === 'geocode') && !uso.has(c.id) ? `<button class="btn-icone perigo ex" data-id="${c.id}" title="Excluir">&#128465;</button>` : ''}` : '' }
+          { titulo: '', classe: 'acoes-col', render: c => `<button class="btn-icone ficha" data-id="${c.id}" title="Ficha da cidade no mapa (IBGE, SINE, anotações)">&#128269;</button>` + (podeEditar ? `<button class="btn-icone ed" data-id="${c.id}" title="Ajustar coordenadas">&#9998;</button>${(c.origem === 'manual' || c.origem === 'geocode') && !uso.has(c.id) ? `<button class="btn-icone perigo ex" data-id="${c.id}" title="Excluir">&#128465;</button>` : ''}` : '') }
         ],
         linhas: lista
       });
+      el.querySelectorAll('.ficha').forEach(b => b.addEventListener('click', () => { sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ cidadeId: b.dataset.id })); App.ir('mapa'); }));
       el.querySelectorAll('.ed').forEach(b => b.addEventListener('click', () => abrirForm(Store.cidade(b.dataset.id))));
       el.querySelectorAll('.ex').forEach(b => b.addEventListener('click', async () => {
         const c = Store.cidade(b.dataset.id);

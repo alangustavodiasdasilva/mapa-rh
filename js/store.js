@@ -30,14 +30,13 @@ const Store = (() => {
     SC: [-27.45, -50.95], SP: [-22.19, -48.79], SE: [-10.57, -37.45], TO: [-9.46, -48.26] };
   const PERFIS = { admin: 'Administrador', gestor: 'Gestor', leitor: 'Visualizador' };
   const PERMISSOES = {
-    admin: ['dashboard', 'mapa', 'cadastro', 'cidades', 'projetos', 'relatorios', 'usuarios', 'auditoria', 'backup', 'distritos', 'pdrs'],
-    gestor: ['dashboard', 'mapa', 'cadastro', 'cidades', 'projetos', 'relatorios', 'backup', 'distritos', 'pdrs'],
-    leitor: ['dashboard', 'mapa', 'relatorios', 'distritos', 'pdrs']
+    admin: ['dashboard', 'vagas', 'candidatos', 'mapa', 'cadastro', 'cidades', 'projetos', 'relatorios', 'usuarios', 'auditoria', 'backup', 'distritos', 'pdrs'],
+    gestor: ['dashboard', 'vagas', 'candidatos', 'mapa', 'cadastro', 'cidades', 'projetos', 'relatorios', 'backup', 'distritos', 'pdrs'],
+    leitor: ['dashboard', 'vagas', 'candidatos', 'mapa', 'relatorios', 'distritos', 'pdrs']
   };
   const MOVEL = 'MOVEL'; // legado: registros antigos com atuação em todo o estado
 
   let dados = null;
-  let avisoCarregamento = ''; // mensagem para a tela mostrar quando algo deu errado ao abrir
   let municipiosIBGE = null;      // [[nome, uf, lat, lng, codigo], ...]
   let indiceCidades = new Map();  // id -> cidade
   let listaCidades = [];
@@ -78,23 +77,15 @@ const Store = (() => {
       versao: VERSAO,
       usuarios: [{ id: uid(), nome: 'Administrador', login: 'admin', salt, senhaHash: sha256(salt + 'admin'),
         perfil: 'admin', ativo: true, projetos: null, senhaPadrao: true, criadoEm: agora() }],
-      projetos: [], cidades: [], registros: [], auditoria: [], distritos: [], mapasPdr: [], infoCidades: {}
+      projetos: [], cidades: [], registros: [], auditoria: [], distritos: [], mapasPdr: [], vagas: [], candidatos: [], infoCidades: {}
     };
   }
   function carregar() {
-    let bruto = null;
     try {
-      bruto = localStorage.getItem(CHAVE);
+      const bruto = localStorage.getItem(CHAVE);
       dados = bruto ? JSON.parse(bruto) : dadosPadrao();
-      if (!dados || typeof dados !== 'object') throw new Error('formato inesperado');
-    } catch (e) {
-      console.error('Falha ao ler dados salvos', e);
-      // guarda o arquivo ilegível em vez de apagá-lo: ainda dá para recuperar à mão
-      try { if (bruto) localStorage.setItem(CHAVE + ':corrompido', bruto); } catch (e2) { /* sem espaço */ }
-      dados = dadosPadrao();
-      avisoCarregamento = 'Os dados salvos neste navegador estavam ilegíveis e o sistema começou do zero. Uma cópia do arquivo com problema foi guardada — restaure o seu backup mais recente em Backup.';
-    }
-    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr']) if (!Array.isArray(dados[k])) dados[k] = [];
+    } catch (e) { console.error('Falha ao ler dados salvos', e); dados = dadosPadrao(); }
+    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.length) dados.usuarios = dadosPadrao().usuarios;
     try {
@@ -126,7 +117,7 @@ const Store = (() => {
       if (!Array.isArray(d.micros)) {
         d.micros = [];
         if (Array.isArray(d.cidadeIds) && d.cidadeIds.length) {
-          d.micros.push({ id: uid(), nome: d.nome, cor: d.cor || '#4e9933', cidadeIds: d.cidadeIds });
+          d.micros.push({ id: uid(), nome: d.nome, cor: d.cor || '#059669', cidadeIds: d.cidadeIds });
         }
         delete d.cidadeIds;
         mudou = true;
@@ -178,16 +169,9 @@ const Store = (() => {
     if (dados.versao !== VERSAO) { dados.versao = VERSAO; mudou = true; }
     if (mudou) salvar();
   }
-  // Se o navegador recusar a gravação (espaço cheio), a memória volta ao que está no disco:
-  // sem isso o sistema continuaria mostrando cadastros que na verdade não foram salvos.
   function salvar() {
-    const texto = JSON.stringify(dados);
-    try { localStorage.setItem(CHAVE, texto); }
-    catch (e) {
-      try { const bruto = localStorage.getItem(CHAVE); if (bruto) { dados = JSON.parse(bruto); reconstruirIndice(); } } catch (e2) { /* disco também ilegível */ }
-      UI.toast('Não foi possível salvar: o espaço do navegador está cheio. A última alteração foi desfeita — faça um backup e apague o que não usa.', 'erro', 8000);
-      throw new Error('Espaço do navegador cheio: a alteração não foi salva.');
-    }
+    try { localStorage.setItem(CHAVE, JSON.stringify(dados)); }
+    catch (e) { UI.toast('Não foi possível salvar: espaço do navegador cheio. Faça um backup.', 'erro', 6000); throw e; }
   }
 
   // ---------- cidades ----------
@@ -267,15 +251,12 @@ const Store = (() => {
     return cidade(id);
   }
   function excluirCidade(id) {
-    if (usoCidade(id) > 0) throw new Error('Esta cidade está em uso por contratações (como origem, cidade de trabalho ou base).');
-    const emMicro = dados.distritos.find(d => (d.micros || []).some(m => (m.cidadeIds || []).includes(id)));
-    if (emMicro) throw new Error(`Esta cidade faz parte de uma microrregião do distrito ${emMicro.nome}. Tire-a da microrregião antes de excluir.`);
+    if (usoCidade(id) > 0) throw new Error('Esta cidade está em uso por registros.');
     const antes = dados.cidades.length;
     dados.cidades = dados.cidades.filter(c => c.id !== id);
     if (dados.cidades.length === antes) throw new Error('Só é possível excluir cidades adicionadas manualmente ou por busca.');
     salvar(); reconstruirIndice();
   }
-  // Conta também a base de contratação: sem isso a cidade some e os registros ficam sem base.
   function usoCidade(id) {
     return dados.registros.filter(r => r.cidadeId === id || r.atuacao === id || r.baseContratacao === id).length;
   }
@@ -381,7 +362,7 @@ const Store = (() => {
       throw new Error('Este projeto já tem cidades de atuação em ' + p.uf + '. Para mudar o estado, corrija ou exclua esses registros antes.');
     }
     Object.assign(p, { nome: obj.nome.trim(), uf, ano, descricao: (obj.descricao || '').trim(),
-      cor: obj.cor || '#4e9933', ativo: obj.ativo !== false, atualizadoEm: agora() });
+      cor: obj.cor || '#2563eb', ativo: obj.ativo !== false, atualizadoEm: agora() });
     delete p.cidadeId; delete p.metaLocal;
     if (novo && autor && autor.projetos) { autor.projetos.push(p.id); }
     salvar();
@@ -406,10 +387,9 @@ const Store = (() => {
     const c = cidade(r.cidadeId);
     const ca = cidade(r.atuacao) || null;
     const cb = r.baseContratacao ? cidade(r.baseContratacao) : null;
-    // Atuação MÓVEL = a pessoa roda o estado inteiro. A base é só o ponto de partida dela,
-    // nunca "a cidade onde trabalha" — por isso cidadeAtuacao fica nula e não entra em média de distância.
-    const atuacaoMovel = ehMovel(r.atuacao);
-    const cidadeAtuacao = atuacaoMovel ? null : ca;
+    // legado: atuacao = 'MOVEL' (todo o estado) — mostra base de contratação se disponível
+    const atuacaoMovel = ehMovel(r.atuacao) && !cb;
+    const cidadeAtuacao = ehMovel(r.atuacao) ? cb : ca;
     return { ...r, projeto: p, cidade: c, cidadeAtuacao, cidadeBase: cb, atuacaoMovel,
       distancia: c && cidadeAtuacao ? distanciaKm(c, cidadeAtuacao) : null,
       foraDoEstado: !!(p && c && c.uf !== p.uf) };
@@ -432,8 +412,7 @@ const Store = (() => {
       .map(enriquecer)
       .filter(r => r.projeto && r.cidade && (r.atuacaoMovel || r.cidadeAtuacao))
       .filter(r => !uf || r.cidade.uf === uf)
-      // A região é a de onde a pessoa trabalha; para quem atua em todo o estado, vale a base de contratação.
-      .filter(r => !regiao || (r.cidadeAtuacao && regiao.has(r.cidadeAtuacao.id)) || (r.atuacaoMovel && r.cidadeBase && regiao.has(r.cidadeBase.id)));
+      .filter(r => !regiao || (r.cidadeAtuacao && regiao.has(r.cidadeAtuacao.id)));
   }
   function validarRegistro({ projetoId, tipo, cidadeId, atuacao, baseContratacao }) {
     if (!projeto(projetoId)) throw new Error('Projeto inválido.');
@@ -501,10 +480,8 @@ const Store = (() => {
   // distrito = { id, nome, uf, cor, descricao, micros: [{ id, nome, cor, poloCidadeId, cidadeIds: [] }] }
   // Regra: cada cidade pertence a no máximo UMA microrregião (de qualquer distrito).
   // Cores: cada DISTRITO tem uma cor própria; as MICRORREGIÕES recebem tons dessa cor (do mais escuro ao mais claro).
-  // Verdes, azuis e roxos afastados da terracota (de onde vêm) e do petróleo (onde trabalham),
-  // para que a cor de uma região nunca seja lida como um conceito de dado.
-  const PALETA_DISTRITOS = ['#998833', '#8b9933', '#6d9933', '#4e9933', '#33993a', '#33995c', '#33997e',
-    '#334799', '#3d3399', '#5c3399', '#7a3399', '#993399', '#99337a', '#99335f'];
+  const PALETA_DISTRITOS = ['#16a34a', '#2563eb', '#dc2626', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d',
+    '#ea580c', '#0d9488', '#9333ea', '#ca8a04', '#4f46e5', '#be123c', '#059669', '#b45309'];
   const corValida = c => /^#[0-9a-fA-F]{6}$/.test(String(c || ''));
   function hexParaHsl(hex) {
     let c = String(hex || '').replace('#', '');
@@ -544,7 +521,7 @@ const Store = (() => {
     const [h, s] = hexParaHsl(corValida(hexBase) ? hexBase : '#16a34a');
     const satBase = Math.max(50, Math.min(90, s || 60));
     const n = Math.max(1, qtd);
-    const L_MIN = 16, L_MAX = 86;
+    const L_MIN = 26, L_MAX = 74;
     return Array.from({ length: n }, (_, i) => {
       const l = n === 1 ? 40 : L_MIN + (L_MAX - L_MIN) * i / (n - 1);
       let sat = satBase + (i % 2 ? -18 : 10);       // alterna vivo / suave
@@ -553,14 +530,6 @@ const Store = (() => {
     });
   }
   // Cor do texto que fica legível sobre a cor informada
-  // Dois registros da mesma cor de região: mancha lavada no polígono, tom forte no rótulo/chip.
-  // Derivados na hora de desenhar — a cor escolhida pelo usuário continua sendo a que está salva.
-  function ajustarTom(hex, sat, luz) {
-    const h = hexParaHsl(corValida(hex) ? hex : '#4e9933')[0];
-    return hslParaHex(h, sat, luz);
-  }
-  function tomMancha(hex) { return ajustarTom(hex, 34, 76); }
-  function tomForte(hex) { return ajustarTom(hex, 58, 32); }
   function corTexto(hex) { return hexParaHsl(hex)[2] > 58 ? '#0f172a' : '#ffffff'; }
   // Reparte os tons da cor do distrito entre as microrregiões (em ordem alfabética: da mais escura à mais clara)
   function aplicarTons(d) {
@@ -634,8 +603,6 @@ const Store = (() => {
     if (m.poloCidadeId === cidadeId) m.poloCidadeId = m.cidadeIds[0] || null;
   }
   // opcoes.mover = ids de cidades que podem ser transferidas de outra microrregião para esta
-  // Uma cidade que não resolve AGORA (lista do IBGE ainda não baixada, por exemplo) não pode
-  // ser apagada da microrregião: ela é mantida como está e volta a aparecer quando resolver.
   function salvarMicro(distritoId, obj, autor, { mover = [] } = {}) {
     const d = distrito(distritoId);
     if (!d) throw new Error('Distrito não encontrado.');
@@ -647,10 +614,7 @@ const Store = (() => {
     const novo = !m;
     const cor = corValida(obj.cor) ? obj.cor.toLowerCase() : ((m && m.cor) || corSugeridaMicro(d));
     const base = Array.isArray(obj.cidadeIds) ? obj.cidadeIds : (m ? m.cidadeIds || [] : []);
-    // Cidade que ainda não resolve (lista do IBGE não baixada, por exemplo) é mantida:
-    // apagá-la aqui faria o usuário perder cidades só por abrir e salvar a microrregião.
-    const guardadas = m ? (m.cidadeIds || []).filter(c => !cidade(c) && !base.includes(c)) : [];
-    const cidadeIds = [...new Set([...base.filter(c => !!cidade(c)), ...guardadas])];
+    const cidadeIds = [...new Set(base.filter(c => !!cidade(c)))];
     let poloCidadeId = obj.poloCidadeId && cidade(obj.poloCidadeId) ? obj.poloCidadeId
       : (m && cidadeIds.includes(m.poloCidadeId) ? m.poloCidadeId : (cidadeIds[0] || null));
     if (!poloCidadeId) throw new Error('Informe a cidade polo da microrregião.');
@@ -757,7 +721,7 @@ const Store = (() => {
   function corDaCidade(cidadeId) {
     const info = distritoDaCidade(cidadeId);
     if (!info) return null;
-    const cor = (info.micro && info.micro.cor) || info.distrito.cor || '#4e9933';
+    const cor = (info.micro && info.micro.cor) || info.distrito.cor || '#059669';
     const polo = info.micro && info.micro.poloCidadeId === cidadeId;
     return { cor, distrito: info.distrito, micro: info.micro, polo };
   }
@@ -798,14 +762,18 @@ const Store = (() => {
       return info.distrito.id === distritoId;
     });
   }
-  // Contagem do distrito pela MESMA regra de registrosFiltrados (senão o mesmo distrito
-  // aparece com números diferentes no Mapa, na tela de Distritos e no Dashboard).
-  function resumoDistrito(d, opcoes = {}) {
+  // regs: contratações já enriquecidas (App.regs()), para o número bater com o mapa e os relatórios
+  function resumoDistrito(d, regs = null) {
     const cidades = cidadesDoDistrito(d);
     const ids = new Set(cidades.map(c => c.id));
     const silos = todosSilosPdr().filter(s => { const c = cidadeDoSilo(s, d.uf); return c && ids.has(c.id); }).length;
-    const contratacoes = registrosFiltrados({ ...opcoes, distritoId: d.id }).length;
+    const lista = regs || dados.registros.map(enriquecer);
+    const contratacoes = lista.filter(r => r.cidadeAtuacao && ids.has(r.cidadeAtuacao.id)).length;
     return { micros: (d.micros || []).length, cidades: cidades.length, silos, contratacoes };
+  }
+  // Contratações que nenhuma tela mostra porque a cidade (origem/atuação) ou o projeto não foi reconhecido
+  function registrosDescartados() {
+    return dados.registros.map(enriquecer).filter(r => !(r.projeto && r.cidade && (r.atuacaoMovel || r.cidadeAtuacao)));
   }
 
   // ---------- anotações do RH por cidade (SINE, divulgação de vagas, contatos) ----------
@@ -934,11 +902,200 @@ const Store = (() => {
     return { nome, urlRemota, pontos };
   }
   // Campos de um ponto que valem a pena mostrar (fora os já exibidos e os internos/técnicos)
-  const CAMPOS_OCULTOS = /^(cidade|municipio|micro.*|distrito|recomenda.*|modulo|horas.*|pdr id|id pod2|latitude|longitude|short|short cnpj)$/;
+  const CAMPOS_OCULTOS = /^(cidade|municipio|micro.*|distrito|pdr id|id pod2|latitude|longitude|short|short cnpj)$/;
   function camposDoPonto(s) {
     const out = [];
     for (const [k, v] of Object.entries(s.campos || {})) if (!CAMPOS_OCULTOS.test(normalizar(k)) && v) out.push([k, v]);
+    // pontos do seed/importações antigas guardam esses campos fora de `campos`
+    for (const [k, rot] of [['recomendacao', 'Recomendação'], ['modulo', 'Módulo'], ['horas', 'Horas alocadas']]) {
+      if (s[k] && !out.some(([n]) => normalizar(n).startsWith(normalizar(rot).slice(0, 5)))) out.push([rot, s[k]]);
+    }
     return out;
+  }
+
+
+  // ---------- vagas (o que o RH precisa preencher) ----------
+  const STATUS_VAGA = { aberta: 'Aberta', divulgada: 'Em divulgação', selecao: 'Em seleção', preenchida: 'Preenchida', cancelada: 'Cancelada' };
+  // Canais onde a vaga pode ser divulgada (o RH marca onde já publicou)
+  const CANAIS = [
+    { id: 'sine', nome: 'SINE / Emprega Brasil', grupo: 'Público e gratuito', url: 'https://empregabrasil.mte.gov.br/', dica: 'Portal do Ministério do Trabalho: cadastre a empresa como empregador e publique a vaga. A agência do SINE da cidade também recebe vagas por telefone ou e-mail.' },
+    { id: 'linkedin', nome: 'LinkedIn', grupo: 'Plataformas de vagas', url: 'https://www.linkedin.com/talent/post-a-job', dica: 'Publicação gratuita de 1 vaga por vez; o texto também pode ser postado como publicação no feed.' },
+    { id: 'indeed', nome: 'Indeed', grupo: 'Plataformas de vagas', url: 'https://br.indeed.com/hire', dica: 'Anúncio gratuito para empregadores. Aceita o texto gerado aqui.' },
+    { id: 'gupy', nome: 'Gupy', grupo: 'Plataformas de vagas', url: 'https://www.gupy.io/', dica: 'Plataforma paga de recrutamento (ATS). Use se a empresa já tiver contrato.' },
+    { id: 'catho', nome: 'Catho', grupo: 'Plataformas de vagas', url: 'https://www.catho.com.br/empresas/', dica: 'Anúncio para empresas (planos pagos).' },
+    { id: 'infojobs', nome: 'InfoJobs', grupo: 'Plataformas de vagas', url: 'https://www.infojobs.com.br/empresas/', dica: 'Anúncio para empresas; tem plano gratuito limitado.' },
+    { id: 'vagascom', nome: 'Vagas.com', grupo: 'Plataformas de vagas', url: 'https://www.vagas.com.br/empresas', dica: 'Anúncio para empresas.' },
+    { id: 'whatsapp', nome: 'WhatsApp', grupo: 'Redes e comunidade', url: '', dica: 'Grupos da cidade, de ex-colaboradores e de parceiros. O botão abre o WhatsApp já com o texto.' },
+    { id: 'facebook', nome: 'Facebook / Instagram', grupo: 'Redes e comunidade', url: 'https://www.facebook.com/', dica: 'Grupos de "vagas na cidade" e a página da empresa. Copie o texto e cole na publicação.' },
+    { id: 'radio', nome: 'Rádio local', grupo: 'Redes e comunidade', url: '', dica: 'Muito usado no interior: ligue para a rádio da cidade e peça a divulgação (o botão procura a rádio no Google).' },
+    { id: 'prefeitura', nome: 'Prefeitura / Secretaria', grupo: 'Redes e comunidade', url: '', dica: 'Secretaria de Assistência Social ou de Desenvolvimento costuma divulgar vagas e indicar candidatos.' },
+    { id: 'cartaz', nome: 'Cartaz / indicação', grupo: 'Redes e comunidade', url: '', dica: 'Cartaz na unidade, no comércio e indicação dos próprios colaboradores.' }
+  ];
+  function vagas() { return dados.vagas || []; }
+  function vaga(id) { return (dados.vagas || []).find(v => v.id === id) || null; }
+  function enriquecerVaga(v) {
+    const cands = (dados.candidatos || []).filter(c => c.vagaId === v.id);
+    const admitidos = cands.filter(c => c.etapa === 'admitido').length;
+    return { ...v, projeto: projeto(v.projetoId), cidade: cidade(v.cidadeId), candidatos: cands.length, admitidos,
+      emProcesso: cands.filter(c => !['admitido', 'reprovado'].includes(c.etapa)).length,
+      faltam: Math.max(0, (v.quantidade || 1) - admitidos), canaisDivulgados: Object.keys(v.divulgacao || {}).length };
+  }
+  function vagasVisiveis(usuario, { projetoId = '', status = '' } = {}) {
+    const visiveis = new Set(projetosVisiveis(usuario).map(p => p.id));
+    const fechada = v => v.status === 'preenchida' || v.status === 'cancelada';
+    return vagas().filter(v => visiveis.has(v.projetoId)).filter(v => !projetoId || v.projetoId === projetoId)
+      .filter(v => !status || v.status === status).map(enriquecerVaga)
+      .sort((a, b) => fechada(a) - fechada(b) || (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+  }
+  function salvarVaga(obj, autor) {
+    if (!obj.titulo || !obj.titulo.trim()) throw new Error('Informe o cargo / título da vaga.');
+    if (!projeto(obj.projetoId)) throw new Error('Escolha o projeto (estado/ano) da vaga.');
+    if (!cidade(obj.cidadeId)) throw new Error('Escolha a cidade onde a pessoa vai trabalhar.');
+    if (!['LOCAL', 'MOVEL'].includes(obj.tipo)) throw new Error('Tipo deve ser LOCAL ou MÓVEL.');
+    const qtd = parseInt(obj.quantidade, 10);
+    if (isNaN(qtd) || qtd < 1) throw new Error('Quantidade de vagas deve ser 1 ou mais.');
+    let v = obj.id ? vaga(obj.id) : null;
+    const novo = !v;
+    if (!v) { v = { id: uid(), criadoEm: agora(), criadoPor: autor ? autor.login : null, status: 'aberta', divulgacao: {} }; dados.vagas.push(v); }
+    Object.assign(v, { titulo: obj.titulo.trim(), projetoId: obj.projetoId, cidadeId: obj.cidadeId, tipo: obj.tipo, quantidade: qtd,
+      unidade: (obj.unidade || '').trim(), descricao: (obj.descricao || '').trim(), requisitos: (obj.requisitos || '').trim(),
+      salario: (obj.salario || '').trim(), beneficios: (obj.beneficios || '').trim(), jornada: (obj.jornada || '').trim(),
+      contato: (obj.contato || '').trim(), prazo: obj.prazo || null, status: STATUS_VAGA[obj.status] ? obj.status : v.status, atualizadoEm: agora() });
+    salvar();
+    auditar(novo ? 'vaga.criar' : 'vaga.editar', `Vaga ${v.titulo} — ${cidade(v.cidadeId).nome}`, autor);
+    return enriquecerVaga(v);
+  }
+  function mudarStatusVaga(id, status, autor) {
+    const v = vaga(id); if (!v) throw new Error('Vaga não encontrada.');
+    if (!STATUS_VAGA[status]) throw new Error('Status inválido.');
+    v.status = status; v.atualizadoEm = agora(); salvar();
+    auditar('vaga.status', `Vaga ${v.titulo}: ${STATUS_VAGA[status]}`, autor);
+  }
+  // marca (ou desmarca) um canal como "já divulgado" nesta vaga
+  function marcarDivulgacao(id, canalId, marcado, autor) {
+    const v = vaga(id); if (!v) throw new Error('Vaga não encontrada.');
+    if (!v.divulgacao) v.divulgacao = {};
+    if (marcado) v.divulgacao[canalId] = { em: agora(), por: autor ? autor.login : null }; else delete v.divulgacao[canalId];
+    if (v.status === 'aberta' && Object.keys(v.divulgacao).length) v.status = 'divulgada';
+    salvar();
+    const c = CANAIS.find(x => x.id === canalId);
+    auditar('vaga.divulgar', `Vaga ${v.titulo}: ${marcado ? 'divulgada em' : 'divulgação removida de'} ${c ? c.nome : canalId}`, autor);
+  }
+  function excluirVaga(id, autor) {
+    const v = vaga(id); if (!v) return;
+    dados.vagas = dados.vagas.filter(x => x.id !== id);
+    dados.candidatos = (dados.candidatos || []).filter(c => c.vagaId !== id);
+    salvar();
+    auditar('vaga.excluir', `Vaga ${v.titulo}`, autor);
+  }
+  // Texto pronto do anúncio (usado em todos os canais)
+  function textoAnuncio(v) {
+    v = v.cidade ? v : enriquecerVaga(v);
+    const c = v.cidade;
+    const linhas = [`VAGA: ${v.titulo.toUpperCase()}`, `Local de trabalho: ${c ? c.nome + '/' + c.uf : '—'}${v.unidade ? ' — ' + v.unidade : ''}${v.tipo === 'MOVEL' ? ' (com deslocamento / atuação móvel)' : ''}`];
+    if (v.quantidade > 1) linhas.push(`Quantidade: ${v.quantidade} vagas`);
+    if (v.descricao) linhas.push('', 'Atividades:', v.descricao);
+    if (v.requisitos) linhas.push('', 'Requisitos:', v.requisitos);
+    if (v.jornada) linhas.push('', `Jornada: ${v.jornada}`);
+    if (v.salario) linhas.push(`Salário: ${v.salario}`);
+    if (v.beneficios) linhas.push(`Benefícios: ${v.beneficios}`);
+    if (v.prazo) linhas.push('', `Inscrições até ${new Date(v.prazo + 'T12:00:00').toLocaleDateString('pt-BR')}`);
+    linhas.push('', `Interessados: ${v.contato || 'entrar em contato com o RH'}`);
+    return linhas.join('\n');
+  }
+
+  // ---------- candidatos (do currículo até a admissão) ----------
+  const ETAPAS = { triagem: 'Triagem', entrevista: 'Entrevista', documentos: 'Documentos', admitido: 'Admitido', reprovado: 'Não seguiu' };
+  const ORDEM_ETAPAS = ['triagem', 'entrevista', 'documentos', 'admitido'];
+  // Documentos de admissão (CLT) — o RH confere um a um
+  const DOCUMENTOS = [
+    { id: 'ctps', nome: 'Carteira de Trabalho digital (CTPS)' },
+    { id: 'rg_cpf', nome: 'RG e CPF' },
+    { id: 'residencia', nome: 'Comprovante de residência' },
+    { id: 'pis', nome: 'Número do PIS/NIS' },
+    { id: 'titulo', nome: 'Título de eleitor' },
+    { id: 'reservista', nome: 'Certificado de reservista (homens até 45 anos)' },
+    { id: 'civil', nome: 'Certidão de nascimento ou casamento' },
+    { id: 'filhos', nome: 'Certidão de nascimento dos filhos (salário-família / IR)' },
+    { id: 'escolaridade', nome: 'Comprovante de escolaridade' },
+    { id: 'aso', nome: 'Exame admissional (ASO)' },
+    { id: 'foto', nome: 'Foto 3x4' },
+    { id: 'banco', nome: 'Dados bancários' },
+    { id: 'cnh', nome: 'CNH (se a função exigir)' },
+    { id: 'conselho', nome: 'Registro no conselho de classe (se exigido)' }
+  ];
+  function candidatos() { return dados.candidatos || []; }
+  function candidato(id) { return (dados.candidatos || []).find(c => c.id === id) || null; }
+  function enriquecerCandidato(c) {
+    const v = vaga(c.vagaId);
+    const docs = c.documentos || {};
+    return { ...c, vaga: v ? enriquecerVaga(v) : null, cidade: cidade(c.cidadeId),
+      docsOk: DOCUMENTOS.filter(d => docs[d.id]).length, docsTotal: DOCUMENTOS.length };
+  }
+  function candidatosVisiveis(usuario, { vagaId = '', projetoId = '' } = {}) {
+    const visiveis = new Set(projetosVisiveis(usuario).map(p => p.id));
+    return candidatos().map(enriquecerCandidato).filter(c => c.vaga && visiveis.has(c.vaga.projetoId))
+      .filter(c => !vagaId || c.vagaId === vagaId).filter(c => !projetoId || c.vaga.projetoId === projetoId)
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+  }
+  function salvarCandidato(obj, autor) {
+    if (!obj.nome || !obj.nome.trim()) throw new Error('Informe o nome do candidato.');
+    if (!vaga(obj.vagaId)) throw new Error('Escolha a vaga.');
+    if (obj.cidadeId && !cidade(obj.cidadeId)) throw new Error('Cidade de origem inválida.');
+    let c = obj.id ? candidato(obj.id) : null;
+    const novo = !c;
+    if (!c) { c = { id: uid(), criadoEm: agora(), criadoPor: autor ? autor.login : null, etapa: 'triagem', documentos: {} }; dados.candidatos.push(c); }
+    Object.assign(c, { nome: obj.nome.trim(), vagaId: obj.vagaId, cidadeId: obj.cidadeId || null, telefone: (obj.telefone || '').trim(),
+      email: (obj.email || '').trim(), origemContato: (obj.origemContato || '').trim(), observacoes: (obj.observacoes || '').trim(), atualizadoEm: agora() });
+    if (obj.etapa && ETAPAS[obj.etapa]) c.etapa = obj.etapa;
+    salvar();
+    auditar(novo ? 'candidato.criar' : 'candidato.editar', `${c.nome} — ${vaga(c.vagaId).titulo}`, autor);
+    return enriquecerCandidato(c);
+  }
+  // Troca a etapa; ao admitir, cria a contratação no projeto da vaga (origem = cidade do candidato, atuação = cidade da vaga)
+  function moverCandidato(id, etapa, autor) {
+    const c = candidato(id); if (!c) throw new Error('Candidato não encontrado.');
+    if (!ETAPAS[etapa]) throw new Error('Etapa inválida.');
+    const v = vaga(c.vagaId); if (!v) throw new Error('A vaga deste candidato não existe mais.');
+    if (etapa === 'admitido' && !c.registroId) {
+      if (!c.cidadeId) throw new Error('Informe a cidade de onde o candidato vem antes de admitir (ela vai para o mapa).');
+      const r = adicionarRegistro({ projetoId: v.projetoId, tipo: v.tipo, cidadeId: c.cidadeId, atuacao: v.cidadeId, baseContratacao: v.tipo === 'MOVEL' ? v.cidadeId : null }, autor);
+      c.registroId = r.id; c.admitidoEm = agora();
+      const adm = candidatos().filter(x => x.vagaId === v.id && x.etapa === 'admitido').length + 1;
+      if (adm >= (v.quantidade || 1)) v.status = 'preenchida'; else if (v.status === 'aberta' || v.status === 'divulgada') v.status = 'selecao';
+    } else if (etapa !== 'admitido' && c.registroId) {
+      // voltou atrás: tira a contratação criada na admissão
+      excluirRegistro(c.registroId, autor); c.registroId = null; c.admitidoEm = null;
+      if (v.status === 'preenchida') v.status = 'selecao';
+    } else if (etapa !== 'triagem' && etapa !== 'reprovado' && (v.status === 'aberta' || v.status === 'divulgada')) v.status = 'selecao';
+    c.etapa = etapa; c.atualizadoEm = agora();
+    salvar();
+    auditar('candidato.etapa', `${c.nome}: ${ETAPAS[etapa]} (${v.titulo})`, autor);
+    return enriquecerCandidato(c);
+  }
+  function marcarDocumento(id, docId, ok) {
+    const c = candidato(id); if (!c) throw new Error('Candidato não encontrado.');
+    if (!c.documentos) c.documentos = {};
+    if (ok) c.documentos[docId] = agora(); else delete c.documentos[docId];
+    salvar();
+    return enriquecerCandidato(c);
+  }
+  function excluirCandidato(id, autor) {
+    const c = candidato(id); if (!c) return;
+    dados.candidatos = dados.candidatos.filter(x => x.id !== id);
+    salvar();
+    auditar('candidato.excluir', c.nome, autor);
+  }
+  // Resumo para a tela de início
+  function resumoRecrutamento(usuario, projetoId = '') {
+    const vs = vagasVisiveis(usuario, { projetoId });
+    const abertas = vs.filter(v => !['preenchida', 'cancelada'].includes(v.status));
+    const cs = candidatosVisiveis(usuario, { projetoId });
+    return { vagasAbertas: abertas.length, posicoes: abertas.reduce((n, v) => n + v.faltam, 0),
+      semDivulgacao: abertas.filter(v => !v.canaisDivulgados).length,
+      candidatos: cs.filter(c => !['admitido', 'reprovado'].includes(c.etapa)).length,
+      emDocumentos: cs.filter(c => c.etapa === 'documentos').length,
+      admitidos: cs.filter(c => c.etapa === 'admitido').length };
   }
 
   // ---------- auditoria ----------
@@ -959,7 +1116,7 @@ const Store = (() => {
     try { obj = JSON.parse(texto); } catch (e) { throw new Error('Arquivo inválido (não é um backup do Mapa RH).'); }
     if (!obj || obj.app !== 'maparh' || !obj.dados) throw new Error('Arquivo inválido (não é um backup do Mapa RH).');
     dados = obj.dados;
-    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr']) if (!Array.isArray(dados[k])) dados[k] = [];
+    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.some(u => u.perfil === 'admin' && u.ativo)) dados.usuarios.push(dadosPadrao().usuarios[0]);
     salvar();
@@ -974,10 +1131,10 @@ const Store = (() => {
     let bytes = 0;
     for (const k of [CHAVE, CHAVE_IBGE]) bytes += (localStorage.getItem(k) || '').length * 2;
     return { bytes, registros: dados.registros.length, projetos: dados.projetos.length, usuarios: dados.usuarios.length, cidadesUsuario: dados.cidades.length,
-      distritos: dados.distritos.length, micros: dados.distritos.reduce((n, d) => n + (d.micros || []).length, 0), mapasPdr: (dados.mapasPdr || []).length };
+      distritos: dados.distritos.length, micros: dados.distritos.reduce((n, d) => n + (d.micros || []).length, 0), mapasPdr: (dados.mapasPdr || []).length,
+      vagas: (dados.vagas || []).length, candidatos: (dados.candidatos || []).length };
   }
   // Dados de demonstração (a planilha de exemplo informada pelo RH).
-  function avisoAoCarregar() { const a = avisoCarregamento; avisoCarregamento = ''; return a; }
   function dadosDeExemplo(autor) {
     if (dados.projetos.length || dados.registros.length) throw new Error('Os dados de exemplo só podem ser carregados em uma base vazia.');
     const p = salvarProjeto({ nome: 'Exemplo — Contratações RS', uf: 'RS', ano: 2024, descricao: 'Projeto de demonstração. Pode ser editado ou excluído.', cor: '#2563eb' }, autor);
@@ -994,9 +1151,9 @@ const Store = (() => {
     for (const [tipo, origem, uf, atuacaoCol, baseCol] of linhas) {
       const c = resolverCidade(origem, uf) || cidadeAproximada(origem, uf);
       const base = resolverCidade(baseCol, p.uf) || cidadeAproximada(baseCol, p.uf);
-      // "MOVEL" na coluna de atuação = trabalha em todo o estado; a base fica só como ponto de partida
+      // quando atuacao = 'MOVEL' na coluna → usar base de contratação
       const atuacaoResolvida = (ehMovel(atuacaoCol) || /^m[oó]vel/i.test(atuacaoCol))
-        ? MOVEL
+        ? (base ? base.id : MOVEL)
         : (resolverCidade(atuacaoCol, p.uf) || cidadeAproximada(atuacaoCol, p.uf))?.id;
       if (c && atuacaoResolvida) regs.push({ projetoId: p.id, tipo, cidadeId: c.id, atuacao: atuacaoResolvida, baseContratacao: base ? base.id : null });
     }
@@ -1013,10 +1170,11 @@ const Store = (() => {
     projetos, projeto, projetosVisiveis, rotuloProjeto, salvarProjeto, excluirProjeto,
     registros, registrosFiltrados, adicionarRegistro, adicionarRegistros, atualizarRegistro, excluirRegistro, excluirRegistros,
     PALETA_DISTRITOS, gerarTons, corTexto, hexParaHsl, hslParaHex, distritos, distrito, micro, salvarDistrito, excluirDistrito, salvarMicro, excluirMicro,
-    importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, cidadeDoSilo, microDoSilo, silosNaRegiao,
+    importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, registrosDescartados, cidadeDoSilo, microDoSilo, silosNaRegiao,
     infoCidade, salvarInfoCidade, agenciasSine, sineDaCidade, sineMaisProximo,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr,
-    auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo, avisoAoCarregar,
-    ajustarTom, tomMancha, tomForte,
+    STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
+    ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,
+    auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo,
     get dados() { return dados; } };
 })();

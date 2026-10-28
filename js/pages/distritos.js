@@ -46,7 +46,10 @@ Paginas.distritos = {
     const bImp = el.querySelector('#btn-importar'); if (bImp) bImp.addEventListener('click', abrirImportacao);
 
     // ---------- lista ----------
+    let regsAtuais = [];
     function renderLista() {
+      regsAtuais = App.regs();
+      App.atualizarFiltroDistrito(); App.atualizarFiltroUF(); // o topo acompanha o que foi salvo aqui
       const lista = Store.distritos().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const cont = el.querySelector('#dist-lista');
       const totalMicros = lista.reduce((n, d) => n + (d.micros || []).length, 0);
@@ -86,7 +89,7 @@ Paginas.distritos = {
     }
 
     function renderDistrito(d, micros, filtrado) {
-      const r = Store.resumoDistrito(d);
+      const r = Store.resumoDistrito(d, regsAtuais);
       const recolhido = recolhidos.has(d.id) && !filtrado;
       return `
         <div class="card dist-card ${recolhido ? 'recolhido' : ''}" data-id="${d.id}" style="--cor:${UI.esc(d.cor || '#2563eb')}">
@@ -135,9 +138,10 @@ Paginas.distritos = {
             <div class="micro-cab">
               <b>${UI.esc(m.nome)}</b>
               <span class="muted small">${(m.cidadeIds || []).length} cidade(s)${polo ? '' : ' · <span class="status-erro">sem cidade polo</span>'}</span>
-              ${podeEditar ? `<span class="micro-acoes nao-imprimir">
+              <span class="micro-acoes nao-imprimir">
+                <button class="btn-icone acao-mapa-micro" title="Ver esta microrregião no mapa">&#128506;</button>${podeEditar ? `
                 <button class="btn-icone acao-editar-micro" title="Editar microrregião e cidades">&#9998;</button>
-                <button class="btn-icone perigo acao-excluir-micro" title="Excluir microrregião">&#128465;</button></span>` : ''}
+                <button class="btn-icone perigo acao-excluir-micro" title="Excluir microrregião">&#128465;</button>` : ''}</span>
             </div>
             <div class="chips-wrap">${chips || '<span class="muted small">Nenhuma cidade.</span>'}</div>
           </div>
@@ -153,6 +157,7 @@ Paginas.distritos = {
       const alvo = sel => e.target.closest(sel);
       const linhaMicro = e.target.closest('.micro-linha');
       const m = linhaMicro ? (d.micros || []).find(x => x.id === linhaMicro.dataset.micro) : null;
+      if (m && alvo('.acao-mapa-micro')) { sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ distritoId: d.id, microId: m.id })); App.ir('mapa'); return; }
       if (m && alvo('.acao-editar-micro')) return abrirFormMicro(d, m);
       if (m && alvo('.acao-excluir-micro')) return excluirMicro(d, m);
       if (m && alvo('.acao-mais')) { expandidas.add(m.id); return renderLista(); }
@@ -168,7 +173,7 @@ Paginas.distritos = {
     });
 
     function verNoMapa(d) {
-      sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ distritoId: d.id }));
+      sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ distritoId: d.id, abrirPainel: true }));
       App.ir('mapa');
     }
     async function excluirDistrito(d) {
