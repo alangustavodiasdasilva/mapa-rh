@@ -479,3 +479,6 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .uf-opcao { display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--borda); border-radius: 6px; padding: 4px 2px; font-size: 12px; font-weight: 600; cursor: pointer; margin: 0; }
 .uf-opcao input { margin: 0; }
 .uf-opcao.marcada { background: var(--primaria-clara); border-color: var(--primaria); color: var(--primaria-escura); }
+
+/* status da busca em segundo plano */
+.lote-topo { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); background: #0f172a; color: #fff; padding: 8px 14px; border-radius: 999px; font-size: 12px; z-index: 900; box-shadow: 0 8px 24px rgba(0,0,0,.25); max-width: 90vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -84,6 +84,7 @@ Paginas.projetos = {
               descricao: q('#p-desc').value, cor: q('#p-cor').value, ativo: q('#p-ativo').checked }, App.usuario);
             App.usuario = Store.usuarioAtual() || App.usuario;
             UI.toast('Projeto salvo.', 'sucesso'); App.atualizarFiltroProjetos(); renderLista();
+            App.prepararBases(); // estados novos: carrega a base embutida ou caça as agências na internet
           } }
         ]
       });

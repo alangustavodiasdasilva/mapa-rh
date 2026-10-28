@@ -916,6 +916,21 @@ const Store = (() => {
     salvar();
     return lista.length;
   }
+  function marcarBuscaEstado(uf, achou) {
+    if (!dados.sineBuscaUF || typeof dados.sineBuscaUF !== 'object') dados.sineBuscaUF = {};
+    dados.sineBuscaUF[String(uf).toUpperCase()] = { quando: agora(), achou }; salvar();
+  }
+  function buscaEstadoRecente(uf, dias = 30) {
+    const b = dados.sineBuscaUF && dados.sineBuscaUF[String(uf).toUpperCase()];
+    return !!(b && (Date.now() - new Date(b.quando).getTime()) < dias * 86400000);
+  }
+  // Estados em uso (projetos e distritos) que não têm base oficial embutida
+  function ufsSemBaseSine() {
+    const ufs = new Set();
+    dados.projetos.forEach(p => ufsProjeto(p).forEach(u => ufs.add(u)));
+    dados.distritos.forEach(d => { if (d.uf) ufs.add(String(d.uf).toUpperCase()); });
+    return [...ufs].filter(u => !BASES_SINE.includes(u));
+  }
   function buscaSineRecente(cidadeId, dias = 30) {
     const b = dados.sineBusca && dados.sineBusca[cidadeId];
     return !!(b && (Date.now() - new Date(b.quando).getTime()) < dias * 86400000);
@@ -1399,7 +1414,7 @@ const Store = (() => {
     registros, registrosFiltrados, adicionarRegistro, adicionarRegistros, atualizarRegistro, excluirRegistro, excluirRegistros,
     PALETA_DISTRITOS, gerarTons, corTexto, hexParaHsl, hslParaHex, distritos, distrito, micro, salvarDistrito, excluirDistrito, salvarMicro, excluirMicro,
     importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, registrosDescartados, cidadeDoSilo, microDoSilo, silosNaRegiao,
-    infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, BASES_SINE, carregarBaseSine, carregarBasesSineEmUso, fonteBaseSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente,
+    infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, BASES_SINE, carregarBaseSine, carregarBasesSineEmUso, fonteBaseSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente, marcarBuscaEstado, buscaEstadoRecente, ufsSemBaseSine,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
     STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,

@@ -19,9 +19,9 @@ Paginas.cidades = {
         <div class="card" id="card-sine">
           <h2>Agências do SINE</h2>
           <p class="muted small" id="sine-cobertura"></p>
-          <p class="muted small">Bases oficiais embutidas: <b>RS</b> (FGTAS), <b>PR</b> (Secretaria do Trabalho) e <b>SC</b> (SICOS/SAS, parcial) — carregadas sozinhas quando o estado entra num projeto. Para cidades sem agência na base o sistema <b>busca na internet</b> ao abrir a ficha da cidade: pelo <b>Google Places</b> (com chave) ou pelo OpenStreetMap (sem chave, cobertura menor).</p>
+          <p class="muted small">Bases oficiais embutidas: <b>RS</b> (FGTAS), <b>PR</b> (Secretaria do Trabalho) e <b>SC</b> (SICOS/SAS, parcial) — carregadas sozinhas quando o estado entra num projeto. Estado <b>sem base</b>: ao cadastrar o projeto o sistema <b>caça as agências do estado inteiro na internet</b> (OpenStreetMap) em segundo plano e, ao abrir a ficha de uma cidade, busca de novo pelo <b>Google Places</b> (com chave) ou OpenStreetMap.</p>
           ${podeEditar ? `<label>Chave da API do Google Places (opcional)<input id="sine-google-key" type="password" placeholder="AIza…" value="${UI.esc(Store.config().googleKey || '')}" autocomplete="off"><span class="muted small">Google Cloud → APIs e serviços → Credenciais → Criar chave; ative "Places API (New)". Fica salva neste navegador e no backup.</span></label>
-          <div class="linha"><button class="btn btn-primario btn-pequeno" id="btn-sine-lote">Buscar agências das cidades dos distritos</button><button class="btn btn-pequeno" id="btn-sine-importar">Importar planilha</button><button class="btn btn-pequeno" id="btn-sine-modelo">Modelo da planilha</button></div>
+          <div class="linha"><button class="btn btn-primario btn-pequeno" id="btn-sine-estado">Caçar agências dos estados sem base agora</button><button class="btn btn-pequeno" id="btn-sine-lote">Buscar por cidade (distritos)</button><button class="btn btn-pequeno" id="btn-sine-importar">Importar planilha</button><button class="btn btn-pequeno" id="btn-sine-modelo">Modelo da planilha</button></div>
           <div id="sine-lote-status" class="small muted" style="margin-top:6px"></div>` : ''}
           <div id="sine-importadas" class="small" style="margin-top:8px"></div>
         </div>
@@ -59,22 +59,26 @@ Paginas.cidades = {
     const kEl = el.querySelector('#sine-google-key');
     if (kEl) kEl.addEventListener('change', () => { Store.salvarConfig({ googleKey: kEl.value.trim() }, App.usuario); UI.toast(kEl.value.trim() ? 'Chave do Google salva.' : 'Chave removida.', 'sucesso'); });
     // busca em lote: todas as cidades dos distritos que ainda não têm agência nem busca recente
+    const bEst = el.querySelector('#btn-sine-estado');
+    if (bEst) bEst.addEventListener('click', async () => {
+      const ufs = Store.ufsSemBaseSine();
+      if (!ufs.length) { UI.toast('Todos os estados em uso já têm base oficial embutida (' + Store.BASES_SINE.join(', ') + ').', 'info', 6000); return; }
+      UI.toast('Caçando agências em ' + ufs.join(', ') + ' (segundo plano)…', 'info');
+      App.cacarSineEstados(true);
+    });
     const bLote = el.querySelector('#btn-sine-lote');
+    const stLote = el.querySelector('#sine-lote-status');
+    if (stLote) stLote.textContent = App.textoStatusLote();
     if (bLote) bLote.addEventListener('click', async () => {
-      const cidades = [...new Set(Store.distritos().flatMap(d => Store.cidadesDoDistrito(d)))].filter(ci => !Store.sineDaCidade(ci).length && !Store.buscaSineRecente(ci.id));
-      if (!cidades.length) { UI.toast('Todas as cidades dos distritos já têm agência ou busca recente.', 'info'); return; }
+      if (App.loteSine && App.loteSine.ativo) { UI.toast('A busca já está rodando em segundo plano.', 'info'); return; }
+      await Store.carregarBasesSineEmUso();
+      // estados com base oficial embutida já estão cobertos (agência da cidade ou a mais próxima); a internet só para os outros
+      const cidades = [...new Set(Store.distritos().flatMap(d => Store.cidadesDoDistrito(d)))]
+        .filter(ci => !Store.BASES_SINE.includes(ci.uf) && !Store.sineDaCidade(ci).length && !Store.buscaSineRecente(ci.id));
+      if (!cidades.length) { UI.toast('Todos os estados em uso já têm base oficial embutida (' + Store.BASES_SINE.join(', ') + '). Nada a buscar na internet.', 'info', 6000); return; }
       const semChave = !(Store.config().googleKey || '').trim();
-      if (!await UI.confirmar(`Buscar na internet as agências de ${cidades.length} cidade(s)${semChave ? ' pelo OpenStreetMap (sem chave do Google a cobertura é menor e pode demorar)' : ' pelo Google Places'}?`, { textoOk: 'Buscar' })) return;
-      const st = el.querySelector('#sine-lote-status'); let achadas = 0, feitas = 0;
-      bLote.disabled = true;
-      for (const ci of cidades) {
-        st.textContent = `Buscando ${ci.nome}/${ci.uf}… (${++feitas} de ${cidades.length}, ${achadas} agência(s) achada(s))`;
-        try { const r = await Geo.buscarSineOnline(ci); achadas += r.agencias.length; } catch (e) { console.warn(e); }
-        if (semChave) await new Promise(res => setTimeout(res, 1200)); // respeita o limite do OpenStreetMap
-      }
-      bLote.disabled = false;
-      st.textContent = `Concluído: ${achadas} agência(s) encontrada(s) em ${cidades.length} cidade(s).`;
-      renderSine();
+      if (!await UI.confirmar(`Buscar na internet as agências de ${cidades.length} cidade(s)${semChave ? ' pelo OpenStreetMap (sem chave do Google a cobertura é menor e pode demorar)' : ' pelo Google Places'}? A busca continua em segundo plano mesmo se você trocar de tela.`, { textoOk: 'Buscar' })) return;
+      App.buscarSineLote(cidades);
     });
     const bModelo = el.querySelector('#btn-sine-modelo');
     if (bModelo) bModelo.addEventListener('click', () => UI.baixarCSV('modelo_agencias_sine.csv', [

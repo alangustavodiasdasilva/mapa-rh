@@ -167,6 +167,43 @@ const Geo = (() => {
       nome: (x.display_name || '').split(',')[0], endereco: (x.display_name || '').split(',').slice(1, 4).join(',').trim(),
       telefones: [(x.extratags || {}).phone || (x.extratags || {})['contact:phone']].filter(Boolean), email: '', horario: (x.extratags || {}).opening_hours || '', url: '', lat: +x.lat, lng: +x.lon }));
   }
+  // Todas as agências do SINE de um estado que o OpenStreetMap conhece (uma consulta só). Devolve a lista bruta.
+  async function sineEstadoOSM(uf) {
+    const q = `[out:json][timeout:60];area["ISO3166-2"="BR-${uf}"]->.a;nwr(area.a)["name"~"SINE|Agência do Trabalhador|Agencia do Trabalhador|Sistema Nacional de Emprego|Casa do Trabalhador|Posto de Atendimento ao Trabalhador",i];out center tags;`;
+    let ultimo = null;
+    for (const url of OVERPASS) {
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 70000);
+        const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl.signal });
+        clearTimeout(t);
+        if (!r.ok) { ultimo = new Error('Overpass HTTP ' + r.status); continue; }
+        const j = await r.json();
+        return (j.elements || []).map(e => { const tg = e.tags || {}; const lat = e.lat != null ? e.lat : (e.center || {}).lat, lng = e.lon != null ? e.lon : (e.center || {}).lon;
+          return { nome: tg.name, cidadeOSM: tg['addr:city'] || '', endereco: [tg['addr:street'], tg['addr:housenumber'], tg['addr:suburb']].filter(Boolean).join(', '),
+            telefones: [tg.phone || tg['contact:phone']].filter(Boolean), email: tg.email || tg['contact:email'] || '', horario: tg.opening_hours || '', url: tg.website || tg['contact:website'] || '', lat, lng }; })
+          .filter(a => a.nome && a.lat != null);
+      } catch (e) { ultimo = e; }
+    }
+    throw ultimo || new Error('OpenStreetMap indisponível.');
+  }
+  // Caça as agências de um estado inteiro e grava na base (cidade pelo endereço ou pela mais próxima). Devolve { achou, aviso }.
+  async function buscarSineEstado(uf) {
+    uf = String(uf || '').toUpperCase();
+    let lista;
+    try { lista = await sineEstadoOSM(uf); } catch (e) { return { achou: 0, aviso: 'OpenStreetMap: ' + e.message }; }
+    const porCidade = new Map();
+    for (const a of lista) {
+      const c = (a.cidadeOSM && (Store.resolverCidade(a.cidadeOSM, uf) || Store.cidadeAproximada(a.cidadeOSM, uf))) || Store.cidadeMaisProxima(a.lat, a.lng, uf, 40);
+      if (!c) continue;
+      if (!porCidade.has(c.id)) porCidade.set(c.id, { cidade: c, agencias: [] });
+      porCidade.get(c.id).agencias.push(a);
+    }
+    let achou = 0;
+    for (const { cidade, agencias } of porCidade.values()) achou += Store.adicionarAgenciasOnline(cidade, agencias, 'osm');
+    Store.marcarBuscaEstado(uf, achou);
+    return { achou, aviso: achou ? '' : 'O OpenStreetMap não tem agências do SINE cadastradas neste estado.' };
+  }
+
   // Procura as agências de uma cidade na internet e guarda na base. Devolve { agencias, origem, aviso }.
   async function buscarSineOnline(c, { forcar = false } = {}) {
     if (!c) return { agencias: [], origem: '', aviso: 'Cidade inválida.' };
@@ -184,5 +221,5 @@ const Geo = (() => {
     return { agencias: [], origem: '', aviso: avisos.join(' ') };
   }
 
-  return { geocodificar, geocodificarESalvar, importarIBGE, capitalizar, URL_IBGE, buscarSineOnline };
+  return { geocodificar, geocodificarESalvar, importarIBGE, capitalizar, URL_IBGE, buscarSineOnline, buscarSineEstado };
 })();

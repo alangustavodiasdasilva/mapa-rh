@@ -57,9 +57,79 @@ const App = {
     this.rotear();
     this.prepararBases();
   },
+  // ---------- busca de agências em segundo plano (continua mesmo trocando de tela) ----------
+  loteSine: null,
+  buscarSineLote(cidades) {
+    if (this.loteSine && this.loteSine.ativo) return this.loteSine;
+    const lote = { ativo: true, total: cidades.length, feitas: 0, achadas: 0, atual: '', erros: 0 };
+    this.loteSine = lote;
+    const semChave = !(Store.config().googleKey || '').trim();
+    (async () => {
+      for (const ci of cidades) {
+        if (!lote.ativo) break;
+        lote.atual = `${ci.nome}/${ci.uf}`; this.atualizarStatusLote();
+        try { const r = await Geo.buscarSineOnline(ci); lote.achadas += r.agencias.length; } catch (e) { lote.erros++; console.warn(e); }
+        lote.feitas++; this.atualizarStatusLote();
+        if (semChave) await new Promise(res => setTimeout(res, 1200)); // limite de uso do OpenStreetMap
+      }
+      lote.ativo = false; lote.atual = ''; this.atualizarStatusLote();
+      UI.toast(`Busca de agências concluída: ${lote.achadas} encontrada(s) em ${lote.feitas} cidade(s).`, 'sucesso', 6000);
+    })();
+    return lote;
+  },
+  textoStatusLote() {
+    const l = this.loteSine; if (!l) return '';
+    return l.ativo ? `Buscando agências na internet: ${l.feitas} de ${l.total} cidade(s), ${l.achadas} achada(s)${l.atual ? ' — agora ' + l.atual : ''}…`
+      : `Última busca: ${l.achadas} agência(s) em ${l.feitas} cidade(s).`;
+  },
+  atualizarStatusLote() {
+    const el = document.getElementById('sine-lote-status'); if (el) el.textContent = this.textoStatusLote();
+    const b = document.getElementById('lote-topo');
+    if (this.loteSine && this.loteSine.ativo) {
+      if (!b) { const d = document.createElement('div'); d.id = 'lote-topo'; d.className = 'lote-topo'; document.body.appendChild(d); }
+      document.getElementById('lote-topo').textContent = this.textoStatusLote();
+    } else if (b) b.remove();
+  },
+  // Estados em uso sem base oficial: caça as agências na internet sozinho (uma vez por mês), em segundo plano
+  cacaSineEstados: null,
+  async cacarSineEstados(forcar = false) {
+    if (this.cacaSineEstados) return this.cacaSineEstados;
+    const ufs = Store.ufsSemBaseSine().filter(u => forcar || !Store.buscaEstadoRecente(u));
+    if (!ufs.length || !navigator.onLine) return null;
+    this.cacaSineEstados = (async () => {
+      for (const uf of ufs) {
+        this.loteSine = { ativo: true, total: 1, feitas: 0, achadas: 0, atual: `estado ${uf} inteiro`, erros: 0 }; this.atualizarStatusLote();
+        try {
+          const r = await Geo.buscarSineEstado(uf);
+          this.loteSine.achadas = r.achou; this.loteSine.feitas = 1;
+          UI.toast(r.achou ? `${Store.UFS[uf] || uf}: ${r.achou} agência(s) do SINE encontrada(s) na internet e salva(s).` : `${Store.UFS[uf] || uf}: ${r.aviso}`, r.achou ? 'sucesso' : 'aviso', 7000);
+        } catch (e) { console.warn(e); }
+        this.loteSine.ativo = false; this.atualizarStatusLote();
+        if (this.paginaAtual === 'cidades') this.rotear(true);
+      }
+      this.cacaSineEstados = null;
+    })();
+    return this.cacaSineEstados;
+  },
+  // Confere se há versão nova publicada (a página pode ficar presa no cache do navegador)
+  async verificarVersao() {
+    try {
+      const r = await fetch('index.html?nocache=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const m = (await r.text()).match(/js\/app\.js\?v=(\d+)/);
+      const nova = m ? m[1] : null, atual = this.versao();
+      if (nova && atual && nova !== atual && parseInt(nova, 10) > parseInt(atual, 10)) {
+        const b = document.getElementById('banner');
+        if (b) { b.innerHTML = `<div class="banner banner-aviso"><b>Nova versão disponível (${UI.esc(nova)}; esta é a ${UI.esc(atual)}).</b> <a href="#" id="banner-atualizar">Atualizar agora</a>.</div>`;
+          b.querySelector('#banner-atualizar').addEventListener('click', e => { e.preventDefault(); location.reload(); }); }
+        this._versaoNova = nova;
+      }
+    } catch (e) { /* sem internet */ }
+  },
   // Tudo que o sistema consegue buscar sozinho: bases do SINE dos estados em uso e a lista completa de municípios do IBGE
   prepararBases() {
-    Store.carregarBasesSineEmUso(); // a ficha da cidade também carrega sob demanda; não re-renderiza a tela
+    this.verificarVersao();
+    Store.carregarBasesSineEmUso().then(() => this.cacarSineEstados());
     if (!Store.temIBGE() && typeof Geo !== 'undefined' && navigator.onLine && !this._baixandoIBGE) {
       this._baixandoIBGE = true;
       Geo.importarIBGE(() => {}).then(n => { UI.toast(`Lista de municípios do IBGE carregada (${UI.fmtNum(n)} cidades).`, 'sucesso'); this.atualizarBanner(); if (['cidades', 'dashboard'].includes(this.paginaAtual)) this.rotear(true); })
@@ -248,6 +318,7 @@ const App = {
   atualizarBanner() {
     const b = document.getElementById('banner');
     if (!b) return;
+    if (this._versaoNova) { this.verificarVersao(); return; }
     const descartados = Store.registrosDescartados ? Store.registrosDescartados().length : 0;
     if (descartados && this.paginaAtual !== 'mapa') {
       b.innerHTML = `<div class="banner banner-aviso"><b>${descartados}</b> contratação(ões) não aparecem em nenhuma tela porque a cidade ou o projeto não foi reconhecido. <a href="#/cidades">Baixe a lista do IBGE</a> ou restaure um backup completo.</div>`;
