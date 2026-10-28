@@ -666,8 +666,16 @@ Paginas.mapa = {
     // ---------- agências do SINE (camada opcional) ----------
     const camadaSine = L.layerGroup();
     // (re)monta a camada: as bases dos estados (PR, SC…) chegam depois do mapa abrir, então ela é refeita quando carregam
+    const ZOOM_MIN_SINE = 9; // afastado demais vira uma nuvem de "S": as agências só aparecem perto
     function montarCamadaSine() {
       camadaSine.clearLayers();
+      if (mapa.getZoom() < ZOOM_MIN_SINE && !foco) {
+        const ags0 = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS'));
+        el.querySelector('#qtd-sine').textContent = ags0.length;
+        el.querySelector('#c-sine-wrap').style.display = ags0.length ? '' : 'none';
+        el.querySelector('#c-sine-wrap').title = 'Aproxime o zoom para ver as agências (ou clique numa cidade)';
+        return;
+      }
       // agência sem coordenada (base de SC) fica no centro da cidade
       const ags = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS')).map(a => {
         const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS');
@@ -685,7 +693,8 @@ Paginas.mapa = {
       }
     }
     montarCamadaSine();
-    el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) camadaSine.addTo(mapa); else mapa.removeLayer(camadaSine); });
+    mapa.on('zoomend', () => { if (el.querySelector('#c-sine').checked) montarCamadaSine(); });
+    el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) { montarCamadaSine(); camadaSine.addTo(mapa); if (mapa.getZoom() < ZOOM_MIN_SINE) UI.toast('Aproxime o zoom para ver as agências do SINE (ou clique numa cidade).', 'info', 3500); } else mapa.removeLayer(camadaSine); });
     Store.carregarBasesSineEmUso().then(() => { if (ativo) montarCamadaSine(); });
 
     // ---------- limites dos estados (malha do IBGE, guardada no navegador) ----------
