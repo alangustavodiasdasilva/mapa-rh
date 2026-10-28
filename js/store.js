@@ -587,7 +587,8 @@ const Store = (() => {
     if (!nome) throw new Error('Informe o nome do distrito.');
     const uf = String(obj.uf || '').toUpperCase();
     if (!UFS[uf]) throw new Error('Selecione o estado (UF) das cidades do distrito.');
-    if (dados.distritos.some(d => normalizar(d.nome) === normalizar(nome) && d.id !== obj.id)) throw new Error('Já existe um distrito com este nome.');
+    const igual = dados.distritos.find(d => normalizar(d.nome) === normalizar(nome) && d.id !== obj.id);
+    if (igual) throw new Error(`Já existe um distrito chamado "${igual.nome}" (${igual.uf || 'sem estado'}, ${(igual.micros || []).length} microrregião(ões)). Ele está na lista da tela Distritos — edite esse em vez de criar outro, ou use um nome diferente (ex.: "${nome} ${uf}").`);
     let d = obj.id ? distrito(obj.id) : null;
     const novo = !d;
     if (!d) { d = { id: uid(), criadoEm: agora(), micros: [] }; dados.distritos.push(d); }

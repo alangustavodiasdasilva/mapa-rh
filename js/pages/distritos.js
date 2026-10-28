@@ -3,7 +3,7 @@
 // Cada cidade pertence a uma única microrregião. As cores aparecem no mapa sobre os limites dos municípios.
 Paginas.distritos = {
   titulo: 'Distritos e microrregiões',
-  filtrosUsados: ['projeto'],
+  semFiltros: true, // cadastro: mostra todos os distritos, de todos os estados
   render(el) {
     const podeEditar = App.podeEditar();
     let busca = '';
@@ -18,8 +18,14 @@ Paginas.distritos = {
       const c = Store.resolverCidade(t, uf) || Store.cidadeAproximada(t, uf);
       if (c) return c;
       const lista = Store.buscarCidades(t, uf, 2);
-      return lista.length === 1 ? lista[0] : null;
+      if (lista.length === 1) return lista[0];
+      // não está no estado escolhido: se existe em um único outro estado, usa ele (o estado da micro acompanha)
+      const outras = Store.candidatasCidade(t);
+      if (outras.length === 1) { UI.toast(`"${outras[0].nome}" fica em ${outras[0].uf}; usando esse estado.`, 'info', 3500); return outras[0]; }
+      return null;
     }
+    // outros estados onde existe uma cidade com esse nome (para a mensagem de "não encontrada")
+    function ondeExiste(texto) { return [...new Set(Store.candidatasCidade(String(texto || '').trim()).map(c => c.uf))]; }
     // UF sugerida para novos distritos: a do projeto filtrado, senão a do primeiro projeto, senão RS
     function ufPadrao() {
       const p = App.filtros.projetoId ? Store.projeto(App.filtros.projetoId) : null;
@@ -50,7 +56,7 @@ Paginas.distritos = {
     function renderLista() {
       regsAtuais = App.regs();
       App.atualizarFiltroDistrito(); App.atualizarFiltroUF(); // o topo acompanha o que foi salvo aqui
-      const lista = App.distritosFiltrados().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const lista = Store.distritos().slice().sort((a, b) => (a.uf || '').localeCompare(b.uf || '') || a.nome.localeCompare(b.nome, 'pt-BR'));
       const cont = el.querySelector('#dist-lista');
       const totalMicros = lista.reduce((n, d) => n + (d.micros || []).length, 0);
       const totalCidades = lista.reduce((n, d) => n + Store.cidadesDoDistrito(d).length, 0);
@@ -312,6 +318,7 @@ Paginas.distritos = {
       const q = s => corpo.querySelector(s);
       const poloInp = q('#mi-polo'), ufSel = q('#mi-uf'), nomeInp = q('#mi-nome'), corInp = q('#mi-cor'), cidInp = q('#mi-cidade');
       const uf = () => ufSel.value;
+      if (!Store.temIBGE()) { UI.toast('Baixando a lista completa de cidades do IBGE (uma vez só)…', 'info', 4000); App.prepararBases(); }
       ligarPaleta(corpo, '#mi-cor');
       corInp.addEventListener('change', renderChips);
       corInp.addEventListener('input', renderChips);
@@ -398,7 +405,9 @@ Paginas.distritos = {
           info.innerHTML = `&#128081; Polo: <b>${UI.esc(polo.nome)}/${polo.uf}</b> — dá nome à microrregião e recebe destaque no mapa.` +
             (conf ? ` <span class="status-erro">Esta cidade está em ${UI.esc(conf.distrito.nome)} · ${UI.esc(conf.micro.nome)}; marque "mover" abaixo.</span>` : '');
         } else if (textoNaoAchado) {
-          info.innerHTML = `<span class="status-erro">"${UI.esc(textoNaoAchado)}" não foi encontrada em ${uf()}.</span> Confira a grafia, troque o estado ou use a opção "buscar na internet" da lista.`;
+          const ufsOnde = ondeExiste(textoNaoAchado);
+          info.innerHTML = `<span class="status-erro">"${UI.esc(textoNaoAchado)}" não foi encontrada em ${uf()}.</span> ` +
+            (ufsOnde.length ? `Existe em <b>${ufsOnde.join(', ')}</b> — troque o estado ao lado.` : (Store.temIBGE() ? 'Confira a grafia ou use a opção "buscar na internet" da lista.' : 'A lista completa de cidades do IBGE ainda está sendo baixada — aguarde alguns segundos e tente de novo.'));
         } else info.textContent = 'A cidade principal da microrregião. Ela dá o nome à microrregião e recebe destaque no mapa.';
       }
       function renderChips() {
