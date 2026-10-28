@@ -756,9 +756,17 @@ const Store = (() => {
     if (s && s.cidadeId && cidade(s.cidadeId)) return cidade(s.cidadeId);
     const nome = String(s && s.cidade || '').trim();
     if (!nome) return null;
-    const k = String(uf || '') + '|' + normalizar(nome);
+    const temPonto = s.lat != null && s.lng != null;
+    const k = String(uf || '') + '|' + normalizar(nome) + (temPonto ? '|' + s.lat.toFixed(2) + ',' + s.lng.toFixed(2) : '');
     if (!cacheSilos.has(k)) {
-      cacheSilos.set(k, (uf ? resolverCidade(nome, uf) || cidadeAproximada(nome, uf) : null) || resolverCidade(nome) || cidadeAproximada(nome) || null);
+      let c = (uf ? resolverCidade(nome, uf) || cidadeAproximada(nome, uf) : null) || resolverCidade(nome) || cidadeAproximada(nome) || null;
+      // nome repetido em outro estado (Palmeira, Casca…): se a cidade achada está longe do ponto, usa a mais próxima do ponto
+      if (temPonto) {
+        if (c && distanciaKm(c, s) > 80) c = null;
+        if (!c) c = cidadeMaisProxima(s.lat, s.lng, uf || null, 40);
+        if (!c && !uf) c = cidadeMaisProxima(s.lat, s.lng, null, 40);
+      }
+      cacheSilos.set(k, c);
     }
     return cacheSilos.get(k);
   }
