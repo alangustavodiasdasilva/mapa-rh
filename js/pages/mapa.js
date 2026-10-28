@@ -462,7 +462,7 @@ Paginas.mapa = {
     mapa.createPane('rotulos').style.zIndex = 450;
     // com filtro de distrito/microrregião no topo, a malha e a legenda mostram só a região filtrada
     const regiaoFiltro = App.regiaoFiltrada();
-    const distritos = Store.distritos().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
+    const distritos = App.distritosFiltrados().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
       .map(d => regiaoFiltro.micro ? { ...d, micros: (d.micros || []).filter(m => m.id === regiaoFiltro.micro.id) } : d);
     const camadaRotulos = L.layerGroup().addTo(mapa);
     // Rótulos de distrito/micro que se sobrepõem (zoom afastado): o distrito sempre fica; das micros, some a com menos contratações
@@ -613,7 +613,7 @@ Paginas.mapa = {
       // com uma cidade selecionada as unidades continuam no mapa: as da seleção em destaque, as outras apagadas
       const siloEmFoco = s => { if (!foco) return true; const c = Store.cidadeDoSilo(s, s.uf || ''); return !!(c && foco.has(c.id)); };
       const mapaSel = el.querySelector('#mapa-filtro-silos-mapa').value || '';
-      let silos = Store.silosNaRegiao(Store.todosSilosPdr(), App.filtros.distritoId, App.filtros.microId);
+      let silos = App.silosFiltrados();
       if (mapaSel) silos = silos.filter(s => s.mapaId === mapaSel);
       if (qtdEl) qtdEl.textContent = silos.length;
       if (!silosMedidos) { silos.forEach(s => { pontos.push([s.lat, s.lng]); pontosFoco.push([s.lat, s.lng]); }); silosMedidos = true; }
@@ -667,7 +667,7 @@ Paginas.mapa = {
     function montarCamadaSine() {
       camadaSine.clearLayers();
       // agência sem coordenada (base de SC) fica no centro da cidade
-      const ags = Store.agenciasSine().map(a => {
+      const ags = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS')).map(a => {
         if (a.lat != null && a.lng != null) return a;
         const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS');
         return c ? { ...a, lat: c.lat, lng: c.lng } : null;
@@ -1010,7 +1010,7 @@ Paginas.mapa = {
       const propria = lista.filter(r => ids.has(r.cidadeId)).length;
       const dists = lista.map(r => r.distancia).filter(x => x != null);
       const distMedia = dists.length ? dists.reduce((a, b) => a + b, 0) / dists.length : null;
-      const unidades = Store.silosNaRegiao(Store.todosSilosPdr(), d.id, '').length;
+      const unidades = App.silosFiltrados(d.id, '').length;
       const porMicro = (d.micros || []).map(m => {
         const mids = new Set(m.cidadeIds || []);
         const l = lista.filter(r => mids.has(r.cidadeAtuacao.id));
@@ -1075,7 +1075,7 @@ Paginas.mapa = {
       const propria = lista.filter(r => ids.has(r.cidadeId)).length;
       const dists = lista.map(r => r.distancia).filter(x => x != null);
       const distMedia = dists.length ? dists.reduce((a, b) => a + b, 0) / dists.length : null;
-      const unidades = Store.silosNaRegiao(Store.todosSilosPdr(), d.id, m.id).length;
+      const unidades = App.silosFiltrados(d.id, m.id).length;
       const origens = new Map();
       for (const r of lista) {
         let o = origens.get(r.cidadeId);
@@ -1160,7 +1160,7 @@ Paginas.mapa = {
     }
 
     // ---------- legenda ----------
-    const todosSilos = Store.silosNaRegiao(Store.todosSilosPdr(), App.filtros.distritoId, App.filtros.microId);
+    const todosSilos = App.silosFiltrados();
     const legenda = el.querySelector('#legenda');
     const item = (marca, texto) => `<div class="legenda-item">${marca}<span>${texto}</span></div>`;
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;

@@ -281,7 +281,7 @@ const App = {
   atualizarFiltroDistrito() {
     const selD = document.getElementById('filtro-distrito'), selM = document.getElementById('filtro-micro');
     if (!selD || !selM) return;
-    const distritos = Store.distritos().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const distritos = this.distritosFiltrados().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     if (this.filtros.distritoId && !distritos.some(d => d.id === this.filtros.distritoId)) { this.filtros.distritoId = ''; this.filtros.microId = ''; }
     selD.innerHTML = `<option value="">Todos</option>` + distritos.map(d => `<option value="${d.id}" ${d.id === this.filtros.distritoId ? 'selected' : ''}>${UI.esc(d.nome)}</option>`).join('');
     // microrregiões: as do distrito escolhido, ou todas agrupadas por distrito
@@ -390,6 +390,21 @@ const App = {
 
   // ---------- atalhos de dados ----------
   regs(extra = {}) { return Store.registrosFiltrados({ ...this.filtros, usuario: this.usuario, ...extra }); },
+  // Estados do projeto filtrado (null = sem filtro de projeto). Vale para PDRs, agências do SINE, distritos e malha.
+  ufsFiltro() {
+    if (!this.filtros.projetoId) return null;
+    const p = Store.projeto(this.filtros.projetoId);
+    return p ? Store.ufsProjeto(p) : null;
+  },
+  ufNoFiltro(uf) { const u = this.ufsFiltro(); return !u || u.includes(String(uf || '').toUpperCase()); },
+  // Unidades PDR que entram no filtro atual (projeto → estados; distrito/micro → região)
+  silosFiltrados(distritoId = this.filtros.distritoId, microId = this.filtros.microId) {
+    let lista = Store.silosNaRegiao(Store.todosSilosPdr(), distritoId, microId);
+    const ufs = this.ufsFiltro();
+    if (ufs) lista = lista.filter(s => { const c = Store.cidadeDoSilo(s, ''); const uf = (c && c.uf) || s.uf; return !uf || ufs.includes(uf); });
+    return lista;
+  },
+  distritosFiltrados() { return Store.distritos().filter(d => this.ufNoFiltro(d.uf)); },
   projetosVisiveis() { return Store.projetosVisiveis(this.usuario); },
   podeEditar() { return this.usuario.perfil === 'admin' || this.usuario.perfil === 'gestor'; },
   descricaoFiltro() {

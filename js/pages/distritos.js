@@ -3,7 +3,7 @@
 // Cada cidade pertence a uma única microrregião. As cores aparecem no mapa sobre os limites dos municípios.
 Paginas.distritos = {
   titulo: 'Distritos e microrregiões',
-  semFiltros: true,
+  filtrosUsados: ['projeto'],
   render(el) {
     const podeEditar = App.podeEditar();
     let busca = '';
@@ -50,7 +50,7 @@ Paginas.distritos = {
     function renderLista() {
       regsAtuais = App.regs();
       App.atualizarFiltroDistrito(); App.atualizarFiltroUF(); // o topo acompanha o que foi salvo aqui
-      const lista = Store.distritos().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const lista = App.distritosFiltrados().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const cont = el.querySelector('#dist-lista');
       const totalMicros = lista.reduce((n, d) => n + (d.micros || []).length, 0);
       const totalCidades = lista.reduce((n, d) => n + Store.cidadesDoDistrito(d).length, 0);
@@ -560,7 +560,7 @@ Paginas.distritos = {
     }
 
     function abrirImportacao() {
-      const distritos = Store.distritos().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const distritos = App.distritosFiltrados().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const corpo = document.createElement('div');
       corpo.innerHTML = `
         <p class="muted small">Aceita dois formatos: <b>lista simples</b> — o nome da microrregião na primeira linha e as cidades nas linhas abaixo (separe as microrregiões com uma linha em branco, ou escreva o nome em MAIÚSCULAS) — ou <b>planilha</b> com as colunas <b>MICRORREGIÃO</b> e <b>CIDADE</b> (opcionais: <b>POLO</b> com "sim"/"x" e <b>DISTRITO</b>, para vários distritos de uma vez), colada ou em arquivo .xlsx/.csv.

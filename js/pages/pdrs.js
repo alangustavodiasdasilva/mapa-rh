@@ -1,7 +1,7 @@
 // Mapas PDRs: importação de arquivos KML (Google My Maps) com as unidades/silos, listados aqui e mostrados no Mapa.
 Paginas.pdrs = {
   titulo: 'Mapas PDRs',
-  filtrosUsados: ['regiao'],
+  filtrosUsados: ['projeto', 'regiao'],
   render(el) {
     const podeEditar = App.podeEditar();
     let busca = '', filtroMapa = '';
@@ -233,7 +233,7 @@ Paginas.pdrs = {
         mapas.map(m => `<option value="${m.id}" ${filtroMapa === m.id ? 'selected' : ''}>${UI.esc(m.nome)}</option>`).join('');
 
       const reg = App.regiaoFiltrada();
-      let todos = Store.silosNaRegiao(Store.todosSilosPdr(), App.filtros.distritoId, App.filtros.microId);
+      let todos = App.silosFiltrados();
       if (filtroMapa) todos = todos.filter(s => s.mapaId === filtroMapa);
       if (busca) {
         const b = Store.normalizar(busca);
