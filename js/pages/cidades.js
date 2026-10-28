@@ -16,6 +16,15 @@ Paginas.cidades = {
           </div>
           <p class="muted small mt">Fonte: repositório público <i>municipios-brasileiros</i> (dados do IBGE). Requer internet.</p>
         </div>
+        <div class="card" id="card-sine">
+          <h2>Agências do SINE</h2>
+          <p class="muted small" id="sine-cobertura"></p>
+          <p class="muted small">A base embutida cobre o RS (FGTAS). Nas outras cidades o sistema <b>busca a agência na internet sozinho</b> quando você abre a ficha da cidade no mapa: pelo <b>Google Places</b> (precisa de uma chave, gratuita até um bom volume de consultas) ou, sem chave, pelo OpenStreetMap (cobertura menor).</p>
+          ${podeEditar ? `<label>Chave da API do Google Places (opcional)<input id="sine-google-key" type="password" placeholder="AIza…" value="${UI.esc(Store.config().googleKey || '')}" autocomplete="off"><span class="muted small">Google Cloud → APIs e serviços → Credenciais → Criar chave; ative "Places API (New)". Fica salva neste navegador e no backup.</span></label>
+          <div class="linha"><button class="btn btn-primario btn-pequeno" id="btn-sine-lote">Buscar agências das cidades dos distritos</button><button class="btn btn-pequeno" id="btn-sine-importar">Importar planilha</button><button class="btn btn-pequeno" id="btn-sine-modelo">Modelo da planilha</button></div>
+          <div id="sine-lote-status" class="small muted" style="margin-top:6px"></div>` : ''}
+          <div id="sine-importadas" class="small" style="margin-top:8px"></div>
+        </div>
         <div class="card">
           <h2>Cidade não encontrada?</h2>
           <p class="muted small">Ao digitar uma cidade desconhecida no cadastro, o sistema busca as coordenadas na internet (OpenStreetMap) e a guarda automaticamente. Se preferir, cadastre manualmente informando latitude e longitude.</p>
@@ -31,6 +40,61 @@ Paginas.cidades = {
         </div>
         <div id="cid-lista"></div>
       </div>`;
+
+    // ---- agências do SINE ----
+    function renderSine() {
+      const cob = Store.coberturaSine();
+      const ufs = Object.keys(cob).sort();
+      el.querySelector('#sine-cobertura').innerHTML = ufs.length ? 'Cobertura atual: ' + ufs.map(u => `<b>${u}</b> (${cob[u]})`).join(' · ') : 'Nenhuma agência na base.';
+      const imp = Store.agenciasSineImportadas();
+      const porUF = {}; imp.forEach(a => { porUF[a.uf] = (porUF[a.uf] || 0) + 1; });
+      el.querySelector('#sine-importadas').innerHTML = Object.keys(porUF).sort().map(u => `<span class="badge badge-azul" style="margin-right:6px">${u}: ${porUF[u]} importada(s)${podeEditar ? ` <button class="chip-btn sine-remover" data-uf="${u}" title="Remover as agências importadas de ${u}">×</button>` : ''}</span>`).join('');
+      el.querySelectorAll('.sine-remover').forEach(b => b.addEventListener('click', async () => {
+        if (!await UI.confirmar(`Remover as agências importadas de ${b.dataset.uf}?`, { perigo: true, textoOk: 'Remover' })) return;
+        Store.removerAgenciasSine(b.dataset.uf, App.usuario); renderSine();
+      }));
+    }
+    renderSine();
+    const kEl = el.querySelector('#sine-google-key');
+    if (kEl) kEl.addEventListener('change', () => { Store.salvarConfig({ googleKey: kEl.value.trim() }, App.usuario); UI.toast(kEl.value.trim() ? 'Chave do Google salva.' : 'Chave removida.', 'sucesso'); });
+    // busca em lote: todas as cidades dos distritos que ainda não têm agência nem busca recente
+    const bLote = el.querySelector('#btn-sine-lote');
+    if (bLote) bLote.addEventListener('click', async () => {
+      const cidades = [...new Set(Store.distritos().flatMap(d => Store.cidadesDoDistrito(d)))].filter(ci => !Store.sineDaCidade(ci).length && !Store.buscaSineRecente(ci.id));
+      if (!cidades.length) { UI.toast('Todas as cidades dos distritos já têm agência ou busca recente.', 'info'); return; }
+      const semChave = !(Store.config().googleKey || '').trim();
+      if (!await UI.confirmar(`Buscar na internet as agências de ${cidades.length} cidade(s)${semChave ? ' pelo OpenStreetMap (sem chave do Google a cobertura é menor e pode demorar)' : ' pelo Google Places'}?`, { textoOk: 'Buscar' })) return;
+      const st = el.querySelector('#sine-lote-status'); let achadas = 0, feitas = 0;
+      bLote.disabled = true;
+      for (const ci of cidades) {
+        st.textContent = `Buscando ${ci.nome}/${ci.uf}… (${++feitas} de ${cidades.length}, ${achadas} agência(s) achada(s))`;
+        try { const r = await Geo.buscarSineOnline(ci); achadas += r.agencias.length; } catch (e) { console.warn(e); }
+        if (semChave) await new Promise(res => setTimeout(res, 1200)); // respeita o limite do OpenStreetMap
+      }
+      bLote.disabled = false;
+      st.textContent = `Concluído: ${achadas} agência(s) encontrada(s) em ${cidades.length} cidade(s).`;
+      renderSine();
+    });
+    const bModelo = el.querySelector('#btn-sine-modelo');
+    if (bModelo) bModelo.addEventListener('click', () => UI.baixarCSV('modelo_agencias_sine.csv', [
+      ['UF', 'CIDADE', 'NOME', 'ENDEREÇO', 'TELEFONE', 'E-MAIL', 'HORÁRIO'],
+      ['SC', 'Chapecó', 'SINE Chapecó', 'Rua Exemplo, 100 — Centro', '(49) 0000-0000 / (49) 0000-0001', 'sine@exemplo.sc.gov.br', 'Seg a sex, 8h às 17h']]));
+    const bImp = el.querySelector('#btn-sine-importar');
+    if (bImp) bImp.addEventListener('click', () => {
+      const m = UI.modal({
+        titulo: 'Importar agências do SINE', largura: '640px',
+        corpo: `<p class="small muted">Cole as linhas copiadas do Excel (com o cabeçalho) ou escolha um arquivo .xlsx/.csv. Colunas: UF, CIDADE, NOME, ENDEREÇO, TELEFONE, E-MAIL, HORÁRIO. Vários telefones separados por "/".</p>
+          <label>Colar<textarea id="sine-texto" rows="8" placeholder="UF\tCIDADE\tNOME\tENDEREÇO\tTELEFONE\tE-MAIL\tHORÁRIO"></textarea></label>
+          <label>ou arquivo<input type="file" id="sine-arquivo" accept=".csv,.txt,.xlsx,.xls"></label>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Importar', classe: 'btn-primario', acao: async (md) => {
+          const arq = md.corpo.querySelector('#sine-arquivo').files[0];
+          const linhas = arq ? await UI.lerArquivo(arq) : UI.csvParse(md.corpo.querySelector('#sine-texto').value);
+          const r = Store.importarAgenciasSine(linhas, App.usuario);
+          UI.toast(`${r.total} agência(s) importada(s) em ${r.ufs.join(', ')}.${r.semCidade.length ? ` ${r.semCidade.length} cidade(s) não reconhecida(s): ${r.semCidade.slice(0, 5).join(', ')}` : ''}`, r.semCidade.length ? 'aviso' : 'sucesso', 6000);
+          renderSine();
+        } }]
+      });
+    });
 
     const bIbge = el.querySelector('#btn-ibge');
     if (bIbge) bIbge.addEventListener('click', async () => {

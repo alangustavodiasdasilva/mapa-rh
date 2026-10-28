@@ -867,6 +867,7 @@ Paginas.mapa = {
       const notasSalvas = Store.infoCidade(cid.id) || {};
       const editar = App.podeEditar();
       // SINE: agência(s) na cidade ou a mais próxima; os campos de anotação vêm pré-preenchidos (editáveis) quando ainda não foram salvos
+      const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
       const sineLocal = Store.sineDaCidade(cid);
       const sinePerto = sineLocal.length ? null : Store.sineMaisProximo(cid);
       const fmtAg = a => `<div class="sine-card"><div class="sine-nome">${UI.esc(a.nome || a.cidade)}${a.cidade && Store.normalizar(a.cidade) !== Store.normalizar(cid.nome) ? ` <span class="muted">· ${UI.esc(a.cidade)}</span>` : ''}</div>
@@ -878,7 +879,15 @@ Paginas.mapa = {
       let blocoSine;
       if (sineLocal.length) blocoSine = sineLocal.map(fmtAg).join('');
       else if (sinePerto) blocoSine = `<div class="muted small" style="margin-bottom:4px">Esta cidade não tem agência própria. A mais próxima fica a <b>${UI.fmtKm(sinePerto.distancia)}</b>:</div>` + fmtAg(sinePerto.agencia);
-      else blocoSine = `<div class="muted small">Sem agência cadastrada na base (a base embutida cobre o RS). Use "Procurar SINE" abaixo e anote o que encontrar.</div>`;
+      else {
+        const portal = Store.portalSine(cid.uf);
+        const temBaseUF = !!Store.coberturaSine()[cid.uf];
+        blocoSine = `<div id="sine-online" class="caixa caixa-aviso small" style="margin-top:0">${temBaseUF ? `Nenhuma agência de ${UI.esc(cid.uf)} perto desta cidade na base.` : `Sem base embutida para <b>${UI.esc(Store.UFS[cid.uf] || cid.uf)}</b>.`}
+          <span id="sine-online-status"> Buscando na internet…</span>
+          <div class="linha" style="gap:8px;margin-top:6px"><a class="btn btn-pequeno" href="${UI.esc(portal.url)}" target="_blank" rel="noopener">${UI.esc(portal.nome)}</a>
+          <a class="btn btn-pequeno" href="${busca(`SINE ${cid.nome} ${cid.uf} telefone endereço`)}" target="_blank" rel="noopener">Procurar no Google</a>
+          <button class="btn btn-pequeno" id="sine-online-denovo" type="button">Buscar de novo</button></div></div>`;
+      }
       const primeira = sineLocal[0] || (sinePerto && sinePerto.distancia <= 60 ? sinePerto.agencia : null);
       const notas = { ...notasSalvas };
       if (primeira && !notas.sineTelefone) notas.sineTelefone = (primeira.telefones || []).join(' / ');
@@ -886,7 +895,6 @@ Paginas.mapa = {
       const campo = (k, rotulo, placeholder, area) => `<label style="margin-bottom:6px">${rotulo}${area
         ? `<textarea class="ficha-campo" data-k="${k}" rows="2" placeholder="${UI.esc(placeholder)}" ${editar ? '' : 'readonly'}>${UI.esc(notas[k] || '')}</textarea>`
         : `<input class="ficha-campo" data-k="${k}" placeholder="${UI.esc(placeholder)}" value="${UI.esc(notas[k] || '')}" ${editar ? '' : 'readonly'}>`}</label>`;
-      const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${info ? info.cor : '#64748b'}"></span>${UI.esc(cid.nome)}/${cid.uf}`,
         info ? `Microrregião <b>${UI.esc(info.micro.nome)}</b> · distrito ${UI.esc(info.distrito.nome)} <a href="#" id="ficha-micro">ver números da microrregião</a>` : 'Cidade fora das microrregiões cadastradas') +
         `<div class="ficha">
@@ -900,7 +908,7 @@ Paginas.mapa = {
           <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
 
 
-          <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? 'dados oficiais da FGTAS' : (sinePerto ? 'agência mais próxima' : '')}</span></div>
+          <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? ({ importada: 'planilha importada pelo RH', google: 'achado no Google', osm: 'achado no OpenStreetMap' }[sineLocal[0].origem] || 'dados oficiais da FGTAS') : (sinePerto ? 'agência mais próxima' : '')}</span></div>
           ${blocoSine}
           <div class="ficha-secao">Anotações do RH <span class="muted small">edite à vontade; fica salvo</span></div>
           <div class="form-linha" style="gap:8px">
@@ -916,7 +924,7 @@ Paginas.mapa = {
           </div>
           <div class="linha small" style="gap:10px;margin-top:8px;flex-wrap:wrap">
             <a href="${busca(`SINE ${cid.nome} ${cid.uf} telefone endereço`)}" target="_blank" rel="noopener">Procurar SINE</a>
-            ${cid.uf === 'RS' ? '<a href="https://fgtas.rs.gov.br/agencias-fgtas-sine" target="_blank" rel="noopener">Agências FGTAS/Sine (RS)</a>' : ''}
+            <a href="${UI.esc(Store.portalSine(cid.uf).url)}" target="_blank" rel="noopener">${UI.esc(Store.portalSine(cid.uf).nome)}</a>
             <a href="${busca(`prefeitura ${cid.nome} ${cid.uf} telefone`)}" target="_blank" rel="noopener">Prefeitura</a>
             <a href="${busca(`rádio ${cid.nome} ${cid.uf}`)}" target="_blank" rel="noopener">Rádios locais</a>
             <a href="${IbgeCidade.urlCidades(cid.nome, cid.uf)}" target="_blank" rel="noopener">IBGE Cidades</a>
@@ -924,6 +932,21 @@ Paginas.mapa = {
           ${window.SINE_SEED ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
       ligarFechar();
+      // sem agência na base: procura na internet (Google Places se houver chave; senão OpenStreetMap) e grava o que achar
+      const caixaOnline = painel.querySelector('#sine-online');
+      if (caixaOnline) {
+        const rodar = async (forcar) => {
+          const st = painel.querySelector('#sine-online-status'); if (st) st.textContent = ' Buscando na internet…';
+          try {
+            const r = await Geo.buscarSineOnline(cid, { forcar });
+            if (!painel.contains(caixaOnline)) return;
+            if (r.agencias.length) { abrirPainelCidade(cid, { feature, codigo, fluxosOrigem, aproximar: false }); UI.toast(`${r.agencias.length} agência(s) encontrada(s) ${r.origem === 'google' ? 'no Google' : 'no OpenStreetMap'} e salva(s) para ${cid.nome}.`, 'sucesso'); }
+            else if (st) st.textContent = ' ' + (r.aviso || 'Nada encontrado na internet.') + (Store.config().googleKey ? '' : ' Dica: com a chave do Google Places (em Cidades → Agências do SINE) a busca acha muito mais.');
+          } catch (e) { if (st) st.textContent = ' ' + e.message; }
+        };
+        const bd = painel.querySelector('#sine-online-denovo'); if (bd) bd.addEventListener('click', () => rodar(true));
+        rodar(false);
+      }
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
       if (a && !fluxosOrigem) destacarLinhas(linhasPorChave.get('A:' + cid.id) || []);
       const bm = painel.querySelector('#ficha-micro');

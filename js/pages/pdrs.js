@@ -91,9 +91,7 @@ Paginas.pdrs = {
       } catch (e) { return false; }
       if (!res.pontos.length) return false;
       const nome = res.nome && res.nome !== 'Mapa KML' ? res.nome : nomePadrao;
-      Store.adicionarMapaPdr({ nome, pontos: res.pontos }, App.usuario);
-      UI.toast(`Mapa "${nome}" adicionado com ${res.pontos.length} unidade(s).`, 'sucesso', 4000);
-      renderizar();
+      confirmarImportacao(res, nome);
       return true;
     }
 
@@ -130,9 +128,53 @@ Paginas.pdrs = {
         return;
       }
       if (!resultado.pontos.length) throw new Error('Nenhum ponto com coordenadas foi encontrado neste arquivo KML.');
-      Store.adicionarMapaPdr({ nome, pontos: resultado.pontos }, App.usuario);
-      UI.toast(`Mapa "${nome}" adicionado com ${resultado.pontos.length} unidade(s).`, 'sucesso', 4000);
-      renderizar();
+      confirmarImportacao(resultado, nome);
+    }
+
+    // Antes de gravar: mostra o que o KML traz e cria os distritos/microrregiões junto com as unidades
+    function confirmarImportacao(res, nomePadrao) {
+      const pastas = [...new Set(res.pontos.map(x => x.pasta).filter(Boolean))];
+      const comCidade = res.pontos.filter(x => x.cidade).length;
+      const comMicro = res.pontos.filter(x => x.micro).length;
+      // chute do estado: a cidade mais perto do primeiro ponto com coordenada
+      const chute = Store.cidadeMaisProxima(res.pontos[0].lat, res.pontos[0].lng, null, 80);
+      const ufIni = chute ? chute.uf : ((Store.projeto(App.filtros.projetoId) || Store.projetos()[0] || {}).uf || 'RS');
+      const corpo = document.createElement('div');
+      corpo.innerHTML = `
+        <label>Nome do mapa<input id="imp-nome" value="${UI.esc(nomePadrao)}"></label>
+        <div class="caixa caixa-info small" style="margin-top:0">
+          <b>${res.pontos.length}</b> unidade(s)${res.semCoordenada && res.semCoordenada.length ? ` · <span class="erro">${res.semCoordenada.length} sem coordenada (ignoradas)</span>` : ''}
+          · ${pastas.length ? `<b>${pastas.length}</b> pasta(s): ${pastas.map(x => UI.esc(x)).join(', ')}` : 'sem pastas'}
+          · <b>${comCidade}</b> com a cidade escrita · <b>${comMicro}</b> com a microrregião escrita
+        </div>
+        <div class="form-linha" style="margin-top:10px">
+          <label>Estado(s) das unidades<input id="imp-ufs" value="${UI.esc(ufIni)}" placeholder="Ex.: PR ou PR,SC"><span class="muted small">Para achar a cidade de cada unidade pelos limites do IBGE</span></label>
+          <div>
+            <label class="check" style="margin-top:22px"><input type="checkbox" id="imp-estrutura" ${pastas.length ? 'checked' : ''}> Criar/atualizar <b>distritos e microrregiões</b> a partir deste mapa</label>
+            <label class="check"><input type="checkbox" id="imp-mover"> Mover cidades que já estão em outra microrregião</label>
+          </div>
+        </div>
+        <p class="muted small">Cada <b>pasta</b> do My Maps vira um distrito; o campo "microrreg" vira a microrregião (sem ele, o distrito fica com uma microrregião só, que você divide depois em Distritos). A cidade de cada unidade vem do KML ou é descoberta pelo ponto no mapa.</p>
+        <div id="imp-progresso" class="muted small"></div>`;
+      UI.modal({
+        titulo: 'Adicionar mapa', corpo, largura: '640px', fecharAoClicarFora: false,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Adicionar', classe: 'btn-primario', acao: async () => {
+          const nome = corpo.querySelector('#imp-nome').value.trim() || nomePadrao;
+          const ufs = corpo.querySelector('#imp-ufs').value.split(/[,/ ]+/).map(x => x.trim().toUpperCase()).filter(x => Store.UFS[x]);
+          if (!ufs.length) throw new Error('Informe o estado (UF) das unidades.');
+          const criar = corpo.querySelector('#imp-estrutura').checked, mover = corpo.querySelector('#imp-mover').checked;
+          const prog = corpo.querySelector('#imp-progresso');
+          const est = await Store.estruturaDoKML(res.pontos, ufs, t => { prog.textContent = t; });
+          Store.adicionarMapaPdr({ nome, pontos: res.pontos }, App.usuario);
+          let msg = `Mapa "${nome}": ${res.pontos.length} unidade(s) — cidade pelo nome: ${est.porNome}, pelos limites do IBGE: ${est.porMalha}, pela proximidade: ${est.porProximidade}${est.semCidade ? `, sem cidade: ${est.semCidade}` : ''}.`;
+          if (criar && est.distritos.length) {
+            const r = Store.aplicarEstruturaKML(est, App.usuario, { mover });
+            msg += ` Distritos: ${r.distritosCriados} criado(s), ${r.distritosAtualizados} atualizado(s); ${r.micros} microrregião(ões); ${r.cidades} cidade(s) vinculada(s)${r.movidas ? `, ${r.movidas} movida(s)` : ''}${r.ignoradas ? `, ${r.ignoradas} já em outra micro (não movidas)` : ''}.`;
+          }
+          UI.toast(msg, 'sucesso', 9000);
+          App.recarregar();
+        } }]
+      });
     }
 
     // ---------- lista ----------

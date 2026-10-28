@@ -115,5 +115,74 @@ const Geo = (() => {
     return lista.length;
   }
 
-  return { geocodificar, geocodificarESalvar, importarIBGE, capitalizar, URL_IBGE };
+  // ---------- agências do SINE pela internet ----------
+  const RE_SINE = /\bsine\b|agência do trabalhador|agencia do trabalhador|sistema nacional de emprego|casa do trabalhador|posto de atendimento ao trabalhador|\bpat\b/i;
+  // 1) Google Places (API oficial, precisa da chave em Cidades → Agências do SINE)
+  async function sineGoogle(c, chave) {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': chave,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.regularOpeningHours.weekdayDescriptions,places.location' },
+      body: JSON.stringify({ textQuery: `SINE agência do trabalhador ${c.nome} ${c.uf}`, languageCode: 'pt-BR', regionCode: 'BR', maxResultCount: 8,
+        locationBias: { circle: { center: { latitude: c.lat, longitude: c.lng }, radius: 30000 } } })
+    });
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { const e = await r.json(); msg = (e.error && e.error.message) || msg; } catch (x) { /* sem corpo */ }
+      throw new Error('Google Places: ' + msg);
+    }
+    const j = await r.json();
+    return (j.places || []).filter(p => RE_SINE.test((p.displayName && p.displayName.text) || '')).map(p => ({
+      nome: p.displayName.text, endereco: p.formattedAddress || '', telefones: [p.nationalPhoneNumber || p.internationalPhoneNumber].filter(Boolean),
+      email: '', horario: (p.regularOpeningHours && p.regularOpeningHours.weekdayDescriptions || []).join('; '), url: p.websiteUri || '',
+      lat: p.location ? p.location.latitude : c.lat, lng: p.location ? p.location.longitude : c.lng
+    }));
+  }
+  // 2) OpenStreetMap (Overpass, sem chave; cobertura menor). Tenta mais de um servidor.
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+  async function sineOSM(c) {
+    const q = `[out:json][timeout:25];nwr(around:40000,${c.lat},${c.lng})["name"~"SINE|Agência do Trabalhador|Agencia do Trabalhador|Sistema Nacional de Emprego|Casa do Trabalhador",i];out center tags;`;
+    let ultimo = null;
+    for (const url of OVERPASS) {
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 30000);
+        const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl.signal });
+        clearTimeout(t);
+        if (!r.ok) { ultimo = new Error('Overpass HTTP ' + r.status); continue; }
+        const j = await r.json();
+        return (j.elements || []).map(e => { const tg = e.tags || {}; const lat = e.lat != null ? e.lat : (e.center || {}).lat, lng = e.lon != null ? e.lon : (e.center || {}).lon;
+          return { nome: tg.name, endereco: [tg['addr:street'], tg['addr:housenumber'], tg['addr:suburb'], tg['addr:city']].filter(Boolean).join(', '),
+            telefones: [tg.phone || tg['contact:phone']].filter(Boolean), email: tg.email || tg['contact:email'] || '', horario: tg.opening_hours || '', url: tg.website || tg['contact:website'] || '', lat, lng }; })
+          .filter(a => a.nome && a.lat != null);
+      } catch (e) { ultimo = e; }
+    }
+    throw ultimo || new Error('OpenStreetMap indisponível.');
+  }
+  // 3) Nominatim (busca por texto no OSM)
+  async function sineNominatim(c) {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent('SINE ' + c.nome + ' ' + c.uf)}&format=jsonv2&limit=5&extratags=1&accept-language=pt-BR`);
+    if (!r.ok) throw new Error('Nominatim HTTP ' + r.status);
+    const j = await r.json();
+    return j.filter(x => RE_SINE.test(x.display_name || '') || RE_SINE.test((x.namedetails || {}).name || '')).map(x => ({
+      nome: (x.display_name || '').split(',')[0], endereco: (x.display_name || '').split(',').slice(1, 4).join(',').trim(),
+      telefones: [(x.extratags || {}).phone || (x.extratags || {})['contact:phone']].filter(Boolean), email: '', horario: (x.extratags || {}).opening_hours || '', url: '', lat: +x.lat, lng: +x.lon }));
+  }
+  // Procura as agências de uma cidade na internet e guarda na base. Devolve { agencias, origem, aviso }.
+  async function buscarSineOnline(c, { forcar = false } = {}) {
+    if (!c) return { agencias: [], origem: '', aviso: 'Cidade inválida.' };
+    if (!forcar && Store.buscaSineRecente(c.id)) return { agencias: Store.sineDaCidade(c), origem: 'cache', aviso: '' };
+    const chave = (Store.config().googleKey || '').trim();
+    const avisos = [];
+    if (chave) {
+      try { const l = await sineGoogle(c, chave); Store.adicionarAgenciasOnline(c, l, 'google'); return { agencias: l, origem: 'google', aviso: l.length ? '' : 'O Google não encontrou agência do SINE nesta cidade.' }; }
+      catch (e) { avisos.push(e.message); }
+    }
+    try { const l = await sineOSM(c); if (l.length) { Store.adicionarAgenciasOnline(c, l, 'osm'); return { agencias: l, origem: 'osm', aviso: avisos.join(' ') }; } }
+    catch (e) { avisos.push('OpenStreetMap: ' + e.message); }
+    try { const l = await sineNominatim(c); Store.adicionarAgenciasOnline(c, l, 'osm'); return { agencias: l, origem: 'osm', aviso: (l.length ? '' : 'Nada encontrado na internet para esta cidade. ') + avisos.join(' ') }; }
+    catch (e) { avisos.push('Nominatim: ' + e.message); }
+    return { agencias: [], origem: '', aviso: avisos.join(' ') };
+  }
+
+  return { geocodificar, geocodificarESalvar, importarIBGE, capitalizar, URL_IBGE, buscarSineOnline };
 })();

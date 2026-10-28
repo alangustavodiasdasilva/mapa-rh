@@ -197,7 +197,9 @@ Paginas.vagas = {
             const tel = (info && info.sineTelefone) || (a.telefones || []).join(' / ');
             extra = `<div class="small muted" style="margin-top:4px">Agência ${UI.esc(a.nome)}${prox ? ` (a ${UI.fmtKm(prox.distancia)}, a mais próxima)` : ''}${tel ? ' · ' + UI.esc(tel) : ''}${a.email ? ` · <a href="mailto:${UI.esc(a.email)}?subject=${enc('Vaga: ' + v.titulo)}&body=${enc(texto)}">enviar por e-mail</a>` : ''}</div>`;
           }
-          return abrir(k.url, 'Abrir Emprega Brasil') + extra;
+          const portal = c ? Store.portalSine(c.uf) : null;
+          if (!a && c) extra = `<div class="small muted" style="margin-top:4px">Sem agência na base para ${UI.esc(c.nome)}: abra a ficha da cidade no mapa (botão Mapa) — o sistema busca a agência na internet e salva.</div>`;
+          return abrir(k.url, 'Abrir Emprega Brasil') + (portal ? abrir(portal.url, portal.nome) : '') + extra;
         }
         if (k.id === 'cartaz') return `<button class="btn btn-pequeno" data-imprimir>Imprimir cartaz</button>`;
         return k.url ? abrir(k.url, 'Abrir ' + k.nome) : '';

@@ -48,7 +48,7 @@ const App = {
 
   init() {
     Store.init();
-    if (window.Malha) Malha.limparCacheAntigo();
+    if (typeof Malha !== 'undefined') Malha.limparCacheAntigo();
     try { Object.assign(this.filtros, JSON.parse(localStorage.getItem('maparh:filtros') || '{}')); } catch (e) { /* ignora */ }
     this.usuario = Store.usuarioAtual();
     if (!this.usuario) return this.renderLogin();

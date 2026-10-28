@@ -98,7 +98,7 @@ const Store = (() => {
       const bruto = localStorage.getItem(CHAVE);
       dados = bruto ? JSON.parse(bruto) : dadosPadrao();
     } catch (e) { console.error('Falha ao ler dados salvos', e); dados = dadosPadrao(); }
-    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos']) if (!Array.isArray(dados[k])) dados[k] = [];
+    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos', 'sineExtra']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.length) dados.usuarios = dadosPadrao().usuarios;
     try {
@@ -751,6 +751,7 @@ const Store = (() => {
   }
   // Cidade correspondente ao nome gravado em um ponto de mapa PDR (com cache, pois é chamado muitas vezes)
   function cidadeDoSilo(s, uf = '') {
+    if (s && s.cidadeId && cidade(s.cidadeId)) return cidade(s.cidadeId);
     const nome = String(s && s.cidade || '').trim();
     if (!nome) return null;
     const k = String(uf || '') + '|' + normalizar(nome);
@@ -813,18 +814,95 @@ const Store = (() => {
   }
 
   // ---------- agências do SINE (base embutida: data/sine_seed.js) ----------
-  function agenciasSine() { return (window.SINE_SEED && Array.isArray(window.SINE_SEED.agencias)) ? window.SINE_SEED.agencias : []; }
+  // Base embutida (RS, FGTAS) + agências importadas pelo RH (qualquer estado), guardadas nos dados/backup
+  function agenciasSineEmbutidas() { return (window.SINE_SEED && Array.isArray(window.SINE_SEED.agencias)) ? window.SINE_SEED.agencias : []; }
+  function agenciasSineImportadas() { return Array.isArray(dados.sineExtra) ? dados.sineExtra : []; }
+  function agenciasSine() { return agenciasSineEmbutidas().concat(agenciasSineImportadas()); }
+  // Quantas agências temos por estado (para saber onde a base cobre)
+  function coberturaSine() {
+    const m = {};
+    for (const a of agenciasSine()) { const u = String(a.uf || 'RS').toUpperCase(); m[u] = (m[u] || 0) + 1; }
+    return m;
+  }
+  // Portal público de cada estado onde o RH acha as agências (quando não há base embutida)
+  const PORTAIS_SINE = {
+    RS: { nome: 'Agências FGTAS/Sine', url: 'https://fgtas.rs.gov.br/agencias-fgtas-sine' },
+    SC: { nome: 'SINE Santa Catarina (SDE)', url: 'https://www.sde.sc.gov.br/' },
+    PR: { nome: 'Agências do Trabalhador (PR)', url: 'https://www.trabalho.pr.gov.br/' }
+  };
+  function portalSine(uf) {
+    uf = String(uf || '').toUpperCase();
+    return PORTAIS_SINE[uf] || { nome: `Agências do SINE — ${UFS[uf] || uf}`, url: 'https://www.google.com/search?q=' + encodeURIComponent(`agências SINE ${UFS[uf] || uf} endereço telefone`) };
+  }
+  // Importa agências de uma planilha: colunas UF | CIDADE | NOME | ENDEREÇO | TELEFONE | E-MAIL | HORÁRIO (cabeçalho obrigatório)
+  function importarAgenciasSine(linhas, autor) {
+    if (!linhas || linhas.length < 2) throw new Error('A planilha precisa de uma linha de cabeçalho e pelo menos uma agência.');
+    const cab = linhas[0].map(h => normalizar(h));
+    const col = nomes => { for (const n of nomes) { const i = cab.findIndex(h => h === n || h.startsWith(n)); if (i >= 0) return i; } return -1; };
+    const iUF = col(['uf', 'estado']), iCid = col(['cidade', 'municipio']), iNome = col(['nome', 'agencia', 'unidade']);
+    const iEnd = col(['endereco']), iTel = col(['telefone', 'fone', 'contato']), iMail = col(['e-mail', 'email']), iHor = col(['horario', 'atendimento']);
+    if (iUF < 0 || iCid < 0) throw new Error('Não achei as colunas UF e CIDADE no cabeçalho. Use o modelo.');
+    const novas = []; const semCidade = [];
+    for (const l of linhas.slice(1)) {
+      const uf = String(l[iUF] || '').toUpperCase().trim(), cidNome = String(l[iCid] || '').trim();
+      if (!UFS[uf] || !cidNome) continue;
+      const c = resolverCidade(cidNome, uf) || cidadeAproximada(cidNome, uf);
+      if (!c) semCidade.push(`${cidNome}/${uf}`);
+      novas.push({ uf, cidade: c ? c.nome : cidNome, nome: String(iNome >= 0 ? l[iNome] : '').trim() || cidNome, endereco: String(iEnd >= 0 ? l[iEnd] : '').trim(),
+        telefones: String(iTel >= 0 ? l[iTel] : '').split(/[;/|]/).map(t => t.trim()).filter(Boolean), email: String(iMail >= 0 ? l[iMail] : '').trim(),
+        horario: String(iHor >= 0 ? l[iHor] : '').trim(), lat: c ? c.lat : null, lng: c ? c.lng : null, origem: 'importada', importadaEm: agora() });
+    }
+    if (!novas.length) throw new Error('Nenhuma linha válida (confira UF e cidade).');
+    if (!Array.isArray(dados.sineExtra)) dados.sineExtra = [];
+    // substitui as agências importadas dos mesmos estados, para a planilha nova valer inteira
+    const ufsNovas = new Set(novas.map(a => a.uf));
+    dados.sineExtra = dados.sineExtra.filter(a => !ufsNovas.has(a.uf)).concat(novas);
+    salvar();
+    auditar('sine.importar', `${novas.length} agência(s) do SINE importadas (${[...ufsNovas].join(', ')})`, autor);
+    return { total: novas.length, ufs: [...ufsNovas], semCidade };
+  }
+  // Configurações do sistema (ex.: chave da API do Google Places para buscar agências do SINE)
+  function config() { if (!dados.config || typeof dados.config !== 'object') dados.config = {}; return dados.config; }
+  function salvarConfig(campos, autor) {
+    Object.assign(config(), campos); salvar();
+    auditar('config.salvar', Object.keys(campos).join(', '), autor);
+  }
+  // Agências achadas na internet entram na base como importadas (origem google/osm) e valem para todos
+  function adicionarAgenciasOnline(cidadeObj, lista, origem) {
+    if (!Array.isArray(dados.sineExtra)) dados.sineExtra = [];
+    const n = normalizar(cidadeObj.nome);
+    // substitui o que já veio da internet para esta cidade
+    dados.sineExtra = dados.sineExtra.filter(a => !((a.origem === 'google' || a.origem === 'osm') && a.uf === cidadeObj.uf && normalizar(a.cidade) === n));
+    for (const a of lista) dados.sineExtra.push({ ...a, uf: cidadeObj.uf, cidade: cidadeObj.nome, origem, importadaEm: agora() });
+    if (!dados.sineBusca || typeof dados.sineBusca !== 'object') dados.sineBusca = {};
+    dados.sineBusca[cidadeObj.id] = { quando: agora(), achou: lista.length, origem };
+    salvar();
+    return lista.length;
+  }
+  function buscaSineRecente(cidadeId, dias = 30) {
+    const b = dados.sineBusca && dados.sineBusca[cidadeId];
+    return !!(b && (Date.now() - new Date(b.quando).getTime()) < dias * 86400000);
+  }
+  function removerAgenciasSine(uf, autor) {
+    uf = String(uf || '').toUpperCase();
+    const antes = agenciasSineImportadas().length;
+    dados.sineExtra = agenciasSineImportadas().filter(a => a.uf !== uf);
+    salvar();
+    auditar('sine.remover', `Agências importadas de ${uf} removidas (${antes - dados.sineExtra.length})`, autor);
+  }
   // Agências na própria cidade
   function sineDaCidade(c) {
     if (!c) return [];
     const n = normalizar(c.nome), uf = String(c.uf || '').toUpperCase();
     return agenciasSine().filter(a => String(a.uf || 'RS').toUpperCase() === uf && normalizar(a.cidade) === n);
   }
-  // Agência mais próxima (em km), quando a cidade não tem uma
+  // Agência mais próxima (em km) DO MESMO ESTADO, quando a cidade não tem uma; null se o estado não tem base
   function sineMaisProximo(c) {
     if (!c || c.lat == null) return null;
+    const uf = String(c.uf || '').toUpperCase();
     let melhor = null;
     for (const a of agenciasSine()) {
+      if (String(a.uf || 'RS').toUpperCase() !== uf) continue;
       if (a.lat == null || a.lng == null) continue;
       const d = distanciaKm(c, a);
       if (d != null && (!melhor || d < melhor.distancia)) melhor = { agencia: a, distancia: d };
@@ -891,16 +969,15 @@ const Store = (() => {
     const netLink = doc.querySelector('NetworkLink Link href, NetworkLink Url href, NetworkLink href');
     if (netLink && /https?:\/\//i.test(netLink.textContent || '')) urlRemota = netLink.textContent.trim();
 
+    const texto = el => el && el.textContent ? el.textContent.trim() : '';
+    // nome da pasta (camada) do Google My Maps em que o ponto está: costuma ser o distrito ("Distrito Cascavel")
+    const pastaDe = p => { let e = p.parentElement; while (e) { if (e.localName === 'Folder') return texto(e.querySelector(':scope > name')); e = e.parentElement; } return ''; };
+    const numero = v => { const n = parseFloat(String(v || '').replace(',', '.')); return isNaN(n) ? null : n; };
     const pontos = [];
+    const semCoordenada = [];
     for (const p of doc.querySelectorAll('Placemark')) {
-      const pNome = (p.querySelector('name') || {}).textContent || '';
-      const desc = (p.querySelector('description') || {}).textContent || '';
-      const coordsEl = p.querySelector('Point coordinates') || p.querySelector('coordinates');
-      if (!coordsEl || !coordsEl.textContent.trim()) continue;
-      const partes = coordsEl.textContent.trim().split(/[\s,]+/);
-      const lng = parseFloat(partes[0]), lat = parseFloat(partes[1]);
-      if (isNaN(lat) || isNaN(lng)) continue;
-
+      const pNome = texto(p.querySelector(':scope > name'));
+      const desc = texto(p.querySelector(':scope > description'));
       const campos = {};
       const linhas = desc.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?[^>]+(>|$)/g, '').split('\n');
       for (const l of linhas) {
@@ -908,20 +985,114 @@ const Store = (() => {
         if (m && m[2].trim()) campos[m[1].trim()] = m[2].trim();
       }
       for (const dEl of p.querySelectorAll('ExtendedData Data')) {
-        const k = dEl.getAttribute('name'), v = ((dEl.querySelector('value') || {}).textContent || '').trim();
+        const k = dEl.getAttribute('name'), v = texto(dEl.querySelector('value'));
         if (k && v && !campos[k]) campos[k] = v;
       }
       const achar = re => { const k = Object.keys(campos).find(x => re.test(normalizar(x))); return k ? campos[k] : ''; };
+      // coordenadas: <Point>, senão <address> "lat lng", senão campos lat/long (planilhas importadas no My Maps vêm assim)
+      let lat = null, lng = null;
+      const coordsEl = p.querySelector('Point coordinates') || p.querySelector('coordinates');
+      if (coordsEl && coordsEl.textContent.trim()) {
+        const partes = coordsEl.textContent.trim().split(/[\s,]+/);
+        lng = numero(partes[0]); lat = numero(partes[1]);
+      }
+      if (lat == null || lng == null) {
+        const end = texto(p.querySelector(':scope > address'));
+        const m = end.match(/^\s*(-?\d+[.,]\d+)[\s,;]+(-?\d+[.,]\d+)\s*$/);
+        if (m) { lat = numero(m[1]); lng = numero(m[2]); }
+      }
+      if (lat == null || lng == null) { lat = numero(achar(/^lat(itude)?( filial)?$/)); lng = numero(achar(/^(lng|long|longitude)( filial)?$/)); }
+      if (lat == null || lng == null || Math.abs(lat) > 90 || Math.abs(lng) > 180) { semCoordenada.push(pNome); continue; }
+      const pasta = pastaDe(p);
       pontos.push({
-        id: uid(), nome: pNome.trim() || 'Sem nome', lat, lng,
-        cidade: achar(/^(cidade|municipio)$/), micro: achar(/micro/), distrito: achar(/^distrito$/),
+        id: uid(), nome: pNome || 'Sem nome', lat, lng, pasta,
+        cidade: achar(/^(cidade|cidades|municipio)( filial)?$/),
+        micro: achar(/^micro/),
+        distrito: pasta.replace(/^distrito\s+/i, '').trim() || achar(/^distrito$/),
         campos, desc
       });
     }
-    return { nome, urlRemota, pontos };
+    return { nome, urlRemota, pontos, semCoordenada };
+  }
+  // Cidade cujo centro está mais perto do ponto (dentro de maxKm), nos estados informados
+  function cidadeMaisProxima(lat, lng, ufs = null, maxKm = 35) {
+    const set = conjuntoUF(ufs);
+    let melhor = null, melhorD = Infinity;
+    for (const c of listaCidades) {
+      if (set && !set.has(c.uf)) continue;
+      const d = distanciaKm({ lat, lng }, c);
+      if (d != null && d < melhorD) { melhorD = d; melhor = c; }
+    }
+    return melhor && melhorD <= maxKm ? melhor : null;
+  }
+  // Descobre a cidade de cada unidade do KML (pelo nome, senão pelos limites do IBGE, senão pela cidade mais perto)
+  // e monta a estrutura de distritos/microrregiões que o mapa descreve. ufs: estados onde procurar.
+  async function estruturaDoKML(pontos, ufs, aoProgresso = () => {}) {
+    const set = conjuntoUF(ufs) || null;
+    const lista = set ? [...set] : [];
+    let porNome = 0, porMalha = 0, porProximidade = 0, semCidade = 0;
+    // sem a lista completa do IBGE as cidades de outros estados não existem aqui: baixa uma vez (5.570 municípios)
+    if (!temIBGE() && typeof Geo !== 'undefined') {
+      try { await Geo.importarIBGE(aoProgresso); } catch (e) { console.warn('Lista IBGE indisponível, seguindo pela malha', e); }
+    }
+    for (let i = 0; i < pontos.length; i++) {
+      const p = pontos[i];
+      if (i % 25 === 0) aoProgresso(`Identificando a cidade das unidades… ${i} de ${pontos.length}`);
+      let c = null;
+      if (p.cidade) c = resolverCidade(p.cidade, lista.length ? lista : '') || cidadeAproximada(p.cidade, lista.length ? lista : '');
+      if (c) porNome++;
+      else if (typeof Malha !== 'undefined' && lista.length) {
+        try {
+          const m = await Malha.municipioNoPonto(p.lat, p.lng, lista);
+          if (m) { c = resolverCidade(m.nome, m.uf) || cidadeAproximada(m.nome, m.uf); if (!c) c = salvarCidade({ nome: m.nome, uf: m.uf, lat: p.lat, lng: p.lng, origem: 'ibge', ibge: m.codigo }); }
+          if (c) porMalha++;
+        } catch (e) { console.warn('Malha IBGE falhou para o ponto', p.nome, e); }
+      }
+      if (!c) { c = cidadeMaisProxima(p.lat, p.lng, lista.length ? lista : null); if (c) porProximidade++; }
+      if (!c) { semCidade++; continue; }
+      p.cidade = c.nome; p.cidadeId = c.id; p.uf = c.uf;
+    }
+    aoProgresso('Montando distritos e microrregiões…');
+    // distrito = pasta do My Maps; micro = campo "microrreg" (quando existe), senão uma micro com o nome do distrito
+    const distritos = new Map();
+    for (const p of pontos) {
+      if (!p.cidadeId || !p.distrito) continue;
+      const kd = normalizar(p.distrito);
+      if (!distritos.has(kd)) distritos.set(kd, { nome: p.distrito, uf: p.uf, micros: new Map(), unidades: 0 });
+      const d = distritos.get(kd); d.unidades++;
+      const nomeMicro = (p.micro || '').trim() || p.distrito;
+      const km = normalizar(nomeMicro);
+      if (!d.micros.has(km)) d.micros.set(km, { nome: nomeMicro, cidades: new Map() });
+      const m = d.micros.get(km);
+      m.cidades.set(p.cidadeId, (m.cidades.get(p.cidadeId) || 0) + 1);
+    }
+    const saida = [...distritos.values()].map(d => ({
+      nome: d.nome, uf: d.uf, unidades: d.unidades,
+      micros: [...d.micros.values()].map(m => {
+        const ids = [...m.cidades.keys()];
+        // polo: cidade com o nome da micro; senão a que tem mais unidades
+        const polo = ids.find(id => normalizar(cidade(id).nome) === normalizar(m.nome)) || ids.sort((a, b) => m.cidades.get(b) - m.cidades.get(a))[0];
+        return { nome: m.nome, cidadeIds: ids, polo };
+      })
+    }));
+    return { distritos: saida, porNome, porMalha, porProximidade, semCidade };
+  }
+  // Cria/completa os distritos e microrregiões descobertos no KML
+  function aplicarEstruturaKML(estrutura, autor, { mover = false } = {}) {
+    const res = { distritosCriados: 0, distritosAtualizados: 0, micros: 0, cidades: 0, movidas: 0, ignoradas: 0 };
+    for (const ed of estrutura.distritos) {
+      let d = dados.distritos.find(x => normalizar(x.nome) === normalizar(ed.nome));
+      if (!d) { d = salvarDistrito({ nome: ed.nome, uf: ed.uf }, autor); res.distritosCriados++; } else res.distritosAtualizados++;
+      const itens = ed.micros.flatMap(m => m.cidadeIds.map(id => ({ micro: m.nome, cidadeId: id, polo: id === m.polo })));
+      const r = importarEstrutura(d.id, itens, autor, { mover });
+      res.micros += r.microsCriadas + r.microsAtualizadas; res.cidades += r.cidades; res.movidas += r.movidas; res.ignoradas += r.ignoradas;
+      aplicarTons(d);
+    }
+    salvar();
+    return res;
   }
   // Campos de um ponto que valem a pena mostrar (fora os já exibidos e os internos/técnicos)
-  const CAMPOS_OCULTOS = /^(cidade|municipio|micro.*|distrito|pdr id|id pod2|latitude|longitude|short|short cnpj)$/;
+  const CAMPOS_OCULTOS = /^(cidade|cidades|municipio|cidade filial|micro.*|distrito|distrito filial|pdr id|id pod2|lat|long|latitude|longitude|latitude filial|longitude filial|endereco|descricao|wkt|short|short cnpj)$/;
   function camposDoPonto(s) {
     const out = [];
     for (const [k, v] of Object.entries(s.campos || {})) if (!CAMPOS_OCULTOS.test(normalizar(k)) && v) out.push([k, v]);
@@ -1135,7 +1306,7 @@ const Store = (() => {
     try { obj = JSON.parse(texto); } catch (e) { throw new Error('Arquivo inválido (não é um backup do Mapa RH).'); }
     if (!obj || obj.app !== 'maparh' || !obj.dados) throw new Error('Arquivo inválido (não é um backup do Mapa RH).');
     dados = obj.dados;
-    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos']) if (!Array.isArray(dados[k])) dados[k] = [];
+    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos', 'sineExtra']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.some(u => u.perfil === 'admin' && u.ativo)) dados.usuarios.push(dadosPadrao().usuarios[0]);
     salvar();
@@ -1190,8 +1361,8 @@ const Store = (() => {
     registros, registrosFiltrados, adicionarRegistro, adicionarRegistros, atualizarRegistro, excluirRegistro, excluirRegistros,
     PALETA_DISTRITOS, gerarTons, corTexto, hexParaHsl, hslParaHex, distritos, distrito, micro, salvarDistrito, excluirDistrito, salvarMicro, excluirMicro,
     importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, registrosDescartados, cidadeDoSilo, microDoSilo, silosNaRegiao,
-    infoCidade, salvarInfoCidade, agenciasSine, sineDaCidade, sineMaisProximo,
-    mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr,
+    infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente,
+    mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
     STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,
     auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo,
