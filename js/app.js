@@ -243,8 +243,10 @@ const App = {
       return;
     }
     if (this.usuario.senhaPadrao) {
-      b.innerHTML = `<div class="banner banner-aviso">Você ainda usa a senha padrão. <a href="#" id="banner-senha">Alterar senha agora</a>.</div>`;
+      if (sessionStorage.getItem('maparh:banner-senha-fechado')) { b.innerHTML = ''; return; }
+      b.innerHTML = `<div class="banner banner-aviso">Você ainda usa a senha padrão. <a href="#" id="banner-senha">Alterar senha agora</a>.<button class="fechar-banner" title="Fechar este aviso">&times;</button></div>`;
       b.querySelector('#banner-senha').addEventListener('click', e => { e.preventDefault(); this.modalSenha(); });
+      b.querySelector('.fechar-banner').addEventListener('click', () => { sessionStorage.setItem('maparh:banner-senha-fechado', '1'); b.innerHTML = ''; });
     } else b.innerHTML = '';
   },
 
@@ -289,6 +291,7 @@ const App = {
     if (wrapF) wrapF.hidden = !!pag.semFiltros;
     const el = document.getElementById('pagina');
     el.className = 'pagina pagina-' + nome;
+    document.body.classList.toggle('na-pagina-mapa', nome === 'mapa');
     el.innerHTML = '';
     this.atualizarBanner();
     window.scrollTo(0, 0);
