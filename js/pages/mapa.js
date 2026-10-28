@@ -436,20 +436,12 @@ Paginas.mapa = {
     function aplicarFoco(chaves) {
       foco = chaves ? new Set(chaves) : null;
       desenharOrigens();
-      // seleção destaca, não esconde: cidades fora da seleção continuam no mapa, apagadas
+      // com uma cidade selecionada o mapa mostra só o que é dela: as cidades ligadas a ela, as unidades e a agência do SINE dela
       camadas.atuacao.clearLayers();
-      for (const [id, m] of marcadoresAtuacao) {
-        camadas.atuacao.addLayer(m);
-        const dentro = !foco || foco.has(id);
-        if (m.setOpacity) m.setOpacity(dentro ? 1 : 0.35);
-        const elIc = m.getElement && m.getElement(); if (elIc) elIc.classList.toggle('marcador-apagado', !dentro);
-      }
+      for (const [id, m] of marcadoresAtuacao) if (!foco || foco.has(id)) camadas.atuacao.addLayer(m);
       camadas.hubs.clearLayers();
-      for (const [k, m] of marcadoresHub) {
-        camadas.hubs.addLayer(m);
-        const dentro = !foco || foco.has(k);
-        if (m.setStyle) m.setStyle({ opacity: dentro ? 1 : 0.3, fillOpacity: dentro ? 0.35 : 0.1 });
-      }
+      for (const [k, m] of marcadoresHub) if (!foco || foco.has(k)) camadas.hubs.addLayer(m);
+      if (typeof montarCamadaSine === 'function') montarCamadaSine();
       renderSilos();
       aplicarModoLinhas();
       el.querySelector('#mapa-kpis').classList.toggle('kpis-foco', !!foco);
@@ -610,10 +602,10 @@ Paginas.mapa = {
       camadas.silos.clearLayers();
       const qtdEl = el.querySelector('#qtd-silos');
       if (!el.querySelector('#c-silos').checked) { if (qtdEl) qtdEl.textContent = '0'; return; }
-      // com uma cidade selecionada as unidades continuam no mapa: as da seleção em destaque, as outras apagadas
+      // com uma cidade selecionada ficam só as unidades que são dela (ou das cidades ligadas a ela)
       const siloEmFoco = s => { if (!foco) return true; const c = Store.cidadeDoSilo(s, s.uf || ''); return !!(c && foco.has(c.id)); };
       const mapaSel = el.querySelector('#mapa-filtro-silos-mapa').value || '';
-      let silos = App.silosFiltrados();
+      let silos = App.silosFiltrados().filter(siloEmFoco);
       if (mapaSel) silos = silos.filter(s => s.mapaId === mapaSel);
       if (qtdEl) qtdEl.textContent = silos.length;
       if (!silosMedidos) { silos.forEach(s => { pontos.push([s.lat, s.lng]); pontosFoco.push([s.lat, s.lng]); }); silosMedidos = true; }
@@ -668,8 +660,9 @@ Paginas.mapa = {
       camadaSine.clearLayers();
       // agência sem coordenada (base de SC) fica no centro da cidade
       const ags = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS')).map(a => {
-        if (a.lat != null && a.lng != null) return a;
         const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS');
+        if (foco && !(c && foco.has(c.id))) return null; // seleção ativa: só a agência da cidade selecionada
+        if (a.lat != null && a.lng != null) return a;
         return c ? { ...a, lat: c.lat, lng: c.lng } : null;
       }).filter(Boolean);
       el.querySelector('#qtd-sine').textContent = ags.length;
