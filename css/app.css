@@ -465,3 +465,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 @media (max-width: 900px) { .kanban, .fluxo, .divulgar, .ficha-cand, .opcoes-tipo { grid-template-columns: 1fr; } }
 
 .filtro-item.filtro-oculto { display: none; }
+
+/* barras de rolagem escondidas (continua rolando com a roda do mouse / dedo) */
+.sidebar nav, .mapa-painel, .mapa-legenda, .mapa-controles, .modal-corpo, .checkbox-lista, .ac-lista { scrollbar-width: none; -ms-overflow-style: none; }
+.sidebar nav::-webkit-scrollbar, .mapa-painel::-webkit-scrollbar, .mapa-legenda::-webkit-scrollbar, .mapa-controles::-webkit-scrollbar, .modal-corpo::-webkit-scrollbar, .checkbox-lista::-webkit-scrollbar, .ac-lista::-webkit-scrollbar { display: none; }
