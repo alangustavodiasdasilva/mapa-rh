@@ -868,6 +868,7 @@ Paginas.mapa = {
       const editar = App.podeEditar();
       // SINE: agência(s) na cidade ou a mais próxima; os campos de anotação vêm pré-preenchidos (editáveis) quando ainda não foram salvos
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+      if (Store.BASES_SINE.includes(cid.uf) && !Store.fonteBaseSine(cid.uf)) { await Store.carregarBaseSine(cid.uf); }
       const sineLocal = Store.sineDaCidade(cid);
       const sinePerto = sineLocal.length ? null : Store.sineMaisProximo(cid);
       const fmtAg = a => `<div class="sine-card"><div class="sine-nome">${UI.esc(a.nome || a.cidade)}${a.cidade && Store.normalizar(a.cidade) !== Store.normalizar(cid.nome) ? ` <span class="muted">· ${UI.esc(a.cidade)}</span>` : ''}</div>
@@ -929,7 +930,7 @@ Paginas.mapa = {
             <a href="${busca(`rádio ${cid.nome} ${cid.uf}`)}" target="_blank" rel="noopener">Rádios locais</a>
             <a href="${IbgeCidade.urlCidades(cid.nome, cid.uf)}" target="_blank" rel="noopener">IBGE Cidades</a>
           </div>
-          ${window.SINE_SEED ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(window.SINE_SEED.fonte || 'FGTAS')}, coletada em ${UI.esc(window.SINE_SEED.atualizadoEm || '')}. Confirme por telefone antes de divulgar.</div>` : ''}
+          ${Store.fonteBaseSine(cid.uf) ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(Store.fonteBaseSine(cid.uf).fonte || '')}, de ${UI.esc(Store.fonteBaseSine(cid.uf).atualizadoEm || '')}${Store.fonteBaseSine(cid.uf).parcial ? ' (lista parcial)' : ''}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
       ligarFechar();
       // sem agência na base: procura na internet (Google Places se houver chave; senão OpenStreetMap) e grava o que achar

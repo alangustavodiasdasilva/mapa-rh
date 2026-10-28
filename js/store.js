@@ -385,6 +385,7 @@ const Store = (() => {
     if (novo && autor && autor.projetos) { autor.projetos.push(p.id); }
     salvar();
     auditar(novo ? 'projeto.criar' : 'projeto.editar', `Projeto ${rotuloProjeto(p)}`, autor);
+    ufs.forEach(u => carregarBaseSine(u));
     return p;
   }
   function excluirProjeto(id, autor) {
@@ -815,7 +816,43 @@ const Store = (() => {
 
   // ---------- agências do SINE (base embutida: data/sine_seed.js) ----------
   // Base embutida (RS, FGTAS) + agências importadas pelo RH (qualquer estado), guardadas nos dados/backup
-  function agenciasSineEmbutidas() { return (window.SINE_SEED && Array.isArray(window.SINE_SEED.agencias)) ? window.SINE_SEED.agencias : []; }
+  // Bases oficiais embutidas por estado (data/sine/UF.js), carregadas sozinhas quando o estado entra num projeto/distrito
+  const BASES_SINE = ['RS', 'PR', 'SC'];
+  const basesSineCarregando = new Map();
+  function carregarBaseSine(uf) {
+    uf = String(uf || '').toUpperCase();
+    if (uf === 'RS' || !BASES_SINE.includes(uf)) return Promise.resolve(false); // RS já vem no sine_seed.js
+    if (window.SINE_SEED_UF && window.SINE_SEED_UF[uf]) return Promise.resolve(true);
+    if (basesSineCarregando.has(uf)) return basesSineCarregando.get(uf);
+    const versao = ((document.querySelector('script[src*="js/store.js"]') || {}).src || '').replace(/.*v=(\d+).*/, '$1') || '1';
+    const p = new Promise(resolve => {
+      const el = document.createElement('script');
+      el.src = `data/sine/${uf}.js?v=${versao}`;
+      el.onload = () => { cacheSineCidade.clear(); resolve(true); };
+      el.onerror = () => { basesSineCarregando.delete(uf); resolve(false); };
+      document.head.appendChild(el);
+    });
+    basesSineCarregando.set(uf, p);
+    return p;
+  }
+  // Carrega as bases de todos os estados em uso (projetos e distritos)
+  function carregarBasesSineEmUso() {
+    const ufs = new Set();
+    dados.projetos.forEach(p => ufsProjeto(p).forEach(u => ufs.add(u)));
+    dados.distritos.forEach(d => { if (d.uf) ufs.add(String(d.uf).toUpperCase()); });
+    return Promise.all([...ufs].map(carregarBaseSine));
+  }
+  const cacheSineCidade = new Map();
+  function agenciasSineEmbutidas() {
+    const base = (window.SINE_SEED && Array.isArray(window.SINE_SEED.agencias)) ? window.SINE_SEED.agencias : [];
+    const porUF = window.SINE_SEED_UF || {};
+    return base.concat(...Object.keys(porUF).map(u => (porUF[u] && porUF[u].agencias) || []));
+  }
+  function fonteBaseSine(uf) {
+    uf = String(uf || '').toUpperCase();
+    if (uf === 'RS' && window.SINE_SEED) return window.SINE_SEED;
+    return (window.SINE_SEED_UF || {})[uf] || null;
+  }
   function agenciasSineImportadas() { return Array.isArray(dados.sineExtra) ? dados.sineExtra : []; }
   function agenciasSine() { return agenciasSineEmbutidas().concat(agenciasSineImportadas()); }
   // Quantas agências temos por estado (para saber onde a base cobre)
@@ -894,16 +931,17 @@ const Store = (() => {
   function sineDaCidade(c) {
     if (!c) return [];
     const n = normalizar(c.nome), uf = String(c.uf || '').toUpperCase();
-    return agenciasSine().filter(a => String(a.uf || 'RS').toUpperCase() === uf && normalizar(a.cidade) === n);
+    return agenciasSine().filter(a => String(a.uf || 'RS').toUpperCase() === uf && normalizar(a.cidade) === n)
+      .map(a => a.lat == null ? { ...a, lat: c.lat, lng: c.lng, semCoordenada: true } : a);
   }
   // Agência mais próxima (em km) DO MESMO ESTADO, quando a cidade não tem uma; null se o estado não tem base
   function sineMaisProximo(c) {
     if (!c || c.lat == null) return null;
     const uf = String(c.uf || '').toUpperCase();
     let melhor = null;
-    for (const a of agenciasSine()) {
+    for (let a of agenciasSine()) {
       if (String(a.uf || 'RS').toUpperCase() !== uf) continue;
-      if (a.lat == null || a.lng == null) continue;
+      if (a.lat == null || a.lng == null) { const cc = resolverCidade(a.cidade, uf) || cidadeAproximada(a.cidade, uf); if (!cc) continue; a = { ...a, lat: cc.lat, lng: cc.lng, semCoordenada: true }; }
       const d = distanciaKm(c, a);
       if (d != null && (!melhor || d < melhor.distancia)) melhor = { agencia: a, distancia: d };
     }
@@ -1361,7 +1399,7 @@ const Store = (() => {
     registros, registrosFiltrados, adicionarRegistro, adicionarRegistros, atualizarRegistro, excluirRegistro, excluirRegistros,
     PALETA_DISTRITOS, gerarTons, corTexto, hexParaHsl, hslParaHex, distritos, distrito, micro, salvarDistrito, excluirDistrito, salvarMicro, excluirMicro,
     importarEstrutura, conflitosCidades, distritoDaCidade, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, registrosDescartados, cidadeDoSilo, microDoSilo, silosNaRegiao,
-    infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente,
+    infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, BASES_SINE, carregarBaseSine, carregarBasesSineEmUso, fonteBaseSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
     STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,

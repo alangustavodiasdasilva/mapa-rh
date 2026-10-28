@@ -12,14 +12,14 @@ Paginas.cidades = {
           <p class="muted small">O sistema já traz ${UI.fmtNum((window.CIDADES_SEED || []).length)} cidades principais. Baixe a lista oficial com os 5.570 municípios e suas coordenadas para que qualquer cidade do Brasil seja reconhecida automaticamente ao digitar ou importar. É feito uma única vez e fica guardado neste navegador.</p>
           <div class="linha">
             <span id="ibge-status">${Store.temIBGE() ? `<span class="badge badge-verde">carregada — ${UI.fmtNum(Store.totalIBGE())} municípios</span>` : '<span class="badge badge-amarelo">não carregada</span>'}</span>
-            ${podeEditar ? `<button class="btn btn-primario btn-pequeno" id="btn-ibge">${Store.temIBGE() ? 'Atualizar lista' : 'Baixar lista completa'}</button>` : ''}
+            ${podeEditar ? `<button class="btn btn-primario btn-pequeno" id="btn-ibge">${Store.temIBGE() ? 'Atualizar lista' : 'Baixar agora'}</button>` : ''}
           </div>
           <p class="muted small mt">Fonte: repositório público <i>municipios-brasileiros</i> (dados do IBGE). Requer internet.</p>
         </div>
         <div class="card" id="card-sine">
           <h2>Agências do SINE</h2>
           <p class="muted small" id="sine-cobertura"></p>
-          <p class="muted small">A base embutida cobre o RS (FGTAS). Nas outras cidades o sistema <b>busca a agência na internet sozinho</b> quando você abre a ficha da cidade no mapa: pelo <b>Google Places</b> (precisa de uma chave, gratuita até um bom volume de consultas) ou, sem chave, pelo OpenStreetMap (cobertura menor).</p>
+          <p class="muted small">Bases oficiais embutidas: <b>RS</b> (FGTAS), <b>PR</b> (Secretaria do Trabalho) e <b>SC</b> (SICOS/SAS, parcial) — carregadas sozinhas quando o estado entra num projeto. Para cidades sem agência na base o sistema <b>busca na internet</b> ao abrir a ficha da cidade: pelo <b>Google Places</b> (com chave) ou pelo OpenStreetMap (sem chave, cobertura menor).</p>
           ${podeEditar ? `<label>Chave da API do Google Places (opcional)<input id="sine-google-key" type="password" placeholder="AIza…" value="${UI.esc(Store.config().googleKey || '')}" autocomplete="off"><span class="muted small">Google Cloud → APIs e serviços → Credenciais → Criar chave; ative "Places API (New)". Fica salva neste navegador e no backup.</span></label>
           <div class="linha"><button class="btn btn-primario btn-pequeno" id="btn-sine-lote">Buscar agências das cidades dos distritos</button><button class="btn btn-pequeno" id="btn-sine-importar">Importar planilha</button><button class="btn btn-pequeno" id="btn-sine-modelo">Modelo da planilha</button></div>
           <div id="sine-lote-status" class="small muted" style="margin-top:6px"></div>` : ''}
@@ -42,7 +42,8 @@ Paginas.cidades = {
       </div>`;
 
     // ---- agências do SINE ----
-    function renderSine() {
+    async function renderSine() {
+      await Store.carregarBasesSineEmUso();
       const cob = Store.coberturaSine();
       const ufs = Object.keys(cob).sort();
       el.querySelector('#sine-cobertura').innerHTML = ufs.length ? 'Cobertura atual: ' + ufs.map(u => `<b>${u}</b> (${cob[u]})`).join(' · ') : 'Nenhuma agência na base.';

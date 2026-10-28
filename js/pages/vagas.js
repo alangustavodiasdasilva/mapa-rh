@@ -175,7 +175,8 @@ Paginas.vagas = {
     }
 
     // ---------- divulgação ----------
-    function modalDivulgar(v) {
+    async function modalDivulgar(v) {
+      if (v.cidade && Store.BASES_SINE.includes(v.cidade.uf)) await Store.carregarBaseSine(v.cidade.uf);
       const texto = Store.textoAnuncio(v);
       const c = v.cidade;
       const sines = c ? Store.sineDaCidade(c) : [];

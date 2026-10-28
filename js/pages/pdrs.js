@@ -52,6 +52,8 @@ Paginas.pdrs = {
       if (m && /google\.[a-z.]+\/maps\/d\//i.test(url)) return `https://www.google.com/maps/d/kml?forcekml=1&mid=${m[1]}`;
       return null;
     }
+    // link de rede dentro do KML (vem sem forcekml e devolve KMZ): converte para o link que entrega o KML em texto
+    const normalizarLinkRemoto = url => linkKmlDoGoogle(url) || url;
 
     const btnColar = el.querySelector('#btn-colar-kml');
     if (btnColar) btnColar.addEventListener('click', () => {
@@ -89,8 +91,10 @@ Paginas.pdrs = {
       try {
         const r = await fetch(url);
         if (!r.ok) return false;
-        res = Store.parseKML(await r.text());
-      } catch (e) { return false; }
+        const txt = await r.text();
+        if (txt.charCodeAt(0) === 0x50 && txt.charCodeAt(1) === 0x4b) return false; // veio KMZ (zip)
+        res = Store.parseKML(txt);
+      } catch (e) { console.warn('Download do KML falhou', e); return false; }
       if (!res.pontos.length) return false;
       const nome = res.nome && res.nome !== 'Mapa KML' ? res.nome : nomePadrao;
       confirmarImportacao(res, nome);
@@ -125,8 +129,10 @@ Paginas.pdrs = {
       const resultado = Store.parseKML(texto);
       const nome = resultado.nome && resultado.nome !== 'Mapa KML' ? resultado.nome : (nomePadrao || 'Mapa PDR');
       if (!resultado.pontos.length && resultado.urlRemota) {
-        const ok = await tentarBaixar(resultado.urlRemota, nome);
-        if (!ok) guiaLinkDeRede(resultado.urlRemota, nome);
+        const url = normalizarLinkRemoto(resultado.urlRemota);
+        UI.toast('O arquivo só tem o link para o Google: baixando o mapa completo…', 'info', 4000);
+        const ok = await tentarBaixar(url, nome);
+        if (!ok) guiaLinkDeRede(url, nome);
         return;
       }
       if (!resultado.pontos.length) throw new Error('Nenhum ponto com coordenadas foi encontrado neste arquivo KML.');
