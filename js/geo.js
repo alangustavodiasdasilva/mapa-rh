@@ -139,13 +139,13 @@ const Geo = (() => {
     }));
   }
   // 2) OpenStreetMap (Overpass, sem chave; cobertura menor). Tenta mais de um servidor.
-  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
   async function sineOSM(c) {
-    const q = `[out:json][timeout:25];nwr(around:40000,${c.lat},${c.lng})["name"~"SINE|Agência do Trabalhador|Agencia do Trabalhador|Sistema Nacional de Emprego|Casa do Trabalhador",i];out center tags;`;
+    const q = `[out:json][timeout:10];nwr(around:40000,${c.lat},${c.lng})["name"~"SINE|Agência do Trabalhador|Agencia do Trabalhador|Sistema Nacional de Emprego|Casa do Trabalhador",i];out center tags;`;
     let ultimo = null;
     for (const url of OVERPASS) {
       try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 30000);
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
         const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl.signal });
         clearTimeout(t);
         if (!r.ok) { ultimo = new Error('Overpass HTTP ' + r.status); continue; }
