@@ -909,7 +909,7 @@ Paginas.mapa = {
           <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
 
 
-          <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? ({ importada: 'planilha importada pelo RH', google: 'achado no Google', osm: 'achado no OpenStreetMap' }[sineLocal[0].origem] || 'dados oficiais da FGTAS') : (sinePerto ? 'agência mais próxima' : '')}</span></div>
+          <div class="ficha-secao">SINE / agência de emprego <span class="muted small">${sineLocal.length ? ({ importada: 'planilha importada pelo RH', google: 'achado no Google', osm: 'achado no OpenStreetMap' }[sineLocal[0].origem] || 'base oficial ' + ((Store.fonteBaseSine(cid.uf) || {}).fonte || '').split(' — ')[0]) : (sinePerto ? 'agência mais próxima' : '')}</span></div>
           ${blocoSine}
           <div class="ficha-secao">Anotações do RH <span class="muted small">edite à vontade; fica salvo</span></div>
           <div class="form-linha" style="gap:8px">
