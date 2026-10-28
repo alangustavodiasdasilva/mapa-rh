@@ -36,7 +36,7 @@ Paginas.mapa = {
             <option value="">Todos os mapas</option>
           </select>
           <label><input type="checkbox" id="c-limites" checked> Limite do estado</label>
-          <label id="c-sine-wrap" title="Agências FGTAS/Sine do RS (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
+          <label id="c-sine-wrap" title="Agências do SINE dos estados em uso (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
           <div class="secao">Linhas: de onde vêm → onde trabalham</div>
           <select id="c-modo-linhas">
             <option value="selecionada">Só da cidade que eu clicar</option>
@@ -652,18 +652,27 @@ Paginas.mapa = {
 
     // ---------- agências do SINE (camada opcional) ----------
     const camadaSine = L.layerGroup();
-    {
-      const ags = Store.agenciasSine().filter(a => a.lat != null && a.lng != null);
+    // (re)monta a camada: as bases dos estados (PR, SC…) chegam depois do mapa abrir, então ela é refeita quando carregam
+    function montarCamadaSine() {
+      camadaSine.clearLayers();
+      // agência sem coordenada (base de SC) fica no centro da cidade
+      const ags = Store.agenciasSine().map(a => {
+        if (a.lat != null && a.lng != null) return a;
+        const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS');
+        return c ? { ...a, lat: c.lat, lng: c.lng } : null;
+      }).filter(Boolean);
       el.querySelector('#qtd-sine').textContent = ags.length;
-      if (!ags.length) el.querySelector('#c-sine-wrap').style.display = 'none';
+      el.querySelector('#c-sine-wrap').style.display = ags.length ? '' : 'none';
       for (const a of ags) {
         const m = L.marker([a.lat, a.lng], { icon: L.divIcon({ className: 'silo-marcador-div', html: '<div class="sine-marcador">S</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), pane: 'silos', keyboard: false })
           .bindTooltip(balao({ cor: '#0f766e', titulo: `SINE ${UI.esc(a.nome || a.cidade)}`, sub: [a.endereco, (a.telefones || []).join(' · ')].filter(Boolean).map(UI.esc).join('<br>'), dica: 'clique para abrir a ficha da cidade' }), { ...TT, offset: [0, -14] });
         m.on('click', () => { const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS'); if (c) abrirPainelCidade(c, {}); });
         camadaSine.addLayer(m);
       }
-      el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) camadaSine.addTo(mapa); else mapa.removeLayer(camadaSine); });
     }
+    montarCamadaSine();
+    el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) camadaSine.addTo(mapa); else mapa.removeLayer(camadaSine); });
+    Store.carregarBasesSineEmUso().then(() => { if (ativo) montarCamadaSine(); });
 
     // ---------- limites dos estados (malha do IBGE, guardada no navegador) ----------
     async function carregarLimite(uf) {
