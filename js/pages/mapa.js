@@ -681,11 +681,11 @@ Paginas.mapa = {
       return geo;
     }
     const projetosComDados = projetos.filter(p => regs.some(r => r.projetoId === p.id));
-    [...new Set(projetosComDados.map(p => p.uf))].forEach(async uf => {
+    [...new Set(projetosComDados.flatMap(p => Store.ufsProjeto(p)))].forEach(async uf => {
       try {
         const geo = await carregarLimite(uf);
         if (!geo || !ativo) return;
-        const cor = (projetosComDados.find(p => p.uf === uf) || {}).cor || COR_ATUACAO;
+        const cor = (projetosComDados.find(p => Store.ufDoProjeto(p, uf)) || {}).cor || COR_ATUACAO;
         camadas.limites.addLayer(L.geoJSON(geo, { style: { color: cor, weight: 2, opacity: 0.7, dashArray: '8 6', fillColor: cor, fillOpacity: 0.05 }, interactive: false }));
       } catch (e) { console.warn('Limite do estado indisponível', uf, e); }
     });

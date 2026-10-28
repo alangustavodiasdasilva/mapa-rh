@@ -122,7 +122,7 @@ const UI = (() => {
         const div = document.createElement('div');
         div.className = 'ac-item' + (i === ativo ? ' ativo' : '') + (it.geocode ? ' ac-geocode' : '');
         div.innerHTML = it.geocode
-          ? `&#128269; Buscar coordenadas de <b>${esc(it.texto)}</b>${it.uf ? ' (' + esc(it.uf) + ')' : ''} na internet`
+          ? `&#128269; Buscar coordenadas de <b>${esc(it.texto)}</b>${it.uf ? ' (' + esc(Array.isArray(it.uf) ? it.uf.join('/') : it.uf) + ')' : ''} na internet`
           : `${esc(it.cidade.nome)} <span class="muted">(${esc(it.cidade.uf)})</span>`;
         div.addEventListener('mousedown', e => e.preventDefault()); // mantém o foco no campo
         div.addEventListener('click', () => escolher(i));

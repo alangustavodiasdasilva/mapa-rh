@@ -50,8 +50,9 @@ reconhecido), um aviso amarelo informa quantas são e o que fazer.
 
 COMO FUNCIONA
 -------------
-- PROJETO = um ESTADO (UF), com ano opcional. Ex.: "Contratações RS 2024".
-  Crie um projeto por estado/ano para comparar a amplitude entre os anos.
+- PROJETO = um ou mais ESTADOS (UF), com ano opcional. Ex.: "Contratações RS/SC 2024".
+  Marque os estados onde o projeto contrata; o "estado principal" só define o
+  centro do mapa. Crie um projeto por ano para comparar a amplitude entre os anos.
 - CONTRATAÇÕES = a planilha de contratações do projeto, com 5 colunas (a última
   é opcional):
 

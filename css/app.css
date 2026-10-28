@@ -473,3 +473,9 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 /* barras de rolagem escondidas (continua rolando com a roda do mouse / dedo) */
 .sidebar nav, .mapa-painel, .mapa-legenda, .mapa-controles, .modal-corpo, .checkbox-lista, .ac-lista { scrollbar-width: none; -ms-overflow-style: none; }
 .sidebar nav::-webkit-scrollbar, .mapa-painel::-webkit-scrollbar, .mapa-legenda::-webkit-scrollbar, .mapa-controles::-webkit-scrollbar, .modal-corpo::-webkit-scrollbar, .checkbox-lista::-webkit-scrollbar, .ac-lista::-webkit-scrollbar { display: none; }
+
+/* projeto com vários estados */
+.ufs-grade { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-bottom: 12px; }
+.uf-opcao { display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--borda); border-radius: 6px; padding: 4px 2px; font-size: 12px; font-weight: 600; cursor: pointer; margin: 0; }
+.uf-opcao input { margin: 0; }
+.uf-opcao.marcada { background: var(--primaria-clara); border-color: var(--primaria); color: var(--primaria-escura); }

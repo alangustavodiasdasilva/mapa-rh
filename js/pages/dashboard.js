@@ -146,7 +146,7 @@ Paginas.dashboard = {
       vazio: 'Nenhum projeto para exibir.',
       colunas: [
         { titulo: 'Projeto', render: p => `<span class="ponto-cor" style="background:${UI.esc(p.projeto.cor)}"></span>${UI.esc(p.projeto.nome)}${p.projeto.ativo ? '' : ' <span class="badge badge-cinza">inativo</span>'}` },
-        { titulo: 'Estado', render: p => `${p.projeto.uf}` },
+        { titulo: 'Estado', render: p => Store.ufsProjeto(p.projeto).join('/') },
         { titulo: 'Ano', render: p => p.projeto.ano || '<span class="muted">—</span>' },
         { titulo: 'Total', classe: 'direita', render: p => `<b>${UI.fmtNum(p.total)}</b>` },
         { titulo: 'Local', classe: 'direita', render: p => UI.fmtNum(p.local) },

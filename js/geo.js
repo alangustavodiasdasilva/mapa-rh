@@ -75,9 +75,11 @@ const Geo = (() => {
 
   // Busca e salva a cidade na base local. Lança erro se não encontrar.
   async function geocodificarESalvar(nome, uf) {
-    if (!uf) throw new Error('Informe a UF para buscar a cidade.');
-    const res = await geocodificar(nome, uf);
-    if (!res) throw new Error(`Não encontrei "${nome}" (${uf}) na internet. Verifique a grafia ou cadastre a cidade manualmente com as coordenadas.`);
+    const ufs = Store.conjuntoUF(uf);
+    if (!ufs) throw new Error('Informe a UF para buscar a cidade.');
+    let res = null;
+    for (const u of ufs) { res = await geocodificar(nome, u); if (res) { uf = u; break; } }
+    if (!res) throw new Error(`Não encontrei "${nome}" (${[...ufs].join('/')}) na internet. Verifique a grafia ou cadastre a cidade manualmente com as coordenadas.`);
     // usa o nome oficial devolvido pela busca quando ele corresponde ao digitado; senão, capitaliza o texto
     const nomeFinal = res.nome && Store.normalizar(res.nome) === Store.normalizar(nome) ? res.nome : capitalizar(nome);
     return Store.salvarCidade({ nome: nomeFinal, uf, lat: res.lat, lng: res.lng, origem: 'geocode' });

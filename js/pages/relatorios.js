@@ -55,7 +55,7 @@ Paginas.relatorios = {
       { id: 'projeto', nome: 'Resumo por projeto (estado / ano)', gerar: (regs) => ({
         colunas: [
           { titulo: 'Projeto', render: r => `<span class="ponto-cor" style="background:${UI.esc(r.projeto.cor)}"></span>${UI.esc(r.projeto.nome)}` },
-          { titulo: 'UF', render: r => r.projeto.uf },
+          { titulo: 'UF', render: r => Store.ufsProjeto(r.projeto).join('/') },
           { titulo: 'Ano', render: r => r.projeto.ano || '—' },
           ...colLM,
           { titulo: '% Local', classe: 'direita', render: r => UI.fmtPct(r.pctLocal) },
@@ -66,7 +66,7 @@ Paginas.relatorios = {
           { titulo: 'Dist. média', classe: 'direita', render: r => UI.fmtKm(r.distMedia) }
         ],
         linhas: Analise.porProjeto(regs, App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId)),
-        csv: l => [l.projeto.nome, l.projeto.uf, l.projeto.ano || '', l.local, l.movel, l.total, l.pctLocal.toFixed(1), l.cidadesOrigem, l.ufsOrigem, l.foraDoEstado, l.cidadesAtuacao, l.atuacaoMovel, km(l.distMedia)],
+        csv: l => [l.projeto.nome, Store.ufsProjeto(l.projeto).join('/'), l.projeto.ano || '', l.local, l.movel, l.total, l.pctLocal.toFixed(1), l.cidadesOrigem, l.ufsOrigem, l.foraDoEstado, l.cidadesAtuacao, l.atuacaoMovel, km(l.distMedia)],
         cabecalhoCsv: ['PROJETO', 'UF', 'ANO', 'LOCAL', 'MOVEL', 'TOTAL', '% LOCAL', 'CIDADES DE ORIGEM', 'UFS DE ORIGEM', 'FORA DO ESTADO', 'CIDADES DE ATUACAO', 'TODO O ESTADO', 'DIST MEDIA KM']
       }) },
       { id: 'ano', nome: 'Amplitude por ano', gerar: (regs) => ({

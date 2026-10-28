@@ -73,7 +73,8 @@ Paginas.cadastro = {
     const projeto = () => Store.projeto(projetoId);
     function atualizarInfo() {
       const p = projeto();
-      el.querySelector('#obra-info').innerHTML = `${icone('mapa', 16)} Estado de atuação: ${p.uf} — ${UI.esc(Store.UFS[p.uf] || '')}${p.ano ? ' · ' + p.ano : ''}`;
+      const ufsP = Store.ufsProjeto(p);
+      el.querySelector('#obra-info').innerHTML = `${icone('mapa', 16)} ${ufsP.length > 1 ? 'Estados' : 'Estado'} de atuação: ${ufsP.map(x => `${x} — ${UI.esc(Store.UFS[x] || '')}`).join(' · ')}${p.ano ? ' · ' + p.ano : ''}`;
       if (!ufPadrao) ufPadrao = p.uf;
     }
     function salvarPref() { localStorage.setItem('maparh:cadastro-pref', JSON.stringify({ tipo: tipoPadrao, uf: ufPadrao })); }
@@ -103,9 +104,12 @@ Paginas.cadastro = {
         if (cands.length > 1) throw new Error(`Existem ${cands.length} cidades chamadas "${texto}" (${cands.map(x => x.uf).join(', ')}). Informe o estado.`);
         throw new Error(`Cidade "${texto}" não encontrada. Informe o estado para buscar na internet.`);
       }
+      const cands = Store.candidatasCidade(texto).filter(x => Store.conjuntoUF(uf).has(x.uf));
+      if (cands.length > 1) throw new Error(`Existem ${cands.length} cidades chamadas "${texto}" nos estados do projeto (${cands.map(x => x.uf).join(', ')}). Escolha na lista de sugestões.`);
       c = Store.cidadeAproximada(texto, uf);
       if (c) { UI.toast(`"${texto}" entendido como ${c.nome}/${c.uf}.`, 'info', 2500); return c; }
-      UI.toast(`Buscando coordenadas de ${texto}/${uf}…`, 'info', 2000);
+      const ufTxt = Array.isArray(uf) ? uf.join('/') : uf;
+      UI.toast(`Buscando coordenadas de ${texto}/${ufTxt}…`, 'info', 2000);
       return Geo.geocodificarESalvar(texto, uf);
     }
     function ligarAutocomplete(cidEl, ufFn, aoSelecionar) {
@@ -129,8 +133,8 @@ Paginas.cadastro = {
         <td><select id="novo-tipo"><option value="LOCAL" ${tipoPadrao === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${tipoPadrao === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
         <td><input id="novo-cidade" placeholder="Cidade de origem…"></td>
         <td><select id="novo-uf" style="min-width:70px">${UI.opcoesUF(ufPadrao)}</select></td>
-        <td>${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${projeto().uf}…`)}</td>
-        <td>${campoCidadeHTML('novo', 'base', '', '', `Base em ${projeto().uf}…`)}</td>
+        <td>${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${Store.ufsProjeto(projeto()).join('/')}…`)}</td>
+        <td>${campoCidadeHTML('novo', 'base', '', '', `Base em ${Store.ufsProjeto(projeto()).join('/')}…`)}</td>
         <td class="muted small" colspan="2">Enter adiciona</td>
         <td class="acoes-col"><button class="btn btn-primario btn-pequeno" id="novo-add">Adicionar</button></td>
       </tr>`;
@@ -140,16 +144,16 @@ Paginas.cadastro = {
       if (!tipoEl) return;
       ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
       const atEl = el.querySelector('.novo-atuacao'), baseEl = el.querySelector('.novo-base');
-      ligarAutocomplete(atEl, () => projeto().uf, () => {});
-      ligarAutocomplete(baseEl, () => projeto().uf, c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+      ligarAutocomplete(atEl, () => Store.ufsProjeto(projeto()), () => {});
+      ligarAutocomplete(baseEl, () => Store.ufsProjeto(projeto()), c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
       async function adicionar() {
         const btn = el.querySelector('#novo-add');
         btn.disabled = true;
         try {
           tipoPadrao = tipoEl.value; ufPadrao = ufEl.value; salvarPref();
           const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-          const at = await resolverEntrada(atEl, projeto().uf, 'cidade de atuação');
-          const base = baseEl.value.trim() ? await resolverEntrada(baseEl, projeto().uf, 'base de contratação') : at;
+          const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
+          const base = baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
           const r = Store.adicionarRegistro({ projetoId, tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
           UI.toast(`${UI.rotuloTipo(r.tipo)} — ${c.nome}/${c.uf} → ${r.cidadeAtuacao ? r.cidadeAtuacao.nome : '?'} adicionado.`, 'sucesso', 1800);
           const manterAt = { valor: atEl.value, id: atEl.dataset.cidadeId };
@@ -172,8 +176,8 @@ Paginas.cadastro = {
           <td class="editando"><select class="ed-tipo"><option value="LOCAL" ${r.tipo === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${r.tipo === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
           <td class="editando"><input class="ed-cidade" value="${UI.esc(r.cidade.nome)}" data-cidade-id="${r.cidade.id}"></td>
           <td class="editando"><select class="ed-uf" style="min-width:70px">${UI.opcoesUF(r.cidade.uf)}</select></td>
-          <td class="editando">${campoCidadeHTML('ed', 'atuacao', r.cidadeAtuacao?.nome, r.cidadeAtuacao?.id, `Cidade em ${projeto().uf}…`)}</td>
-          <td class="editando">${campoCidadeHTML('ed', 'base', r.cidadeBase?.nome, r.cidadeBase?.id, `Base em ${projeto().uf}…`)}</td>
+          <td class="editando">${campoCidadeHTML('ed', 'atuacao', r.cidadeAtuacao?.nome, r.cidadeAtuacao?.id, `Cidade em ${Store.ufsProjeto(projeto())}…`)}</td>
+          <td class="editando">${campoCidadeHTML('ed', 'base', r.cidadeBase?.nome, r.cidadeBase?.id, `Base em ${Store.ufsProjeto(projeto())}…`)}</td>
           <td class="direita">${UI.fmtKm(r.distancia)}</td>
           <td class="muted small">${UI.fmtDataHora(r.criadoEm)}</td>
           <td class="acoes-col"><button class="btn btn-primario btn-pequeno ed-salvar">Salvar</button> <button class="btn btn-pequeno ed-cancelar">Cancelar</button></td>
@@ -213,13 +217,13 @@ Paginas.cadastro = {
         const cidEl = trEd.querySelector('.ed-cidade'), ufEl = trEd.querySelector('.ed-uf'), tipoEl = trEd.querySelector('.ed-tipo');
         const atEl = trEd.querySelector('.ed-atuacao'), baseEl = trEd.querySelector('.ed-base');
         ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
-        ligarAutocomplete(atEl, () => projeto().uf, () => {});
-        ligarAutocomplete(baseEl, () => projeto().uf, c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+        ligarAutocomplete(atEl, () => Store.ufsProjeto(projeto()), () => {});
+        ligarAutocomplete(baseEl, () => Store.ufsProjeto(projeto()), c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
         const salvar = async () => {
           try {
             const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-            const at = await resolverEntrada(atEl, projeto().uf, 'cidade de atuação');
-            const base = baseEl.value.trim() ? await resolverEntrada(baseEl, projeto().uf, 'base de contratação') : at;
+            const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
+            const base = baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
             Store.atualizarRegistro(editandoId, { tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
             editandoId = null; renderLinhas(); UI.toast('Registro atualizado.', 'sucesso', 1500);
           } catch (e) { UI.toast(e.message, 'erro', 6000); }
@@ -267,7 +271,7 @@ Paginas.cadastro = {
         UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf,
         r.cidadeAtuacao ? r.cidadeAtuacao.nome : '',
         r.cidadeBase ? r.cidadeBase.nome : '',
-        p.nome, p.uf, p.ano || '',
+        p.nome, Store.ufsProjeto(p).join('/'), p.ano || '',
         r.distancia == null ? '' : Math.round(r.distancia),
         r.foraDoEstado ? 'SIM' : 'NAO', UI.fmtDataHora(r.criadoEm)
       ]));
@@ -417,8 +421,8 @@ Paginas.cadastro = {
           }
           // base de contratação (resolver primeiro pois atuação pode depender dela)
           if (l.base) {
-            l.baseObj = resolverLocal(l.base, p.uf, l.ajustes);
-            if (!l.baseObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'baseObj', nome: l.base, uf: p.uf }); }
+            l.baseObj = resolverLocal(l.base, Store.ufsProjeto(p), l.ajustes);
+            if (!l.baseObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'baseObj', nome: l.base, uf: Store.ufsProjeto(p) }); }
           }
           // atuação: se MOVEL → usa base de contratação; senão resolve normalmente
           const ehMovelAtuacao = Store.ehMovel(l.atuacao) || /^m[oó]vel/i.test(l.atuacao);
@@ -427,8 +431,8 @@ Paginas.cadastro = {
             l.atuacaoObj = l.baseObj || null;
             if (!l.atuacaoObj && !l.base) { l.status = 'erro'; l.erro = 'Atuação "MOVEL" requer BASE DE CONTRATAÇÃO'; continue; }
           } else if (l.atuacao) {
-            l.atuacaoObj = resolverLocal(l.atuacao, p.uf, l.ajustes);
-            if (!l.atuacaoObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'atuacaoObj', nome: l.atuacao, uf: p.uf }); }
+            l.atuacaoObj = resolverLocal(l.atuacao, Store.ufsProjeto(p), l.ajustes);
+            if (!l.atuacaoObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'atuacaoObj', nome: l.atuacao, uf: Store.ufsProjeto(p) }); }
           } else {
             // sem atuação informada → usa base
             l.atuacaoObj = l.baseObj;

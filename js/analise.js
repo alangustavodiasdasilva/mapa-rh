@@ -128,7 +128,7 @@ const Analise = (() => {
     for (const r of regs) {
       const uf = r.cidade.uf;
       let it = mapa.get(uf);
-      if (!it) { it = { uf, nome: Store.UFS[uf] || uf, local: 0, movel: 0, total: 0, cidades: new Set(), foraDoEstado: uf !== r.projeto.uf }; mapa.set(uf, it); }
+      if (!it) { it = { uf, nome: Store.UFS[uf] || uf, local: 0, movel: 0, total: 0, cidades: new Set(), foraDoEstado: !Store.ufDoProjeto(r.projeto, uf) }; mapa.set(uf, it); }
       it[r.tipo === 'LOCAL' ? 'local' : 'movel']++; it.total++; it.cidades.add(r.cidadeId);
     }
     const total = regs.length;

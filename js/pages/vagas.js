@@ -153,7 +153,7 @@ Paginas.vagas = {
         } }]
       });
       const q = s => m.corpo.querySelector(s);
-      const ufAtual = () => (Store.projeto(q('#v-projeto').value) || {}).uf || '';
+      const ufAtual = () => Store.ufsProjeto(Store.projeto(q('#v-projeto').value));
       const cidEl = q('#v-cidade');
       function mostrarRegiao() {
         const id = cidEl.dataset.cidadeId;

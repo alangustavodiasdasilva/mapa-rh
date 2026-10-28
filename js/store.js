@@ -49,6 +49,19 @@ const Store = (() => {
       .replace(/[^a-z0-9]+/g, ' ').trim();
   }
   function idCidade(nome, uf) { return String(uf).toUpperCase() + ':' + normalizar(nome); }
+  // Um filtro de estado pode ser uma UF ('RS'), várias (['RS','SC'] ou 'RS,SC') ou vazio (qualquer).
+  function conjuntoUF(uf) {
+    if (!uf) return null;
+    const lista = (Array.isArray(uf) ? uf : String(uf).split(/[,/ ]+/)).map(u => String(u || '').trim().toUpperCase()).filter(Boolean);
+    return lista.length ? new Set(lista) : null;
+  }
+  // Estados de um projeto (vários, desde out/2026); p.uf continua sendo o principal
+  function ufsProjeto(p) {
+    if (!p) return [];
+    const lista = Array.isArray(p.ufs) && p.ufs.length ? p.ufs : (p.uf ? [p.uf] : []);
+    return lista.map(u => String(u).toUpperCase());
+  }
+  function ufDoProjeto(p, uf) { return ufsProjeto(p).includes(String(uf || '').toUpperCase()); }
   function distanciaKm(a, b) {
     if (!a || !b) return null;
     const R = 6371, rad = Math.PI / 180;
@@ -101,6 +114,7 @@ const Store = (() => {
     const versaoAntiga = Number(dados.versao) || 0;
     for (const p of dados.projetos) {
       if (!p.uf) { p.uf = p.cidadeId ? String(p.cidadeId).split(':')[0] : ''; mudou = true; }
+      if (!Array.isArray(p.ufs) || !p.ufs.length) { p.ufs = p.uf ? [p.uf] : []; mudou = true; }
       if (p.ano === undefined) { p.ano = null; mudou = true; }
       if ('metaLocal' in p) { delete p.metaLocal; mudou = true; }
     }
@@ -195,10 +209,10 @@ const Store = (() => {
   function buscarCidades(q, uf = '', limite = 12) {
     const n = normalizar(q);
     if (!n) return [];
-    const ufN = String(uf || '').toUpperCase();
+    const ufs = conjuntoUF(uf);
     const comeca = [], contem = [];
     for (const c of listaCidades) {
-      if (ufN && c.uf !== ufN) continue;
+      if (ufs && !ufs.has(c.uf)) continue;
       const nc = normalizar(c.nome);
       if (nc.startsWith(n)) comeca.push(c);
       else if (nc.includes(n)) contem.push(c);
@@ -210,8 +224,9 @@ const Store = (() => {
   function resolverCidade(nome, uf = '') {
     const n = normalizar(nome);
     if (!n) return null;
-    if (uf) return indiceCidades.get(String(uf).toUpperCase() + ':' + n) || null;
-    const iguais = listaCidades.filter(c => normalizar(c.nome) === n);
+    const ufs = conjuntoUF(uf);
+    if (ufs && ufs.size === 1) return indiceCidades.get([...ufs][0] + ':' + n) || null;
+    const iguais = listaCidades.filter(c => normalizar(c.nome) === n && (!ufs || ufs.has(c.uf)));
     return iguais.length === 1 ? iguais[0] : null;
   }
   function candidatasCidade(nome) {
@@ -222,11 +237,11 @@ const Store = (() => {
   function cidadeAproximada(nome, uf = '') {
     const n = normalizar(nome);
     if (!n) return null;
-    const ufN = String(uf || '').toUpperCase();
+    const ufs = conjuntoUF(uf);
     const limite = n.length >= 8 ? 2 : 1;
     let melhor = null, melhorD = Infinity, empate = false;
     for (const c of listaCidades) {
-      if (ufN && c.uf !== ufN) continue;
+      if (ufs && !ufs.has(c.uf)) continue;
       const nc = normalizar(c.nome);
       if (Math.abs(nc.length - n.length) > limite) continue;
       const d = levenshtein(n, nc);
@@ -344,11 +359,13 @@ const Store = (() => {
     const lista = usuario.projetos == null ? dados.projetos : dados.projetos.filter(p => usuario.projetos.includes(p.id));
     return lista.slice().sort((a, b) => (b.ano || 0) - (a.ano || 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
   }
-  function rotuloProjeto(p) { return p ? `${p.nome} (${p.uf}${p.ano ? ' · ' + p.ano : ''})` : '—'; }
+  function rotuloProjeto(p) { return p ? `${p.nome} (${ufsProjeto(p).join('/')}${p.ano ? ' · ' + p.ano : ''})` : '—'; }
   function salvarProjeto(obj, autor) {
     if (!obj.nome || !obj.nome.trim()) throw new Error('Informe o nome do projeto.');
-    const uf = String(obj.uf || '').toUpperCase();
-    if (!UFS[uf]) throw new Error('Selecione o estado (UF) do projeto.');
+    const ufs = [...new Set((Array.isArray(obj.ufs) ? obj.ufs : [obj.uf]).map(u => String(u || '').toUpperCase()).filter(u => UFS[u]))];
+    if (!ufs.length) throw new Error('Marque pelo menos um estado (UF) do projeto.');
+    const principal = UFS[String(obj.uf || '').toUpperCase()] && ufs.includes(String(obj.uf).toUpperCase()) ? String(obj.uf).toUpperCase() : ufs[0];
+    const uf = principal;
     let ano = null;
     if (obj.ano !== '' && obj.ano != null) {
       ano = parseInt(obj.ano, 10);
@@ -358,10 +375,11 @@ const Store = (() => {
     let p = obj.id ? projeto(obj.id) : null;
     const novo = !p;
     if (!p) { p = { id: uid(), criadoEm: agora() }; dados.projetos.push(p); }
-    if (!novo && p.uf !== uf && dados.registros.some(r => r.projetoId === p.id && r.atuacao !== MOVEL && cidade(r.atuacao) && cidade(r.atuacao).uf !== uf)) {
-      throw new Error('Este projeto já tem cidades de atuação em ' + p.uf + '. Para mudar o estado, corrija ou exclua esses registros antes.');
+    if (!novo) {
+      const fora = dados.registros.filter(r => r.projetoId === p.id && r.atuacao !== MOVEL && cidade(r.atuacao) && !ufs.includes(cidade(r.atuacao).uf));
+      if (fora.length) throw new Error(`Este projeto já tem ${fora.length} contratação(ões) com cidade de atuação em ${[...new Set(fora.map(r => cidade(r.atuacao).uf))].join(', ')}. Para tirar esse estado, corrija ou exclua esses registros antes.`);
     }
-    Object.assign(p, { nome: obj.nome.trim(), uf, ano, descricao: (obj.descricao || '').trim(),
+    Object.assign(p, { nome: obj.nome.trim(), uf, ufs, ano, descricao: (obj.descricao || '').trim(),
       cor: obj.cor || '#2563eb', ativo: obj.ativo !== false, atualizadoEm: agora() });
     delete p.cidadeId; delete p.metaLocal;
     if (novo && autor && autor.projetos) { autor.projetos.push(p.id); }
@@ -392,7 +410,7 @@ const Store = (() => {
     const cidadeAtuacao = ehMovel(r.atuacao) ? cb : ca;
     return { ...r, projeto: p, cidade: c, cidadeAtuacao, cidadeBase: cb, atuacaoMovel,
       distancia: c && cidadeAtuacao ? distanciaKm(c, cidadeAtuacao) : null,
-      foraDoEstado: !!(p && c && c.uf !== p.uf) };
+      foraDoEstado: !!(p && c && !ufDoProjeto(p, c.uf)) };
   }
   // distritoId / microId: só contratações cuja cidade de atuação (ou base, no caso de MÓVEL) está na região
   function registrosFiltrados({ projetoId = '', tipo = '', usuario = null, uf = '', distritoId = '', microId = '' } = {}) {
@@ -419,6 +437,7 @@ const Store = (() => {
     if (!['LOCAL', 'MOVEL'].includes(tipo)) throw new Error('Tipo deve ser LOCAL ou MÓVEL.');
     if (!cidade(cidadeId)) throw new Error('Cidade de origem inválida.');
     if (!ehMovel(atuacao) && !cidade(atuacao)) throw new Error('Cidade de atuação inválida.');
+    if (!ehMovel(atuacao) && !ufDoProjeto(projeto(projetoId), cidade(atuacao).uf)) throw new Error(`A cidade de atuação ${cidade(atuacao).nome}/${cidade(atuacao).uf} não está nos estados do projeto (${ufsProjeto(projeto(projetoId)).join('/')}). Edite o projeto e inclua o estado.`);
     if (baseContratacao && !cidade(baseContratacao)) throw new Error('Base de contratação inválida.');
   }
   function descreverRegistro(r) {
@@ -1163,7 +1182,7 @@ const Store = (() => {
 
   function init() { carregar(); }
 
-  return { UFS, CODIGO_UF, UF_CODIGO, UF_CENTRO, PERFIS, PERMISSOES, MOVEL, ehMovel, init, salvar, uid, agora, normalizar, idCidade, distanciaKm,
+  return { UFS, CODIGO_UF, UF_CODIGO, UF_CENTRO, PERFIS, PERMISSOES, MOVEL, ehMovel, init, salvar, uid, agora, normalizar, idCidade, distanciaKm, conjuntoUF, ufsProjeto, ufDoProjeto,
     cidades, cidade, buscarCidades, resolverCidade, candidatasCidade, cidadeAproximada, salvarCidade, excluirCidade, usoCidade,
     definirMunicipiosIBGE, temIBGE, totalIBGE,
     login, logout, usuarioAtual, pode, usuarios, salvarUsuario, excluirUsuario, alterarSenha,
