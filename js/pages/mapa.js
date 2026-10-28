@@ -436,10 +436,20 @@ Paginas.mapa = {
     function aplicarFoco(chaves) {
       foco = chaves ? new Set(chaves) : null;
       desenharOrigens();
+      // seleção destaca, não esconde: cidades fora da seleção continuam no mapa, apagadas
       camadas.atuacao.clearLayers();
-      for (const [id, m] of marcadoresAtuacao) if (!foco || foco.has(id)) camadas.atuacao.addLayer(m);
+      for (const [id, m] of marcadoresAtuacao) {
+        camadas.atuacao.addLayer(m);
+        const dentro = !foco || foco.has(id);
+        if (m.setOpacity) m.setOpacity(dentro ? 1 : 0.35);
+        const elIc = m.getElement && m.getElement(); if (elIc) elIc.classList.toggle('marcador-apagado', !dentro);
+      }
       camadas.hubs.clearLayers();
-      for (const [k, m] of marcadoresHub) if (!foco || foco.has(k)) camadas.hubs.addLayer(m);
+      for (const [k, m] of marcadoresHub) {
+        camadas.hubs.addLayer(m);
+        const dentro = !foco || foco.has(k);
+        if (m.setStyle) m.setStyle({ opacity: dentro ? 1 : 0.3, fillOpacity: dentro ? 0.35 : 0.1 });
+      }
       renderSilos();
       aplicarModoLinhas();
       el.querySelector('#mapa-kpis').classList.toggle('kpis-foco', !!foco);

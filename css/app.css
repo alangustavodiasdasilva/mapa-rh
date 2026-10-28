@@ -485,3 +485,4 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 
 /* unidades fora da seleção do mapa ficam apagadas, mas não somem */
 .silo-marcador-div.silo-apagado { opacity: .3; filter: grayscale(.6); }
+.marcador-apagado { filter: grayscale(.5); }
