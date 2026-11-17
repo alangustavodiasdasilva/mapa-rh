@@ -1274,6 +1274,19 @@ const Store = (() => {
   // que precisa busca a contagem (Nuvem.rh.contagem) e entrega aqui: { vagaId: { candidatos, admitidos, emProcesso } }.
   let contagemVagas = null;
   function definirContagemVagas(mapa) { contagemVagas = mapa || null; }
+  // a mesma contagem montada a partir do andamento dos candidatos (Nuvem.rh.andamento), sem buscar de novo
+  function contagemDoAndamento(lista) {
+    const cont = {};
+    for (const p of lista || []) {
+      if (!p.vaga_id || (p.situacao !== 'admitido' && p.situacao !== 'em_andamento')) continue;
+      const c = cont[p.vaga_id] || (cont[p.vaga_id] = { candidatos: 0, admitidos: 0, emProcesso: 0, etapas: { triagem: 0, entrevista: 0, documentos: 0 }, dist: {} });
+      const d = c.dist[p.distrito_id || '(sem)'] || (c.dist[p.distrito_id || '(sem)'] = { LOCAL: { adm: 0, proc: 0 }, MOVEL: { adm: 0, proc: 0 } });
+      const tp = d[p.tipo === 'MOVEL' ? 'MOVEL' : 'LOCAL'];
+      c.candidatos++;
+      if (p.situacao === 'admitido') { c.admitidos++; tp.adm++; } else { c.emProcesso++; tp.proc++; if (c.etapas[p.etapa] != null) c.etapas[p.etapa]++; }
+    }
+    return cont;
+  }
   // distritos da vaga, com quantas pessoas locais e móveis cada um pede
   function distritosDaVaga(v) {
     return (Array.isArray(v.distritos) ? v.distritos : []).map(x => ({ distrito: distrito(x.distritoId), locais: +x.locais || 0, moveis: +x.moveis || 0 })).filter(x => x.distrito);
@@ -1286,7 +1299,13 @@ const Store = (() => {
       const d = cont && cont.dist ? cont.dist[x.distrito.id] : null, z = { adm: 0, proc: 0 };
       return { ...x, admLoc: (d ? d.LOCAL : z).adm, procLoc: (d ? d.LOCAL : z).proc, admMov: (d ? d.MOVEL : z).adm, procMov: (d ? d.MOVEL : z).proc };
     });
-    const faltam = Math.max(0, (v.quantidade || 1) - admitidos);
+    // pedido preenchido (mesma conta do Início): com distritos e contagem, cada distrito e tipo (local/móvel) conta separado
+    // (10 locais admitidos não cobrem 5 móveis pedidos); sem distrito, vale o total da vaga
+    const porTipo = !!contagemVagas && porDistrito.length > 0;
+    const faltam = porTipo ? porDistrito.reduce((n, x) => n + Math.max(0, x.locais - x.admLoc) + Math.max(0, x.moveis - x.admMov), 0)
+      : Math.max(0, (v.quantidade || 1) - admitidos);
+    const admitidosValidos = porTipo ? porDistrito.reduce((n, x) => n + Math.min(x.admLoc, x.locais) + Math.min(x.admMov, x.moveis), 0)
+      : Math.min(admitidos, v.quantidade || 1);
     const aprovada = vagaAprovada(v);
     // com a contagem dos candidatos em mãos: vaga aberta que já admitiu todo mundo aparece como Preenchida
     // (o RH não precisa lembrar de mudar; e quem é analista nem tem permissão de alterar a vaga)
@@ -1303,7 +1322,7 @@ const Store = (() => {
       porDistrito, locais: porDistrito.reduce((n, x) => n + x.locais, 0), moveis: porDistrito.reduce((n, x) => n + x.moveis, 0),
       contagemCarregada: !!contagemVagas, etapas: cont && cont.etapas ? cont.etapas : { triagem: 0, entrevista: 0, documentos: 0 },
       semDistrito: cont && cont.dist && cont.dist['(sem)'] ? cont.dist['(sem)'].LOCAL.adm + cont.dist['(sem)'].LOCAL.proc + cont.dist['(sem)'].MOVEL.adm + cont.dist['(sem)'].MOVEL.proc : 0,
-      faltam, canaisDivulgados: Object.keys(v.divulgacao || {}).length,
+      faltam, admitidosValidos, canaisDivulgados: Object.keys(v.divulgacao || {}).length,
       prioridade: PRIORIDADES[v.prioridade] ? v.prioridade : 'normal', situacaoAprovacao: situacaoAprovacao(v), aprovada, atrasada,
       diasAtraso: atrasada ? Math.round((new Date(hoje + 'T12:00:00') - new Date(v.dataNecessidade + 'T12:00:00')) / DIA_MS) : 0, diasAberta };
   }
@@ -1486,7 +1505,9 @@ const Store = (() => {
     for (const v of lista || []) {
       if (!vagaAprovada(v) || v.status === 'cancelada' || v.status === 'recusada' || v.status === 'aguardando') continue;
       const qtd = v.quantidade || 1;
-      const adm = typeof v.admitidos === 'number' ? v.admitidos : cands.filter(c => c.vagaId === v.id && c.etapa === 'admitido').length;
+      // vaga enriquecida já traz os admitidos que valem (por distrito e tipo, igual ao Início)
+      const adm = typeof v.admitidosValidos === 'number' ? v.admitidosValidos
+        : typeof v.admitidos === 'number' ? v.admitidos : cands.filter(c => c.vagaId === v.id && c.etapa === 'admitido').length;
       aprovadas += qtd; preenchidas += Math.min(adm, qtd);
     }
     return aprovadas ? Math.round(preenchidas / aprovadas * 1000) / 10 : null;
@@ -1506,12 +1527,87 @@ const Store = (() => {
     return n ? Math.round(soma / n * 10) / 10 : null;
   }
   // Contagens e indicadores de uma lista de vagas enriquecidas (o resumo no topo da tela de vagas)
-  function indicadoresVagas(lista, cands = dados.candidatos || []) {
+  // andamento (opcional, de Nuvem.rh.andamento): acrescenta o tempo de contratação pela mediana, o mesmo do Início
+  function indicadoresVagas(lista, cands = dados.candidatos || [], andamento = null) {
     lista = lista || [];
     const abertas = lista.filter(v => v.aprovada && STATUS_VAGA_EM_ABERTO.includes(v.status));
     return { aguardandoAprovacao: lista.filter(v => v.status === 'aguardando').length, abertas: abertas.length,
       atrasadas: abertas.filter(v => v.atrasada).length, semDivulgacao: abertas.filter(v => !v.canaisDivulgados).length,
-      taxaPreenchimento: taxaPreenchimento(lista, cands), tempoMedioContratacao: tempoMedioContratacao(lista, cands) };
+      taxaPreenchimento: taxaPreenchimento(lista, cands), tempoMedioContratacao: tempoMedioContratacao(lista, cands),
+      tempo: andamento ? tempoContratacao(lista, andamento) : null };
+  }
+
+  // ----- previsão e tempos pelo andamento dos candidatos (Nuvem.rh.andamento: sem dado pessoal) -----
+  // aproveitamento padrão quando o projeto ainda tem pouca história (menos de 10 casos encerrados na etapa)
+  const TAXAS_PADRAO = { documentos: 0.8, entrevista: 0.5, triagem: 0.25 };
+  const ORDEM_ANDAMENTO = { triagem: 0, entrevista: 1, documentos: 2 };
+  // pronto para admitir: documentação completa (dinâmica, documentos, ASO e treinamento)
+  function candidatoPronto(p) {
+    return p.situacao === 'em_andamento' && p.etapa === 'documentos' && p.dinamica === 'ok' && !p.documentos_pendentes
+      && ['ok', 'dispensado'].includes(p.aso) && ['ok', 'dispensado'].includes(p.treinamento);
+  }
+  // de quem chegou a cada etapa e já encerrou (admitido, reprovado ou desistiu), quantos viraram admitidos
+  function taxasAproveitamento(andamento) {
+    const fim = (andamento || []).filter(p => ['admitido', 'reprovado', 'desistiu'].includes(p.situacao));
+    const r = { casos: {}, historico: {} };
+    for (const [e, k] of Object.entries(ORDEM_ANDAMENTO)) {
+      const chegaram = fim.filter(p => p.situacao === 'admitido' || ORDEM_ANDAMENTO[p.etapa] >= k);
+      const adm = chegaram.filter(p => p.situacao === 'admitido').length;
+      r.casos[e] = chegaram.length; r.historico[e] = chegaram.length >= 10;
+      r[e] = chegaram.length >= 10 ? adm / chegaram.length : TAXAS_PADRAO[e];
+    }
+    return r;
+  }
+  // admissões esperadas de uma lista de candidatos em andamento: prontos contam inteiro, os outros pela taxa da etapa
+  function esperadoDoFunil(lista, taxas) {
+    taxas = taxas || TAXAS_PADRAO;
+    let n = 0;
+    for (const p of lista || []) {
+      if (p.situacao !== 'em_andamento') continue;
+      n += candidatoPronto(p) ? 1 : (taxas[p.etapa] != null ? taxas[p.etapa] : 0);
+    }
+    return n;
+  }
+  // Previsão de uma vaga aprovada e em aberto: o funil cobre o que falta até a data em que precisa?
+  // selo: no_prazo | risco | nao_fecha (null se a vaga não está em aberto ou já está completa)
+  const SELOS_PREVISAO = { no_prazo: 'No prazo', risco: 'Em risco', nao_fecha: 'Não fecha' };
+  function previsaoVaga(v, andamento, taxas) {
+    if (!v || !v.aprovada || !STATUS_VAGA_EM_ABERTO.includes(v.status) || !v.faltam) return null;
+    const ab = (andamento || []).filter(p => p.vaga_id === v.id && p.situacao === 'em_andamento');
+    const prontos = ab.filter(candidatoPronto).length, esperado = esperadoDoFunil(ab, taxas), faltam = v.faltam;
+    const cobre = Math.min(faltam, Math.floor(esperado + 1e-9));
+    const dias = v.dataNecessidade ? Math.round((new Date(v.dataNecessidade + 'T12:00:00') - new Date(hojeISO() + 'T12:00:00')) / DIA_MS) : null;
+    let selo, frase;
+    if (esperado + 1e-9 < faltam) {
+      selo = esperado < faltam / 2 || v.atrasada ? 'nao_fecha' : 'risco';
+      frase = `faltam ${faltam}, o funil cobre ${cobre}: precisa de mais candidatos`;
+    } else if (v.atrasada) {
+      selo = 'risco'; frase = `passou da data há ${v.diasAtraso} ${v.diasAtraso === 1 ? 'dia' : 'dias'}; faltam ${faltam}, ${prontos} ${prontos === 1 ? 'pronto' : 'prontos'} para admitir`;
+    } else if (dias != null && dias <= 7 && prontos < faltam) {
+      selo = 'risco'; frase = `${dias <= 0 ? 'precisa hoje' : `faltam ${dias} ${dias === 1 ? 'dia' : 'dias'}`} e só ${prontos} de ${faltam} ${prontos === 1 ? 'está pronto' : 'estão prontos'}`;
+    } else {
+      selo = 'no_prazo'; frase = `faltam ${faltam}, o funil cobre ${cobre}`;
+    }
+    return { selo, rotulo: SELOS_PREVISAO[selo], frase, esperado, cobre, prontos, faltam, dias, emProcesso: ab.length };
+  }
+  function mediana(lista) {
+    if (!lista.length) return null;
+    const s = lista.slice().sort((a, b) => a - b), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  // Tempo de contratação: da aprovação da vaga à admissão (mediana em dias) e, quando há, até chegar no campo (chegada)
+  function tempoContratacao(vagasLista, andamento) {
+    const aprov = new Map();
+    for (const v of vagasLista || []) if (v.aprovacao && v.aprovacao.situacao === 'aprovada' && v.aprovacao.em) aprov.set(v.id, String(v.aprovacao.em).slice(0, 10));
+    const dias = (de, ate) => Math.max(0, Math.round((new Date(String(ate).slice(0, 10) + 'T12:00:00') - new Date(de + 'T12:00:00')) / DIA_MS));
+    const adm = [], campo = [];
+    for (const p of andamento || []) {
+      const ini = aprov.get(p.vaga_id);
+      if (!ini || !dataValida(ini) || p.situacao !== 'admitido') continue;
+      if (dataValida(String(p.admitido_em || '').slice(0, 10))) adm.push(dias(ini, p.admitido_em));
+      if (dataValida(String(p.chegada_data || '').slice(0, 10))) campo.push(dias(ini, p.chegada_data));
+    }
+    return { admissao: mediana(adm), nAdmissao: adm.length, campo: mediana(campo), nCampo: campo.length };
   }
 
   // ---------- candidatos (do currículo até a admissão) ----------
@@ -1722,8 +1818,9 @@ const Store = (() => {
     importarEstrutura, conflitosCidades, distritoDaCidade, distritoMaisProximo, poloDoDistrito, corDaCidade, corSugeridaDistrito, corSugeridaMicro, cidadesDoDistrito, resumoDistrito, registrosDescartados, cidadeDoSilo, microDoSilo, silosNaRegiao,
     infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, BASES_SINE, carregarBaseSine, carregarBasesSineEmUso, fonteBaseSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente, marcarBuscaEstado, buscaEstadoRecente, ufsSemBaseSine,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
-    STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, definirContagemVagas, distritosDaVaga, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
+    STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, definirContagemVagas, contagemDoAndamento, distritosDaVaga, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
     PRIORIDADES, JUSTIFICATIVAS, responsaveisDe, podeAprovarVaga, vagaAprovada, aprovarVaga, recusarVaga, taxaPreenchimento, tempoMedioContratacao, indicadoresVagas,
+    TAXAS_PADRAO, SELOS_PREVISAO, candidatoPronto, taxasAproveitamento, esperadoDoFunil, previsaoVaga, tempoContratacao, mediana,
     DOCUMENTOS_NOMES, cargos, cargoPorNome, documentosDoCargo, salvarCargo, excluirCargo,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,
     definirGanchoSalvar, adotarDados, reindexar, limparCacheLocal, definirUsuarios, abrirSessao, fecharSessao,

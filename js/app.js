@@ -99,11 +99,12 @@ const App = {
   // presença: o que estou olhando agora (cidade:<id>, candidato:<id>, ou a tela)
   olhar(v) { if (typeof Nuvem !== 'undefined' && Nuvem.onde) Nuvem.onde(v); },
   // fotos de quem (fora eu) está olhando aquilo, com o nome
-  olhandoHtml(v, tam = 22) {
-    const l = typeof Nuvem !== 'undefined' && Nuvem.olhando ? Nuvem.olhando(v) : [];
+  olhandoHtml(v, tam = 22, comigo = false) {
+    let l = typeof Nuvem !== 'undefined' && Nuvem.olhando ? Nuvem.olhando(v) : [];
+    if (comigo && this.usuario) l = [{ login: this.usuario.login, nome: this.usuario.nome, eu: true }, ...l];
     if (!l.length) return '';
-    const nomes = l.map(x => String(x.nome || x.login).split(' ')[0]);
-    const txt = nomes.length === 1 ? `${nomes[0]} está olhando` : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]} estão olhando`;
+    const nomes = l.map(x => x.eu ? 'Você' : String(x.nome || x.login).split(' ')[0]);
+    const txt = nomes.length === 1 ? (l[0].eu ? 'Você está olhando' : `${nomes[0]} está olhando`) : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]} estão olhando`;
     return `<span class="olhando" title="${UI.esc(l.map(x => x.nome || x.login).join(', '))}">${l.map(x => `<span class="olhando-foto">${UI.avatar(Store.usuarioPorLogin(x.login) || { nome: x.nome || x.login }, tam)}</span>`).join('')}<span class="olhando-txt">${UI.esc(txt)}</span></span>`;
   },
   // a tela aberta registra como se atualiza sem ser apagada (some ao trocar de tela)

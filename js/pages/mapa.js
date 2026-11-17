@@ -38,6 +38,7 @@ Paginas.mapa = {
           <label title="Contorno dos estados dos projetos"><input type="checkbox" id="c-limites" checked> Limite dos estados</label>
           <label title="Contorno de todos os municípios da área que está na tela (aparece ao aproximar o zoom). Clique em qualquer cidade para abrir a ficha."><input type="checkbox" id="c-divisas" checked> Divisas dos municípios</label>
           <label id="c-sine-wrap" title="Agências do SINE dos estados em uso (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
+          <label title="Cada distrito pintado pela parte do pedido já preenchida nas vagas aprovadas (verde = completo, vermelho = falta muito)"><input type="checkbox" id="c-falta"> <span class="ponto-cor" style="background:linear-gradient(90deg,#16a34a,#dc2626)"></span>Falta contratar <span class="muted small">(vagas)</span></label>
           <div class="secao">Linhas: de onde vêm → onde trabalham</div>
           <select id="c-modo-linhas">
             <option value="selecionada">Só da cidade que eu clicar</option>
@@ -746,6 +747,57 @@ Paginas.mapa = {
     el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) { montarCamadaSine(); camadaSine.addTo(mapa); if (mapa.getZoom() < ZOOM_MIN_SINE) UI.toast('Aproxime o zoom para ver as agências do SINE (ou clique numa cidade).', 'info', 3500); } else mapa.removeLayer(camadaSine); });
     Store.carregarBasesSineEmUso().then(() => { if (ativo) montarCamadaSine(); });
 
+    // ---------- falta contratar (camada opcional): cada distrito pintado pela % do pedido preenchido ----------
+    // Usa as vagas aprovadas do filtro atual (projeto e distrito do topo); conta local e móvel separados, igual ao Início.
+    mapa.createPane('falta').style.zIndex = 360;   // acima da malha das micros, abaixo dos marcadores
+    const camadaFalta = L.layerGroup();
+    const corFalta = p => `hsl(${Math.round(120 * Math.max(0, Math.min(1, p)))}, 72%, 42%)`;   // 0% vermelho → 100% verde
+    let montandoFalta = 0;
+    async function montarCamadaFalta() {
+      const vez = ++montandoFalta;
+      camadaFalta.clearLayers();
+      if (typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh && Nuvem.rh.contagemVagas) {
+        try { Store.definirContagemVagas(await Nuvem.rh.contagemVagas(App.filtros.projetoId)); } catch (e) { /* sem contagem: mostra só o pedido */ }
+      }
+      if (!ativo || vez !== montandoFalta) return;
+      const fT = App.filtros.tipo;
+      const porD = new Map();
+      for (const v of Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(v => v.aprovada && v.status !== 'cancelada')) {
+        for (const x of v.porDistrito) {
+          const a = porD.get(x.distrito.id) || { pl: 0, pm: 0, al: 0, am: 0 };
+          if (fT !== 'MOVEL') { a.pl += x.locais; a.al += Math.min(x.admLoc, x.locais); }
+          if (fT !== 'LOCAL') { a.pm += x.moveis; a.am += Math.min(x.admMov, x.moveis); }
+          porD.set(x.distrito.id, a);
+        }
+      }
+      let pintados = 0;
+      for (const d of distritos) {
+        const a = porD.get(d.id); if (!a || !(a.pl + a.pm)) continue;
+        const cids = Store.cidadesDoDistrito(d); if (!cids.length) continue;
+        const ped = a.pl + a.pm, adm = a.al + a.am, fl = a.pl - a.al, fm = a.pm - a.am, falta = fl + fm, p = adm / ped, cor = corFalta(p);
+        const tip = balao({ cor, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'pedido das vagas aprovadas', sub: `${adm} de ${ped} admitidos (${Math.round(100 * p)}%) · locais ${a.al}/${a.pl} · móveis ${a.am}/${a.pm}`, dica: falta ? `faltam ${falta}` : 'pedido completo' });
+        const porUF = new Map(); for (const c of cids) { if (!porUF.has(c.uf)) porUF.set(c.uf, []); porUF.get(c.uf).push(c); }
+        for (const [uf, lista] of porUF) {
+          let dadosUF = null; try { dadosUF = await Malha.carregarUF(uf); } catch (e) { /* sem malha: círculos */ }
+          if (!ativo || vez !== montandoFalta) return;
+          for (const c of lista) {
+            const f = dadosUF ? Malha.featureDaCidade(c, dadosUF) : null;
+            camadaFalta.addLayer((f ? L.geoJSON(f, { pane: 'falta', style: { color: '#fff', weight: 0.6, opacity: 0.8, fillColor: cor, fillOpacity: 0.62 } })
+              : L.circleMarker([c.lat, c.lng], { pane: 'falta', radius: 8, color: '#fff', weight: 1, fillColor: cor, fillOpacity: 0.8 })).bindTooltip(tip, { ...TT, sticky: !!f }));
+          }
+        }
+        // rótulo no centro do distrito: faltam N (L/M)
+        const lat = cids.reduce((t, c) => t + c.lat, 0) / cids.length, lng = cids.reduce((t, c) => t + c.lng, 0) / cids.length;
+        camadaFalta.addLayer(L.marker([lat, lng], { pane: 'rotulos', interactive: false, keyboard: false,
+          icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-falta" style="background:${cor}">${falta ? `faltam ${falta} (${fl}/${fm})` : 'completo'}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }) }));
+        pintados++;
+      }
+      if (!pintados && el.querySelector('#c-falta').checked) UI.toast('Nenhuma vaga aprovada com distrito neste filtro.', 'info', 3500);
+    }
+    el.querySelector('#c-falta').addEventListener('change', e => {
+      if (e.target.checked) { camadaFalta.addTo(mapa); montarCamadaFalta(); } else { montandoFalta++; mapa.removeLayer(camadaFalta); }
+    });
+
     // ---------- limites dos estados (malha do IBGE, guardada no navegador) ----------
     async function carregarLimite(uf) {
       const chave = 'maparh:malha:' + uf;
@@ -778,7 +830,27 @@ Paginas.mapa = {
     // presença: a cidade aberta no painel; os outros veem a minha foto e eu vejo a deles
     let cidadeOlhada = '';
     function olharCidade(id) { cidadeOlhada = id || ''; App.olhar(id ? 'cidade:' + id : 'pagina:mapa'); pintarOlhando(); }
-    function pintarOlhando() { const box = painel.querySelector('#painel-olhando'); if (box) box.innerHTML = cidadeOlhada ? App.olhandoHtml('cidade:' + cidadeOlhada) : ''; }
+    function pintarOlhando() { const box = painel.querySelector('#painel-olhando'); if (box) box.innerHTML = cidadeOlhada ? App.olhandoHtml('cidade:' + cidadeOlhada, 22, true) : ''; pintarFotosMapa(); }
+    // fotos de quem está olhando cada cidade, em cima da cidade (a minha também)
+    const camadaOlhando = L.layerGroup().addTo(mapa);
+    function pintarFotosMapa() {
+      camadaOlhando.clearLayers();
+      const todos = typeof Nuvem !== 'undefined' && Nuvem.presentes ? Nuvem.presentes() : [];
+      const porCidade = new Map();
+      for (const x of todos) if (String(x.onde || '').startsWith('cidade:')) { const id = x.onde.slice(7); if (!porCidade.has(id)) porCidade.set(id, []); porCidade.get(id).push(x); }
+      for (const [id, l] of porCidade) {
+        const c = Store.cidade(id); if (!c || c.lat == null) continue;
+        const eu = App.usuario && App.usuario.login;
+        const mostrar = l.slice(0, 3), mais = l.length - mostrar.length;
+        const html = `<div class="mp-olho">${mostrar.map(x => `<span class="mp-olho-foto ${x.login === eu ? 'eu' : ''}">${UI.avatar(Store.usuarioPorLogin(x.login) || { nome: x.nome || x.login }, 28)}</span>`).join('')}${mais > 0 ? `<span class="mp-olho-mais">+${mais}</span>` : ''}</div>`;
+        const nomes = l.map(x => x.login === eu ? 'Você' : String(x.nome || x.login).split(' ')[0]).join(', ');
+        const w = 28 + (mostrar.length - 1) * 18 + (mais > 0 ? 24 : 0) + 8;
+        L.marker([c.lat, c.lng], { interactive: true, keyboard: false, zIndexOffset: 2000,
+          icon: L.divIcon({ className: 'mp-olho-icone', html, iconSize: [w, 36], iconAnchor: [w / 2, 52] }) })
+          .bindTooltip(`${UI.esc(nomes)} ${l.length === 1 && l[0].login !== eu ? 'está' : l.length === 1 ? 'está' : 'estão'} olhando ${UI.esc(c.nome)}`, { direction: 'top', offset: [0, -50] })
+          .addTo(camadaOlhando);
+      }
+    }
     const aoPresenca = () => pintarOlhando();
     document.addEventListener('maparh:presenca', aoPresenca);
     function fecharPainel() {
@@ -1074,7 +1146,7 @@ Paginas.mapa = {
           </div>
           ${Store.fonteBaseSine(cid.uf) ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(Store.fonteBaseSine(cid.uf).fonte || '')}, de ${UI.esc(Store.fonteBaseSine(cid.uf).atualizadoEm || '')}${Store.fonteBaseSine(cid.uf).parcial ? ' (lista parcial)' : ''}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
-      meu = ligarFechar();
+      meu = ligarFechar(); olharCidade(cid.id);
       // sem agência na base: procura na internet (Google Places se houver chave; senão OpenStreetMap) e grava o que achar
       const caixaOnline = painel.querySelector('#sine-online');
       if (caixaOnline) {

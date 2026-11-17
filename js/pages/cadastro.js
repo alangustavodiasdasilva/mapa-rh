@@ -40,6 +40,8 @@ Paginas.cadastro = {
     const nomeRh = p => { const u = p.analista_login && Store.usuarioPorLogin(p.analista_login); return u ? u.nome : (p.analista || ''); };
     const ondeTrabalha = p => { const d = p.distrito_id && Store.distrito(p.distrito_id); const c = nomeCidade(p.cidade_atuacao_id); return [d ? d.nome : '', c].filter(Boolean).join(' · '); };
     const dia = d => d ? RH.fmtDataBR(String(d).slice(0, 10)) : '';
+    // quem admitiu: a anotação "Admitido…" do histórico (o banco grava quem fez); sem ela, o RH responsável
+    const quemAdmitiu = p => { const a = (p.anotacoes || []).filter(x => /^Admitido/.test(x.texto || '')).pop(); return a ? { login: a.por, nome: a.nome || a.por || '' } : null; };
 
     async function carregar(suave) {
       const c = !suave && typeof Nuvem !== 'undefined' && Nuvem.rh && Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId);
@@ -81,7 +83,7 @@ Paginas.cadastro = {
       if (!l.length) { corpo.innerHTML = `<div class="vazio">Ninguém com essa busca${App.filtros.tipo || App.filtros.distritoId ? ' ou com os filtros do topo' : ''}.</div>`; return; }
       const vis = l.slice(0, limite);
       corpo.innerHTML = `<div class="ct-lista">
-        <div class="ct-linha ct-cab"><span>Pessoa</span><span>Cargo</span><span>De onde vem → onde trabalha</span><span>Admitido em</span><span>Chegada</span><span>RH</span><span></span></div>
+        <div class="ct-linha ct-cab"><span>Pessoa</span><span>Cargo</span><span>De onde vem → onde trabalha</span><span>Admitido em</span><span>Chegada</span><span>Admitido por</span><span></span></div>
         ${vis.map(p => {
           const pe = p.pessoa || {}, origem = nomeCidade(pe.cidade_origem_id), onde = ondeTrabalha(p);
           return `<div class="ct-linha" data-id="${p.id}">
@@ -90,7 +92,8 @@ Paginas.cadastro = {
             <span data-rot="Onde">${UI.badgeTipo(p.tipo || 'LOCAL')} ${origem ? UI.esc(origem) : '<span class="muted">origem?</span>'} <span class="muted">→</span> ${onde ? UI.esc(onde) : '<span class="muted">—</span>'}${p.distancia_km != null && +p.distancia_km > 0 ? ` <span class="muted small">(${UI.fmtKm(+p.distancia_km)})</span>` : ''}</span>
             <span data-rot="Admitido em">${dia(p.admitido_em) || '—'}</span>
             <span data-rot="Chegada">${p.chegada_data ? dia(p.chegada_data) + (p.chegada_hora ? ` <span class="muted">${String(p.chegada_hora).slice(0, 5)}</span>` : '') : '<span class="muted">—</span>'}</span>
-            <span data-rot="RH">${UI.esc(nomeRh(p).split(' ')[0] || '—')}</span>
+            <span data-rot="Admitido por" class="ct-quem">${(() => { const q2 = quemAdmitiu(p); const nome = q2 ? q2.nome : nomeRh(p); const u = q2 && q2.login ? Store.usuarioPorLogin(q2.login) : null;
+              return nome ? `${UI.avatar(u || { nome }, 22)}<span title="${UI.esc(q2 ? 'Admitido por ' + nome : 'RH responsável (admissão anterior ao histórico)')}">${UI.esc(String(nome).split(' ')[0])}</span>` : '—'; })()}</span>
             <span class="ct-acao nao-imprimir"><button class="btn-link" data-abrir="${p.id}" title="Abre em Candidatos (para mudar ou desfazer a admissão)">Abrir</button></span>
           </div>`;
         }).join('')}
@@ -105,14 +108,18 @@ Paginas.cadastro = {
       App.ir('candidatos');
     });
 
-    function exportar() {
+    async function exportar() {
       const l = filtradas(); if (!l.length) { UI.toast('Nada para exportar.', 'aviso'); return; }
+      // LGPD: CPF sai mascarado, a não ser que peça o completo; a exportação fica registrada na auditoria
+      const completo = await UI.confirmar(`A planilha leva dados pessoais de ${l.length === 1 ? '1 pessoa' : l.length + ' pessoas'}. Incluir o CPF completo? (Sem ele, sai só parte do CPF, ex.: ***.982.247-**.)`, { titulo: 'Exportar contratações', textoOk: 'Com CPF completo', textoCancelar: 'CPF mascarado' });
+      const cpfDe = c => !c ? '' : completo ? RH.fmtCPF(c) : '***.' + RH.fmtCPF(c).slice(4, 11) + '-**';
       const p = Store.projeto(projetoId);
-      const linhas = [['NOME', 'CPF', 'TELEFONE', 'CARGO', 'MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'DISTRITO', 'CIDADE DE ATUAÇÃO', 'DISTANCIA KM', 'ADMITIDO EM', 'CHEGADA', 'HORA CHEGADA', 'RH']];
+      const linhas = [['NOME', 'CPF', 'TELEFONE', 'CARGO', 'MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'DISTRITO', 'CIDADE DE ATUAÇÃO', 'DISTANCIA KM', 'ADMITIDO EM', 'CHEGADA', 'HORA CHEGADA', 'RH', 'ADMITIDO POR']];
       l.forEach(x => { const pe = x.pessoa || {}, d = x.distrito_id && Store.distrito(x.distrito_id);
-        linhas.push([pe.nome, pe.cpf ? RH.fmtCPF(pe.cpf) : '', pe.telefone || '', x.cargo || '', x.tipo === 'MOVEL' ? 'MÓVEL' : 'LOCAL', nomeCidade(pe.cidade_origem_id), d ? d.nome : '', nomeCidade(x.cidade_atuacao_id),
-          x.distancia_km == null ? '' : Math.round(+x.distancia_km), dia(x.admitido_em), dia(x.chegada_data), x.chegada_hora ? String(x.chegada_hora).slice(0, 5) : '', nomeRh(x)]); });
+        linhas.push([pe.nome, cpfDe(pe.cpf), pe.telefone || '', x.cargo || '', x.tipo === 'MOVEL' ? 'MÓVEL' : 'LOCAL', nomeCidade(pe.cidade_origem_id), d ? d.nome : '', nomeCidade(x.cidade_atuacao_id),
+          x.distancia_km == null ? '' : Math.round(+x.distancia_km), dia(x.admitido_em), dia(x.chegada_data), x.chegada_hora ? String(x.chegada_hora).slice(0, 5) : '', nomeRh(x), (quemAdmitiu(x) || {}).nome || '']); });
       UI.baixarCSV(`contratacoes-${Store.normalizar(p.nome).replace(/ /g, '-')}.csv`, linhas);
+      Store.auditar('contratacoes.exportar', `Exportou ${l.length} contratação(ões) de ${p.nome}${completo ? ' (CPF completo)' : ' (CPF mascarado)'}`, App.usuario);
     }
 
     carregar();

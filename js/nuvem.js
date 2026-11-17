@@ -15,6 +15,9 @@ const Nuvem = (() => {
 
   let sb = null, eu = null, perfil = null, pronta = false;
   let espelho = new Map();   // chave -> marca (hash do conteúdo) do que está na nuvem; guardado no navegador para funcionar sem internet
+  // chave -> atualizadoEm da versão do banco em que esta tela se baseia: vai junto ao gravar e o banco recusa se outra pessoa mudou antes
+  const bases = new Map();
+  const versaoDe = d => d && typeof d === 'object' ? (d.atualizadoEm || null) : null;
   let fila = new Map();      // chave -> 'u' (enviar) | 'd' (remover)
   let cursor = null, enviando = false, puxando = false, timerEnvio = null, timerDiff = null, timerPoll = null;
   let estado = 'parada', ultimoErro = '', aoMudarRemoto = () => {};
@@ -112,7 +115,8 @@ const Nuvem = (() => {
         const chave = l.colecao + '/' + l.id;
         if (fila.has(chave) && !l.removido) continue; // há alteração local ainda não enviada: ela vale (menos sobre item que alguém excluiu)
         if (fila.has(chave)) { fila.delete(chave); salvarFila(); }
-        if (l.removido) { if (espelho.has(chave)) { espelho.delete(chave); tirarDoLugar(d, chave); mudou++; } continue; }
+        if (l.removido) { bases.delete(chave); if (espelho.has(chave)) { espelho.delete(chave); tirarDoLugar(d, chave); mudou++; } continue; }
+        bases.set(chave, versaoDe(l.dados));
         const txt = marca(l.dados);
         if (espelho.get(chave) === txt) continue;
         espelho.set(chave, txt); porNoLugar(d, chave, l.dados); mudou++;
@@ -123,6 +127,7 @@ const Nuvem = (() => {
     } catch (e) {
       console.warn('Nuvem: falha ao buscar', e);
       mudarEstado(navigator.onLine ? 'erro' : 'offline', e.message || String(e));
+      conferirSessao(e);
     } finally { puxando = false; }
   }
 
@@ -162,14 +167,15 @@ const Nuvem = (() => {
       const lote = [...fila].slice(0, 400).map(([chave, op]) => {
         const [colecao, id] = partes(chave);
         const obj = atual.get(chave);
-        if (op === 'u' && obj !== undefined) return { chave, txt: marca(obj), tam: JSON.stringify(obj).length, linha: { colecao, id, dados: obj, removido: false } };
-        return { chave, txt: null, tam: 0, linha: { colecao, id, dados: null, removido: true } };
+        const base = colecao !== 'auditoria' ? bases.get(chave) : null;
+        if (op === 'u' && obj !== undefined) return { chave, txt: marca(obj), ver: versaoDe(obj), tam: JSON.stringify(obj).length, linha: { colecao, id, dados: base ? { ...obj, _base: base } : obj, removido: false } };
+        return { chave, txt: null, ver: null, tam: 0, linha: { colecao, id, dados: base ? { _base: base } : null, removido: true } };
       });
       // lotes pequenos: um mapa PDR grande pode passar de 300 KB sozinho
       let grupo = [], tam = 0; const grupos = [];
       for (const it of lote) { const t = it.tam; if (grupo.length && (grupo.length >= 100 || tam + t > 900000)) { grupos.push(grupo); grupo = []; tam = 0; } grupo.push(it); tam += t; }
       if (grupo.length) grupos.push(grupo);
-      const recusadas = [];
+      const recusadas = [], conflitos = [], regras = [];
       const enviarGrupo = async g => {
         // auditoria: o banco só aceita inserir (ninguém altera histórico). Se a linha já está lá, conta como enviada.
         const ehAud = x => x.linha.colecao === 'auditoria' && !x.linha.removido;
@@ -184,21 +190,32 @@ const Nuvem = (() => {
           }
         } else ({ error } = await sb.from('maparh_itens').upsert(g.map(x => x.linha), { onConflict: 'colecao,id' }));
         if (error) {
-          if (!/row-level security|permission denied|42501/.test((error.message || '') + (error.code || ''))) throw error;
+          const msgErro = (error.message || '') + (error.code || '');
+          if (!/row-level security|permission denied|42501|CONFLITO_VERSAO_ITEM|REGRA_VAGA/.test(msgErro)) throw error;
           if (g.length > 1) { const m = Math.ceil(g.length / 2); await enviarGrupo(g.slice(0, m)); await enviarGrupo(g.slice(m)); return; }
           // sem permissão para esta: sai da fila e não volta enquanto não for alterada de novo (sem isso, fica tentando para sempre)
-          const ch = g[0].chave; recusadas.push(ch); fila.delete(ch);
+          const ch = g[0].chave;
+          if (/CONFLITO_VERSAO_ITEM/.test(msgErro)) conflitos.push(String(error.message).replace(/^.*CONFLITO_VERSAO_ITEM:\s*/, ''));
+          else if (/REGRA_VAGA/.test(msgErro)) regras.push(String(error.message).replace(/^.*REGRA_VAGA:\s*/, ''));
+          else recusadas.push(ch);
+          fila.delete(ch);
           recusadasFixas.set(ch, g[0].txt);
           if (espelho.has(ch)) espelho.delete(ch);              // o puxar seguinte repõe a versão do banco
           else { tirarDoLugar(Store.dados, ch); Store.reindexar(); }   // não existe no banco: some daqui
           return;
         }
         for (const it of g) {
-          if (it.txt === null) espelho.delete(it.chave); else espelho.set(it.chave, it.txt);
+          if (it.txt === null) { espelho.delete(it.chave); bases.delete(it.chave); } else { espelho.set(it.chave, it.txt); if (it.linha.colecao !== 'auditoria') bases.set(it.chave, it.ver); }
           fila.delete(it.chave);
         }
       };
       for (const g of grupos) { await enviarGrupo(g); salvarFila(); salvarEspelho(); }
+      // outra pessoa mudou antes / regra da vaga: avisa com o motivo e volta para a versão do banco
+      if (conflitos.length || regras.length) {
+        const textos = [...conflitos.map(c => c.charAt(0).toUpperCase() + c.slice(1) + ': a sua alteração não foi gravada e a tela voltou para a versão atual.'), ...regras.map(r => r.charAt(0).toUpperCase() + r.slice(1) + '.')];
+        UI.toast(textos.slice(0, 2).join(' ') + (textos.length > 2 ? ` (+${textos.length - 2})` : ''), 'aviso', 10000);
+        cursor = null; setTimeout(() => puxar(), 500);
+      }
       if (recusadas.length) {
         console.warn('Nuvem: o banco recusou (sem permissão)', recusadas);
         if (!enviar.avisou || Date.now() - enviar.avisou > 60000) UI.toast(`${recusadas.length === 1 ? '1 alteração não foi gravada' : recusadas.length + ' alterações não foram gravadas'}: seu usuário não tem permissão para isso. Os dados voltam ao que está no banco.`, 'aviso', 9000);
@@ -212,6 +229,7 @@ const Nuvem = (() => {
       enviando = false;
       console.warn('Nuvem: falha ao enviar', e);
       mudarEstado(navigator.onLine ? 'erro' : 'offline', e.message || String(e));
+      conferirSessao(e);
       agendarEnvio(15000);
     }
   }
@@ -301,6 +319,9 @@ const Nuvem = (() => {
     if (/maparh_pessoas_cpf_check/.test(m)) return new Error('CPF inválido.');
     if (/maparh_pessoas_nascimento_check/.test(m)) return new Error('Data de nascimento inválida (no futuro ou antes de 1920).');
     if (/ADMISSAO_BLOQUEADA: ?(.*)/.test(m)) return new Error('O banco não deixou admitir: ' + m.match(/ADMISSAO_BLOQUEADA: ?(.*)/)[1] + '.');
+    if (/ADMISSAO_SO_PELO_BOTAO/.test(m)) return new Error('Para admitir ou desfazer a admissão, use os botões Admitir / Desfazer.');
+    if (/HISTORICO_PROTEGIDO/.test(m)) return new Error('O histórico não pode ser apagado nem alterado; acrescente uma anotação.');
+    if (/CONFLITO_VERSAO: ?(.*)/.test(m)) { const e = new Error('CONFLITO_VERSAO: ' + m.match(/CONFLITO_VERSAO: ?(.*)/)[1]); e.conflito = true; return e; }
     if (/PESSOA_ADMITIDA_TRAVADA/.test(m)) return new Error('Esta pessoa já foi admitida: CPF e data de nascimento não podem mais mudar.');
     if (/maparh_pre_unica_admitida/.test(m)) return new Error('Esta pessoa já foi admitida neste projeto.');
     if (/ADMITIDO_TRAVADO/.test(m)) return new Error('Pessoa já admitida: para mudar documentos, ASO, treinamento ou etapa, desfaça a admissão primeiro.');
@@ -373,6 +394,25 @@ const Nuvem = (() => {
       const { data, error } = await sb.rpc('maparh_salvar_candidato', { p_pessoa: pessoa, p_pre: pre });
       if (error) throw erroRh(error);
       return data;
+    },
+    // LGPD: apagar dados pessoais de uma pessoa (pedido do titular) e limpeza por prazo (só admin; regra no banco)
+    async anonimizar(pessoaId, motivo) {
+      const { error } = await sb.rpc('maparh_anonimizar_pessoa', { p_pessoa: pessoaId, p_motivo: motivo || 'pedido do titular' });
+      if (error) throw erroRh(error);
+      cacheCandidatos.clear();
+    },
+    async anonimizarAntigos(meses, soContar) {
+      const { data, error } = await sb.rpc('maparh_anonimizar_antigos', { p_meses: meses, p_so_contar: !!soContar });
+      if (error) throw erroRh(error);
+      if (!soContar) cacheCandidatos.clear();
+      return data;
+    },
+    // backup completo do banco (o que este usuário enxerga): cadastros, vagas, contratações, pessoas e candidatos com histórico
+    async backupCompleto() {
+      const itens = await paginar(() => sb.from('maparh_itens').select('colecao,id,dados,removido,atualizado_em').neq('colecao', 'auditoria').order('colecao').order('id'));
+      const pessoas = await paginar(() => sb.from('maparh_pessoas').select('*').order('id'));
+      const candidatos = await paginar(() => sb.from('maparh_preadmissoes').select('*').order('id'));
+      return { geradoEm: new Date().toISOString(), versao: 1, itens, pessoas, candidatos };
     },
     // anotação no histórico do candidato (autor e hora gravados pelo banco)
     async anotar(id, texto) {
@@ -503,7 +543,7 @@ const Nuvem = (() => {
     }
     if (linhas.length || jaNaNuvem) {
       const novo = vazio();
-      for (const l of linhas) { const chave = l.colecao + '/' + l.id; espelho.set(chave, marca(l.dados)); porNoLugar(novo, chave, l.dados); }
+      for (const l of linhas) { const chave = l.colecao + '/' + l.id; espelho.set(chave, marca(l.dados)); bases.set(chave, versaoDe(l.dados)); porNoLugar(novo, chave, l.dados); }
       const locais = itensDe(local);
       if (vinculado) {
         // alterações feitas aqui que não chegaram a ser enviadas (fechou a aba / estava sem internet)
@@ -553,6 +593,39 @@ const Nuvem = (() => {
     iniciarRelogio(false);
     return Store.usuarioAtual();
   }
+  // Sessão: o navegador guarda UM login. Se outra aba sai ou entra com outro usuário, esta aba não pode
+  // ficar tentando sincronizar com a sessão velha ("falha no sincronismo"): avisa e recarrega com a sessão que valer.
+  let vigiando = false, trocando = false;
+  function trocouSessao(msg) {
+    if (trocando) return; trocando = true;
+    clearInterval(timerPoll); pararDeOuvir(); pronta = false;
+    if (fila.size) { try { UI.baixarArquivo(`alteracoes-nao-enviadas-${RH.hoje()}.json`, Store.exportar(), 'application/json'); } catch (e) { /* sem como baixar */ } }
+    UI.toast(msg + ' Para usar dois usuários ao mesmo tempo, abra o segundo numa janela anônima (Ctrl+Shift+N) ou em outro navegador.', 'aviso', 9000);
+    setTimeout(() => location.reload(), 3000);
+  }
+  function vigiarSessao() {
+    if (vigiando || !sb || !sb.auth || typeof sb.auth.onAuthStateChange !== 'function') return; vigiando = true;
+    sb.auth.onAuthStateChange((evento, sessao) => {
+      if (!eu || trocando) return;
+      if (evento === 'SIGNED_OUT') trocouSessao('Você saiu do sistema em outra aba.');
+      else if (sessao && sessao.user && sessao.user.id !== eu) trocouSessao('Outro usuário entrou neste navegador (em outra aba).');
+    });
+  }
+  // erro de acesso ao buscar/enviar: a sessão ainda é minha? tenta renovar; se não der, avisa em vez de ficar em "falha"
+  let conferindo = false;
+  async function conferirSessao(e) {
+    if (conferindo || trocando || !eu || !sb) return;
+    if (!/JWT|401|token|session|sess[aã]o|expired|refresh/i.test(String((e && (e.message || e.code || e.status)) || ''))) return;
+    conferindo = true;
+    try {
+      const { data } = await sb.auth.getSession();
+      if (!data.session) return trocouSessao('Sua sessão foi encerrada.');
+      if (data.session.user.id !== eu) return trocouSessao('Outro usuário entrou neste navegador (em outra aba).');
+      const { error } = await sb.auth.refreshSession();
+      if (error) return trocouSessao('Sua sessão expirou.');
+      setTimeout(() => { puxar(); if (fila.size) agendarEnvio(200); }, 300);
+    } catch (er) { /* sem internet: tenta de novo no próximo ciclo */ } finally { conferindo = false; }
+  }
   let ouvindo = false, tiqueAtual = () => {};
   // Aviso na hora: o banco avisa quando algo muda (vagas, cadastros, candidatos); cada um só recebe o que pode ler.
   let canal = null, timerAviso = null, aoMudarCandidatos = () => {};
@@ -575,14 +648,22 @@ const Nuvem = (() => {
   function entrarPresenca() {
     const me = minhaPresenca(); if (canalPres || !sb || !me) return;
     try {
-      canalPres = sb.channel('maparh-presenca', { config: { presence: { key: me.login } } });
-      canalPres.on('presence', { event: 'sync' }, () => aoMudarPres())
-        .subscribe(st => { if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) canalPres.track(m).catch(() => {}); } });
+      // canal privado: só usuários do Mapa RH (regra no banco, realtime.messages); se o servidor não aceitar, cai no canal comum
+      const abrir = privado => {
+        const c = sb.channel('maparh-presenca', { config: { private: privado, presence: { key: me.login } } });
+        c.on('presence', { event: 'sync' }, () => aoMudarPres())
+          .subscribe(st => {
+            if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) c.track(m).catch(() => {}); }
+            else if (st === 'CHANNEL_ERROR' && privado && canalPres === c) { console.warn('Nuvem: presença privada recusada; usando canal comum'); try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = abrir(false); }
+          });
+        return c;
+      };
+      canalPres = abrir(true);
     } catch (e) { console.warn('Nuvem: sem presença', e); canalPres = null; }
   }
   function sairPresenca() { if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; }
   function onde(v) {
-    if ((v || '') === meuOnde) return; meuOnde = v || '';
+    if ((v || '') === meuOnde) return; meuOnde = v || ''; setTimeout(() => aoMudarPres(), 0);
     clearTimeout(timerOnde);
     timerOnde = setTimeout(() => { const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); }, 300);
   }
@@ -594,6 +675,12 @@ const Nuvem = (() => {
     return out;
   }
   function aoMudarPresenca(fn) { aoMudarPres = fn; }
+  // todo mundo conectado e o que cada um está olhando (eu incluído): [{ login, nome, onde }]
+  function presentes() {
+    const me = minhaPresenca(), out = me ? [me] : [];
+    if (canalPres) for (const lista of Object.values(canalPres.presenceState())) for (const x of lista) if (!out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome, onde: x.onde || '' });
+    return out;
+  }
   function iniciarRelogio(precisaCargaInicial) {
     clearInterval(timerPoll);
     let pendenteInicial = precisaCargaInicial, voltas = 0;
@@ -610,6 +697,7 @@ const Nuvem = (() => {
     };
     tiqueAtual = tique;
     timerPoll = setInterval(tique, INTERVALO_MS);
+    vigiarSessao();
     if (!precisaCargaInicial) { ouvirNaHora(); entrarPresenca(); }
     if (ouvindo) return;
     ouvindo = true;
@@ -644,7 +732,7 @@ const Nuvem = (() => {
     }
     clearInterval(timerPoll); pronta = false; eu = null; perfil = null;
     // nada do usuário fica neste navegador: cópia dos dados, fila, espelho e filtros
-    fila = new Map(); espelho = new Map(); cursor = null;
+    fila = new Map(); espelho = new Map(); bases.clear(); cursor = null;
     for (const k of [CHAVE_FILA, CHAVE_ESPELHO, 'maparh:filtros']) localStorage.removeItem(k);
     Store.limparCacheLocal();
     try { await sb.auth.signOut(); } catch (e) { /* sem internet */ }
@@ -655,5 +743,5 @@ const Nuvem = (() => {
   if (ativa) Store.definirGanchoSalvar(mudou);
 
   return { ativa, iniciar, entrar, sair, temAdmin, criarPrimeiroAdmin, salvarUsuario, excluirUsuario, alterarSenha, incluirProjeto, limparAuditoria,
-    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, onde, olhando, aoMudarPresenca, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
+    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, onde, olhando, presentes, aoMudarPresenca, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
 })();

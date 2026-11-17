@@ -233,3 +233,16 @@ button.vg-et:hover { border-color: var(--primaria); }
 .vg-rh-fotos { display: inline-flex; }
 .vg-rh-fotos > span + span { margin-left: -8px; }
 .vg-rh-fotos > span { border-radius: 50%; box-shadow: 0 0 0 2px #fff; display: inline-flex; }
+
+/* onde a vaga foi divulgada */
+.vg-canais { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.vg-canal { font-size: 11px; font-weight: 600; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+
+/* previsão da vaga: o funil cobre o que falta até a data? */
+.vg-selo { font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; cursor: help; }
+.vg-selo-no_prazo { background: #dcfce7; color: #166534; }
+.vg-selo-risco { background: #fef3c7; color: #92400e; }
+.vg-selo-nao_fecha { background: #fee2e2; color: #b91c1c; }
+.vg-prev { font-size: 12px; }
+.vg-prev-risco { color: #92400e; }
+.vg-prev-nao_fecha { color: #b91c1c; font-weight: 600; }

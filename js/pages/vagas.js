@@ -35,6 +35,13 @@ Paginas.vagas = {
     const ondeTexto = v => v.porDistrito.length ? v.porDistrito.map(x => x.distrito.nome).join(', ') : (v.cidade ? v.cidade.nome + '/' + v.cidade.uf : '');
     const podeVerCandidatos = Store.pode(App.usuario, 'candidatos');
     let ativo = true;
+    // andamento dos candidatos (sem dado pessoal): previsão de cada vaga e tempo de contratação
+    let andam = null, taxasPorProjeto = new Map();
+    function previsao(v) {
+      if (!andam || !v.contagemCarregada) return null;
+      if (!taxasPorProjeto.has(v.projetoId)) taxasPorProjeto.set(v.projetoId, Store.taxasAproveitamento(andam.filter(p => p.projeto_id === v.projetoId)));
+      return Store.previsaoVaga(v, andam, taxasPorProjeto.get(v.projetoId));
+    }
 
     // vagas que o usuário enxerga, já com os filtros do topo do sistema (projeto, região, tipo)
     function visiveis() {
@@ -96,18 +103,23 @@ Paginas.vagas = {
       const todas = visiveis();
       desenharFiltros(todas);
       const base = filtradas(todas);
-      const ind = Store.indicadoresVagas(base);
+      const ind = Store.indicadoresVagas(base, undefined, andam);
       // resumo em cartões: os que pedem ação levam para a aba certa
       const cartao = (n, rot, sub, cls, abaAlvo, fc) => `<${abaAlvo ? `button type="button" data-aba="${abaAlvo}" data-foco="${fc || ''}"` : 'div'} class="vg-kpi ${cls || ''} ${abaAlvo ? 'vg-kpi-link' : ''} ${fc && fc === foco ? 'vg-kpi-on' : ''}"><b>${n}</b><span>${rot}</span>${sub ? `<small>${sub}</small>` : ''}</${abaAlvo ? 'button' : 'div'}>`;
+      // pedido preenchido: admitidos que valem por distrito e tipo (a mesma conta do Início)
       const pedidas = base.filter(v => v.aprovada && v.status !== 'cancelada' && v.status !== 'recusada').reduce((a, v) => a + v.quantidade, 0);
-      const admitidas = base.filter(v => v.aprovada && v.status !== 'cancelada').reduce((a, v) => a + Math.min(v.admitidos || 0, v.quantidade), 0);
+      const admitidas = base.filter(v => v.aprovada && v.status !== 'cancelada' && v.status !== 'recusada').reduce((a, v) => a + Math.min(v.admitidosValidos || 0, v.quantidade), 0);
+      const tp = ind.tempo;
+      const diasTxt = n => n.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' d';
       q('#vg-resumo').innerHTML = !todas.length ? '' :
         // em andamento e aguardando aprovação já são as abas logo abaixo: aqui só o que não aparece nelas
         cartao(UI.fmtNum(Math.max(0, pedidas - admitidas)), Math.max(0, pedidas - admitidas) === 1 ? 'pessoa a contratar' : 'pessoas a contratar', `nas vagas aprovadas`, '') +
         cartao(UI.fmtNum(ind.atrasadas), ind.atrasadas === 1 ? 'atrasada' : 'atrasadas', 'passou da data e falta gente', ind.atrasadas ? 'vg-kpi-ruim' : '', ind.atrasadas ? 'abertas' : '', 'atrasadas') +
         cartao(UI.fmtNum(ind.semDivulgacao), 'sem divulgação', ind.semDivulgacao ? 'clique em Divulgar na vaga' : 'todas divulgadas', ind.semDivulgacao ? 'vg-kpi-alerta' : '', ind.semDivulgacao ? 'abertas' : '', 'semdiv') +
         cartao(ind.taxaPreenchimento == null ? '—' : UI.fmtPct(ind.taxaPreenchimento, 0), 'do pedido preenchido', `${UI.fmtNum(admitidas)} de ${UI.fmtNum(pedidas)} pessoas`, '') +
-        (ind.tempoMedioContratacao == null ? '' : cartao(ind.tempoMedioContratacao.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' d', 'da aprovação à admissão', 'em média', ''));
+        // tempo de contratação: mediana da aprovação da vaga à admissão (igual ao Início), pelo andamento dos candidatos
+        (!tp || tp.admissao == null ? '' : cartao(diasTxt(tp.admissao), 'da aprovação à admissão',
+          `mediana de ${qtd(tp.nAdmissao, 'admissão', 'admissões')}${tp.campo != null ? ` · ${diasTxt(tp.campo)} até chegar no campo` : ''}`, ''));
 
       q('#vg-abas').innerHTML = ABAS.map(([id, rot]) => `<button class="aba ${aba === id ? 'ativa' : ''} ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'vg-aba-alerta' : ''}" data-aba="${id}" ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'title="Pedidos esperando a sua decisão"' : ''}>${rot} <span class="aba-num">${UI.fmtNum(base.filter(naAba[id]).length)}</span></button>`).join('');
 
@@ -151,7 +163,15 @@ Paginas.vagas = {
         detalhe = `${podeAprovar ? 'esperando a sua decisão' : 'aguardando um administrador'}${dd ? ` · <span class="${dd >= 3 ? 'vg-alerta' : ''}">há ${qtd(dd, 'dia', 'dias')}</span>` : ''}${au ? ` · aumento de ${au.de} para ${au.para}` : ''}`;
       }
       else if (v.status === 'recusada') detalhe = `<span class="vg-motivo">Motivo: ${UI.esc((v.aprovacao && v.aprovacao.motivo) || 'não informado')}</span>`;
-      else if (emAberto) detalhe = canais ? `divulgada em ${qtd(canais, 'canal', 'canais')}` : '<span class="vg-alerta">ainda não divulgada</span>';
+      else if (emAberto) {
+        // onde foi divulgada: o nome de cada canal (curto), com quem e quando no passar do mouse
+        const curto = n => String(n).split(' / ')[0];
+        const lista = Object.entries(v.divulgacao || {}).map(([id, d]) => ({ c: Store.CANAIS.find(k => k.id === id), d: d || {} })).filter(x => x.c)
+          .sort((a, b) => String(a.d.em || '').localeCompare(String(b.d.em || '')));
+        detalhe = lista.length ? `<span class="vg-canais">Divulgada: ${lista.map(x => { const u = x.d.por && Store.usuarioPorLogin(x.d.por);
+          return `<span class="vg-canal" title="${UI.esc(x.c.nome + (x.d.em ? ' · ' + UI.fmtData(x.d.em) : '') + (u ? ' · por ' + u.nome : x.d.por ? ' · por ' + x.d.por : ''))}">${UI.esc(curto(x.c.nome))}</span>`; }).join('')}</span>`
+          : '<span class="vg-alerta">ainda não divulgada</span>';
+      }
       else if (v.aprovacao && v.aprovacao.situacao === 'aprovada' && v.aprovacao.em) detalhe = `aprovada em ${UI.fmtData(v.aprovacao.em)}`;
 
       // prazo: data e quanto falta
@@ -161,16 +181,22 @@ Paginas.vagas = {
         const quando = !emAberto ? '' : v.atrasada ? `atrasada ${qtd(v.diasAtraso, 'dia', 'dias')}` : n === 0 ? 'é hoje' : n > 0 ? `faltam ${qtd(n, 'dia', 'dias')}` : '';
         prazo = `<div class="vg-k-rot">Precisa até</div><div class="vg-k-val">${fmtDia(v.dataNecessidade)}</div>${quando ? `<div class="vg-k-sub ${v.atrasada ? 'vg-atraso' : ''}">${quando}</div>` : ''}`;
       }
+      // previsão: o funil (prontos + documentação, entrevista e triagem pelo aproveitamento do projeto) cobre o que falta?
+      const pv = previsao(v);
+      const selo = pv ? `<span class="vg-selo vg-selo-${pv.selo}" title="${UI.esc('Previsão: ' + pv.frase + '. Conta os prontos e, nas outras etapas, quantos costumam chegar à admissão neste projeto.')}">${pv.rotulo}</span>` : '';
+      if (pv) prazo += `<div class="vg-k-sub vg-prev vg-prev-${pv.selo}">${UI.esc(pv.frase)}</div>`;
 
       // preenchimento: número grande + barra; por distrito uma linha limpa (Locais x/y · Móveis x/y)
       const conta = v.contagemCarregada && podeVerCandidatos && v.aprovada;   // antes da aprovação mostra só o pedido
-      const pct = v.quantidade ? Math.min(100, Math.round(100 * v.admitidos / v.quantidade)) : 0;
+      // admitidos que valem para o pedido (por distrito e tipo): o mesmo número do Início
+      const admOk = v.admitidosValidos || 0, foraPedido = Math.max(0, (v.admitidos || 0) - admOk);
+      const pct = v.quantidade ? Math.min(100, Math.round(100 * admOk / v.quantidade)) : 0;
       const par = (adm, ped, rot) => !ped ? '' : `<span class="vg-par ${!conta ? '' : adm >= ped ? 'ok' : ''}"><small>${rot}</small> ${conta ? `<b>${adm}</b>/` : ''}${ped}</span>`;
       const dist = v.porDistrito.length
         ? v.porDistrito.map(x => `<div class="vg-dl"><span class="vg-dl-nome" title="${UI.esc(x.distrito.nome)}">${UI.esc(x.distrito.nome)}</span>${par(x.admLoc, x.locais, 'Locais')}${par(x.admMov, x.moveis, 'Móveis')}</div>`).join('')
         : `<div class="vg-dl"><span class="vg-dl-nome">${c ? UI.esc(c.nome + '/' + c.uf) : '—'}</span><span class="vg-par"><small>${UI.rotuloTipo(v.tipo)}</small> ${v.quantidade}</span></div>`;
       const numero = conta
-        ? `<div class="vg-num"><b>${v.admitidos}</b><span>de ${v.quantidade} admitidos</span><em>${pct}%</em></div><div class="vg-barra vg-barra-g"><i style="width:${pct}%"></i></div>`
+        ? `<div class="vg-num"><b>${admOk}</b><span>de ${v.quantidade} admitidos</span><em>${pct}%</em></div><div class="vg-barra vg-barra-g"><i style="width:${pct}%"></i></div>${foraPedido ? `<div class="vg-k-sub" title="Admitidos além do pedido do distrito/tipo ou sem distrito: não completam o pedido">+${foraPedido} fora do pedido</div>` : ''}`
         : `<div class="vg-num"><b>${v.quantidade}</b><span>${v.quantidade === 1 ? 'pessoa pedida' : 'pessoas pedidas'}</span></div>`;
 
       // candidatos por etapa: uma linha de texto (clique abre Candidatos na vaga)
@@ -198,7 +224,7 @@ Paginas.vagas = {
       const prio = v.prioridade && v.prioridade !== 'normal' ? `<span class="badge ${CLASSE_PRIORIDADE[v.prioridade]}">${Store.PRIORIDADES[v.prioridade]}</span>` : '';
       return `<article data-id="${v.id}" class="vg-card ${fechada(v) ? 'vg-fechada' : ''} ${v.atrasada ? 'vg-atrasada' : ''} ${pendente ? 'vg-pendente' : ''}">
         <div class="vg-card-cab">
-          <div class="vg-card-tit"><h3>${UI.esc(v.titulo)}</h3>${prio}<span class="badge ${CLASSE_STATUS[v.status] || 'badge-cinza'}">${UI.esc(Store.STATUS_VAGA[v.status] || v.status)}</span></div>
+          <div class="vg-card-tit"><h3>${UI.esc(v.titulo)}</h3>${prio}${selo}<span class="badge ${CLASSE_STATUS[v.status] || 'badge-cinza'}">${UI.esc(Store.STATUS_VAGA[v.status] || v.status)}</span></div>
           <div class="vg-card-sub"><span class="vg-onde">${UI.esc(ondeTexto(v) || 'sem distrito')}</span><span>${UI.esc(v.projeto ? v.projeto.nome : '—')}</span>${v.solicitante ? `<span>pedida por ${UI.esc(v.solicitante)}</span>` : ''}</div>
         </div>
         <div class="vg-card-corpo">
@@ -505,7 +531,11 @@ Paginas.vagas = {
       w.document.close();
     }
 
-    const contar = () => { if (typeof Nuvem !== 'undefined' && Nuvem.ativa) Nuvem.rh.contagemVagas().then(m => { Store.definirContagemVagas(m); if (ativo) desenhar(); }).catch(() => {}); };
+    const contar = () => {
+      if (typeof Nuvem === 'undefined' || !Nuvem.ativa) return;
+      Nuvem.rh.contagemVagas().then(m => { Store.definirContagemVagas(m); if (ativo) desenhar(); }).catch(() => {});
+      if (Nuvem.rh.andamento) Nuvem.rh.andamento(App.filtros.projetoId).then(l => { andam = l || []; taxasPorProjeto = new Map(); if (ativo) desenhar(); }).catch(() => {});
+    };
     desenhar(); contar();
     // mudou algo (aqui ou em outro computador): redesenha a lista e recontam os candidatos, sem apagar a tela
     App.aoAtualizar(() => { if (!ativo) return; if (!document.querySelector('.modal-overlay')) desenhar(); contar(); });

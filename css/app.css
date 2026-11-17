@@ -361,6 +361,8 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .rotulo-distrito.mini b { margin: 0; font-size: 10px; padding: 0 5px; }
 .rotulo-micro span { display: inline-block; transform: translate(-50%, 9px); padding: 2px 7px; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.35); text-shadow: 0 1px 1px rgba(0,0,0,.35); cursor: pointer; pointer-events: auto; }
 .rotulo-micro span:hover { filter: brightness(1.12); box-shadow: 0 2px 6px rgba(0,0,0,.45); }
+/* camada "Falta contratar": rótulo no centro do distrito */
+.rotulo-micro span.rotulo-falta { transform: translate(-50%, -50%); font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 2px solid #fff; pointer-events: none; cursor: default; }
 .cidade-hover { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 400; background: rgba(255,255,255,.95); color: #0f172a; padding: 5px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none; }
 .cidade-hover span { color: #64748b; margin-left: 6px; }
 .malha-status { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 400; background: rgba(15,23,42,.85); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
@@ -706,7 +708,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .doc-card-x:hover { color: #b91c1c; background: rgba(0,0,0,.05); }
 
 /* Início: painel do recrutamento (diretoria) */
-.dr-titulo { display: flex; align-items: center; gap: 10px; }
+.dr-titulo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dr-grade { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
 .dr-grade .card h2 { margin-bottom: 12px; }
 .dr-barra { height: 8px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
@@ -725,7 +727,41 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .dr-tab > span.ok { color: #047857; }
 .dr-tab-cab { padding-top: 0; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #94a3b8; }
 .dr-tab-cab > span { color: #94a3b8; font-weight: 700; }
-.dr-tab-rh { grid-template-columns: minmax(0, 1.4fr) repeat(3, 76px); }
+.dr-tab-cab > span:first-child { text-align: left; }
+.dr-tab-rh { grid-template-columns: minmax(0, 1.4fr) repeat(4, 62px); }
+.dr-tab > span.ruim { color: #b91c1c; }
+.dr-tab > span.alerta { color: #b45309; }
+/* distritos: pedido, falta, em processo e cobertura do funil */
+.dr-tab-dist { grid-template-columns: minmax(0, 1.3fr) repeat(5, 76px) minmax(80px, 1fr); }
+.dr-linha-pior { background: #fef2f2; border-radius: 6px; padding-left: 6px; padding-right: 6px; }
+.dr-tab > span.dr-pior { font-weight: 800; }
+/* saídas por motivo */
+.dr-tab-mot { grid-template-columns: minmax(0, 1fr) repeat(3, 52px); }
+.dr-tab-mot > b { font-weight: 500; }
+.dr-tempo { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; color: #334155; }
+.dr-tempo span { flex: 1; }
+.dr-tempo b { font-variant-numeric: tabular-nums; }
+.dr-tempo em { font-style: normal; font-size: 11.5px; color: var(--muted); min-width: 70px; text-align: right; }
+/* gargalo: etapa x tempo parado */
+.dr-gar { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 60px) 50px; gap: 8px; align-items: center; padding: 6px 0; font-size: 13px; }
+.dr-gar.dr-tab-cab { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.dr-gar.dr-tab-cab > span, .dr-gar-tot { text-align: center; }
+.dr-gar > b { font-weight: 600; }
+.dr-gar-n { display: block; text-align: center; font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; padding: 7px 0; border-radius: 6px; border: none; background: #f1f5f9; color: #94a3b8; }
+button.dr-gar-n { cursor: pointer; }
+button.dr-gar-n:hover { filter: brightness(.94); box-shadow: inset 0 0 0 2px rgba(15,23,42,.15); }
+.dr-gar-0.tem { background: #dcfce7; color: #166534; }
+.dr-gar-1.tem { background: #fef3c7; color: #92400e; }
+.dr-gar-2.tem { background: #fee2e2; color: #b91c1c; }
+.dr-gar-tot { font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; }
+/* vagas em risco */
+.dr-risco { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: inherit; text-decoration: none; font-size: 13px; }
+.dr-risco:last-of-type { border-bottom: none; }
+.dr-risco:hover b { text-decoration: underline; }
+.dr-risco > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-risco > small { grid-column: 2; color: var(--muted); }
+.dr-risco-frase { grid-column: 2; color: #334155; }
+.dr-tudo-ok { color: #047857; font-weight: 600; font-size: 13px; }
 .dr-tab-sem { grid-template-columns: minmax(0, 1fr) 90px minmax(60px, 1fr); }
 @media print {
   .sidebar, .topo, .filtros-barra, .fluxo, .caixa-aviso, .nao-imprimir { display: none !important; }
@@ -762,7 +798,14 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .dist-sobre, .micro-rotulo { color: #64748b; }
 .micro-acoes { opacity: 1; }
 .projeto-card .numeros { flex-wrap: wrap; }
-@media (max-width: 560px) { .dr-tab-rh { grid-template-columns: minmax(0, 1fr) repeat(3, 52px); font-size: 12px; } }
+@media (max-width: 560px) {
+  .dr-tab-rh { grid-template-columns: minmax(0, 1fr) repeat(4, 44px); font-size: 12px; gap: 6px; }
+  .dr-tab-dist { grid-template-columns: minmax(0, 1fr) repeat(5, 40px); font-size: 12px; gap: 5px; }
+  .dr-tab-dist > :last-child { display: none; }
+  .dr-tab-dist.dr-tab-cab > span { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+  .dr-tab-cab { font-size: 9.5px; letter-spacing: 0; }
+  .dr-gar { grid-template-columns: minmax(0, 1fr) repeat(3, 48px) 40px; gap: 6px; }
+}
 
 /* avisos (toasts): agrupados, com fechar */
 #toasts { width: min(460px, calc(100vw - 32px)); }
@@ -842,3 +885,14 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
 .olhando-foto { display: inline-flex; border-radius: 50%; box-shadow: 0 0 0 2px #10b981; }
 .olhando-foto + .olhando-foto { margin-left: -6px; }
 .olhando-txt { font-weight: 600; }
+
+/* mapa: fotos de quem está olhando, em cima da cidade */
+.mp-olho-icone { background: none; border: none; }
+.mp-olho { display: inline-flex; align-items: center; padding: 3px 4px; background: #fff; border-radius: 999px; box-shadow: 0 2px 8px rgba(15, 23, 42, .25); position: relative; }
+.mp-olho::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #fff; }
+.mp-olho-foto { display: inline-flex; border-radius: 50%; box-shadow: 0 0 0 2px #10b981; }
+.mp-olho-foto.eu { box-shadow: 0 0 0 2px #2563eb; }
+.mp-olho-foto + .mp-olho-foto { margin-left: -10px; }
+.mp-olho-mais { font-size: 11px; font-weight: 700; color: #334155; margin-left: 4px; padding-right: 4px; }
+
+.ct-quem { display: inline-flex; align-items: center; gap: 6px; }

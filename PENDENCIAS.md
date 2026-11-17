@@ -60,7 +60,46 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [x] Vaga com vários RHs responsáveis (o primeiro é o principal); todos veem a vaga e todos os candidatos dela (regra no banco).
 - [x] Mapa: quadro da cidade mostra a pessoa (nome, cargo, entrou, chegada, foto do RH), clique abre em Candidatos; sem "pessoa(s)" e selo MÓVEL sem quebrar.
 - [x] Presença: foto de quem está olhando a mesma cidade no mapa ou a mesma ficha de candidato (no cartão também).
+- [x] (v141) A minha foto também ("Você e JAO estão olhando") e as fotos ficam em cima da cidade no mapa (borda azul = eu, verde = outros).
 - [ ] Simulação de 17/11 no banco: 3 candidatos "TESTE - …" na vaga AUDITOR de Sarandi (JAO); o Pedro foi admitido (contratação adm-a1aa83b7-…, CPF de exemplo 529.982.247-25). Apagar depois que o Alan olhar.
+
+## Feito em v142 (ainda não publicado)
+- [x] Histórico mais completo pelo banco: "Admitido como AUDITOR · Sarandi · móvel" com quem admitiu, entrevista marcada, ASO, treinamento, documentos (N de M), chegada (migração historico-completo.sql).
+- [x] Contratações: coluna "Admitido por" (foto + nome) e na planilha exportada.
+- [x] Vagas: cartão mostra onde foi divulgada (SINE, Vagas.com…; quem e quando no passar do mouse).
+- [x] Sessão: se outra aba sai ou entra com outro usuário, esta avisa e recarrega (antes ficava em "falha no sincronismo"); token vencido tenta renovar.
+
+## Avaliação de 17/11 (3 agentes: RH, gestor, dados/segurança) — a fazer, por lote
+### Lote A — não perder nem falsificar dado (urgente) — FEITO (migrações lote-campos-e-versao.sql, lote-a-travas.sql; testes/regras-lote-a.sql 12/12)
+- [x] Ficha aberta apaga o que outro RH mudou (salvar manda tudo, sem conferir versão): mandar `atualizado_em` lido e recusar se mudou; salvar só o que mudou.
+- [x] Sincronização de vagas/projetos: último que grava vence; exclusão offline apaga vaga editada depois. Mesma trava de versão.
+- [x] Admitir/desfazer dá para contornar com alteração direta (registro_id gravável, travar_admitido aceita admitido→em andamento): só pelas funções; validar p_reg em apagar_registro_da_admissao.
+- [x] Histórico pode ser apagado/forjado (anotacoes é coluna alterável): só acrescentar; exclusão de candidato lógica.
+- [x] Regras da vaga no banco: aprovar só admin; não excluir vaga com candidatos; não admitir além do pedido (por distrito/tipo).
+- [ ] "Pedido preenchido" com número diferente em cada tela; vaga com tipo trocado vira "Preenchida": um cálculo só por distrito/tipo.
+### Lote B — dia a dia do RH
+- [ ] Triagem: "sem resposta há N dias" + botão "Cobrar de novo"; na faixa Hoje "N aguardando resposta"; sugerir "Não segue: não respondeu".
+- [ ] Mensagem em lote: na seleção da Lista, "Mandar mensagem" passo a passo (abre WhatsApp e vai para o próximo).
+- [ ] Entrevista: "Confirmou?" sim/não; lembrete da véspera na faixa Hoje; não confirmados em amarelo na Agenda.
+- [ ] Quem sai: oferecer avisar pelo WhatsApp (modelo "não seguiu"); lote "Não seguem" pede motivo e anota; histórico registra a saída.
+- [ ] Ordenar Triagem/Entrevista pela urgência da vaga (atrasada, prioridade, prazo) e selo "vaga até dd/mm"; alerta chegada depois do prazo da vaga.
+- [ ] Documentação: "sem movimento há N dias" (pela última alteração); ASO/treinamento agendados com data e local; "ASO hoje / sem resultado" na faixa Hoje.
+- [ ] Avançar em lote para Documentação com enquadramento em lote (distrito sugerido, local/móvel).
+### Lote C — gestor / diretoria
+- [ ] Previsão por vaga: "No prazo / Em risco / Não fecha" pelo funil e pela taxa de aproveitamento; quadro "Vagas em risco" no Início.
+- [ ] Tempo de contratação único (da aprovação da vaga à admissão, mediana) em Início, Vagas e relatório; e "até chegar no campo".
+- [ ] Gargalo por etapa com idade (0-3 / 4-7 / 8+ dias) e Por RH com aproveitamento e "parado há" no Início.
+- [ ] Motivo de saída e datas de cada etapa como campo: "Saídas por motivo" e tempo médio por etapa.
+- [ ] "Copiar resumo para WhatsApp" no Início; depois, e-mail diário automático para admin/gestor quando houver algo vermelho.
+- [ ] Relatório "Situação das vagas" exportável (XLSX/PDF); Relação completa com nome, cargo, admitido em, chegada.
+- [ ] Distritos: falta, em processo, cobertura do funil; camada "Falta contratar" no mapa.
+### Lote D — segurança, LGPD e backup — FEITO (lote-d-lgpd-presenca.sql; backup completo e limpeza LGPD em Sistema → Backup; restaurar desligado com o banco central; esquema em supabase/esquema-atual.sql). Fica: backup automático fora do Supabase (precisa de um lugar externo) e readmissão depois de desligado (módulo Colaboradores).
+- [x] Versionar o esquema do banco no repositório (dump) e ligar backup automático fora do Supabase; "Restaurar" com a nuvem ligada não pode apagar o que é novo.
+- [x] LGPD: anonimizar pessoa (pedido do titular) e prazo para dados de quem não foi contratado; exportação de Contratações registrada na auditoria e CPF mascarado.
+- [x] Admissão da mesma pessoa em dois projetos; readmissão depois de desligado.
+- [x] Testes das regras críticas num script único (admitir/desfazer, anotações, vários RHs, limite da vaga, conflito de edição).
+- [x] Canal de presença privado (hoje quem tem a chave pública vê logins e ids abertos).
+- [x] Apagar a simulação "TESTE - …" (pelo desfazer, para a contratação sair junto).
 
 ## Lote 5 — design — FEITO em v135: Lista compacta, Planilha ▾, filtros das Vagas, Início (bloco principal), Relatórios sem rolagem, Mapa (zoom livre), barra lateral, celular (Quadro uma etapa por vez, Por RH com rótulos). Ficaram (menores):
 - [ ] Lista de Candidatos em 1366px (colunas espremidas) — medir pelo cartão, não pela janela.

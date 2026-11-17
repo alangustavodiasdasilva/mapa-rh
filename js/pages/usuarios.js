@@ -224,12 +224,26 @@ Paginas.backup = {
           </ul>
           <button class="btn btn-primario" id="bk-exportar">Baixar backup (.json)</button>
         </div>
-        <div class="card">
+        ${App.nuvem() ? `<div class="card">
+          <h2>Backup completo do banco</h2>
+          <p class="muted small">Baixa tudo o que está no banco central e que você pode ver: cadastros, vagas, contratações, <b>pessoas e candidatos com o histórico</b>. Tem dados pessoais (LGPD): guarde em local seguro e não compartilhe.</p>
+          <button class="btn btn-primario" id="bk-completo">Baixar backup completo (.json)</button>
+          <p class="muted small" style="margin-bottom:0">Com o banco central, <b>restaurar</b> pelo arquivo fica desligado: ele substituiria os dados de todos e apagaria o que foi feito depois do backup. O banco guarda o conteúdo dos itens excluídos e o histórico de cada candidato; para recuperar algo, fale com o administrador do sistema.</p>
+        </div>` : `<div class="card">
           <h2>Restaurar backup</h2>
           <p class="muted small">Substitui <b>todos</b> os dados atuais pelos do arquivo escolhido. ${admin ? '' : '<b>Somente administradores podem restaurar.</b>'}</p>
           ${admin ? '<input type="file" id="bk-arquivo" accept=".json,application/json">' : ''}
-        </div>
+        </div>`}
       </div>
+      ${App.nuvem() && admin ? `<div class="card mt">
+        <h2>Dados pessoais (LGPD)</h2>
+        <p class="muted small">Apaga nome, CPF, telefone, e-mail e nascimento de quem <b>não foi contratado</b> e está sem nenhum movimento há muito tempo (o histórico do processo fica, sem identificar a pessoa). Quem está em processo ou admitido não entra. Para apagar os dados de uma pessoa específica (pedido dela), abra a ficha em Candidatos.</p>
+        <div class="linha" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <label>Sem movimento há mais de<select id="lg-meses"><option value="6">6 meses</option><option value="12" selected>12 meses</option><option value="24">24 meses</option></select></label>
+          <button class="btn" id="lg-contar">Ver quantas pessoas</button>
+          <span id="lg-res" class="muted small"></span>
+        </div>
+      </div>` : ''}
       <div class="card mt">
         <h2>Onde os dados ficam?</h2>
         <p class="muted small">${App.nuvem() ? 'Os dados ficam no banco central (Supabase) e são os mesmos em qualquer computador: basta entrar com o seu usuário. Este navegador guarda uma cópia para abrir rápido e para continuar funcionando se a internet cair (as alterações sobem quando ela voltar). O backup em arquivo continua valendo como cópia de segurança. <b>Restaurar um backup substitui os dados de todos os usuários.</b>'
@@ -240,6 +254,31 @@ Paginas.backup = {
       UI.baixarArquivo(`backup-mapa-rh-${data}.json`, Store.exportar(), 'application/json');
       Store.auditar('backup.exportar', 'Backup exportado', App.usuario);
       UI.toast('Backup gerado.', 'sucesso');
+    });
+    const bc = el.querySelector('#bk-completo');
+    if (bc) bc.addEventListener('click', async () => {
+      bc.disabled = true; bc.textContent = 'Baixando…';
+      try {
+        const b = await Nuvem.rh.backupCompleto();
+        UI.baixarArquivo(`backup-completo-mapa-rh-${RH.hoje()}.json`, JSON.stringify(b), 'application/json');
+        Store.auditar('backup.exportar', `Backup completo do banco (${b.pessoas.length} pessoas, ${b.candidatos.length} candidatos)`, App.usuario);
+        UI.toast('Backup completo baixado.', 'sucesso');
+      } catch (err) { UI.toast(err.message, 'erro', 7000); }
+      finally { bc.disabled = false; bc.textContent = 'Baixar backup completo (.json)'; }
+    });
+    const lc = el.querySelector('#lg-contar');
+    if (lc) lc.addEventListener('click', async () => {
+      const meses = +el.querySelector('#lg-meses').value, res = el.querySelector('#lg-res');
+      try {
+        const n = await Nuvem.rh.anonimizarAntigos(meses, true);
+        if (!n) { res.textContent = 'Ninguém nessa situação.'; return; }
+        res.innerHTML = `${n === 1 ? '1 pessoa' : n + ' pessoas'} sem contratação e sem movimento há mais de ${meses} meses. <button class="btn btn-perigo btn-pequeno" id="lg-apagar">Apagar os dados pessoais</button>`;
+        el.querySelector('#lg-apagar').addEventListener('click', async () => {
+          if (!await UI.confirmar(`Apagar nome, CPF, telefone, e-mail e nascimento de ${n === 1 ? '1 pessoa' : n + ' pessoas'}? Não dá para desfazer.`, { perigo: true, textoOk: 'Apagar' })) return;
+          try { const f = await Nuvem.rh.anonimizarAntigos(meses, false); res.textContent = `Pronto: dados de ${f === 1 ? '1 pessoa apagados' : f + ' pessoas apagados'}.`; Store.auditar('lgpd.limpeza', `Dados pessoais apagados (${f}, mais de ${meses} meses)`, App.usuario); }
+          catch (err) { UI.toast(err.message, 'erro', 7000); }
+        });
+      } catch (err) { UI.toast(err.message, 'erro', 7000); }
     });
     const arq = el.querySelector('#bk-arquivo');
     if (arq) arq.addEventListener('change', async e => {

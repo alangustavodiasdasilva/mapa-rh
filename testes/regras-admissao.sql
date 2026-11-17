@@ -30,12 +30,14 @@ begin
   begin update public.maparh_pessoas set nascimento = current_date + 1 where id = pe; ok := true; exception when others then ok := false; end; r := r || 'nascimento no futuro=' || ok || ' (false) | ';
   update public.maparh_pessoas set nascimento = (current_date - interval '18 years')::date where id = pe;
   begin insert into public.maparh_preadmissoes (pessoa_id, projeto_id, etapa, dinamica, aso, treinamento, documentos, situacao) values (pe, 'tst-p2', 'triagem', 'pendente', 'pendente', 'pendente', '{}', 'admitido'); ok := true; exception when others then ok := false; end; r := r || 'inserir ja admitido=' || ok || ' (false) | ';
-  -- tudo certo (18 anos completos hoje): admite
+  -- tudo certo (18 anos completos hoje): admite (desde 17/11/2026 só pelas funções; aqui simula o caminho da função)
+  perform set_config('maparh.via_funcao', '1', true);
   begin update public.maparh_preadmissoes set situacao = 'admitido', registro_id = 'adm-' || id::text, admitido_em = current_date where id = pr; ok := true; exception when others then ok := false; end; r := r || 'tudo certo, 18 anos hoje=' || ok || ' (true) | ';
   -- admitido não volta a ter pendência sem desfazer
   begin update public.maparh_preadmissoes set documentos = '{"RG e CPF":"falta"}' where id = pr; ok := true; exception when others then ok := false; end; r := r || 'mexer em doc de admitido=' || ok || ' (false) | ';
   begin update public.maparh_preadmissoes set observacao = 'ok' where id = pr; ok := true; exception when others then ok := false; end; r := r || 'observacao de admitido=' || ok || ' (true) | ';
   begin update public.maparh_preadmissoes set situacao = 'em_andamento', admitido_em = null where id = pr; ok := true; exception when others then ok := false; end; r := r || 'desfazer admissao=' || ok || ' (true) | ';
+  perform set_config('maparh.via_funcao', '', true);
   -- sem CPF
   update public.maparh_pessoas set cpf = null where id = pe;
   begin update public.maparh_preadmissoes set situacao = 'admitido', registro_id = 'adm-' || id::text where id = pr; ok := true; exception when others then ok := false; end; r := r || 'sem CPF=' || ok || ' (false)';

@@ -7,6 +7,7 @@ Paginas.relatorios = {
       { titulo: 'Total', classe: 'direita', render: r => `<b>${UI.fmtNum(r.total)}</b>` }
     ];
     const km = v => v == null ? '' : Math.round(v);
+    let andamento = null;   // andamento dos candidatos (só para "Situação das vagas"), buscado quando o relatório abre
     const RELATORIOS = [
       { id: 'origem', nome: 'Contratações por cidade de origem', gerar: (regs) => ({
         colunas: [
@@ -130,9 +131,57 @@ Paginas.relatorios = {
           { titulo: 'Por', render: r => UI.esc(r.criadoPor || '—') }
         ],
         linhas: regs.slice().sort((a, b) => a.projeto.nome.localeCompare(b.projeto.nome, 'pt-BR') || a.cidade.nome.localeCompare(b.cidade.nome, 'pt-BR')),
-        csv: r => [UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf, r.atuacaoMovel ? 'MOVEL' : (r.cidadeAtuacao ? r.cidadeAtuacao.nome : ''), r.projeto.nome, r.projeto.uf, r.projeto.ano || '', km(r.distancia), UI.fmtDataHora(r.criadoEm), r.criadoPor || ''],
-        cabecalhoCsv: ['MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'ESTADO', 'CIDADE DE ATUACAO', 'PROJETO', 'UF PROJETO', 'ANO', 'DISTANCIA KM', 'CADASTRADO EM', 'POR']
+        // mesma ordem da tabela (UF e ano do projeto logo depois do projeto)
+        csv: r => [r.projeto.nome, r.projeto.uf, r.projeto.ano || '', UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf, r.atuacaoMovel ? 'MOVEL' : (r.cidadeAtuacao ? r.cidadeAtuacao.nome : ''), km(r.distancia), UI.fmtDataHora(r.criadoEm), r.criadoPor || ''],
+        cabecalhoCsv: ['PROJETO', 'UF PROJETO', 'ANO', 'MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'ESTADO', 'CIDADE DE ATUACAO', 'DISTANCIA KM', 'CADASTRADO EM', 'POR']
       }) },
+      // Situação das vagas: uma linha por vaga e distrito, com o andamento dos candidatos (sem dado pessoal)
+      { id: 'vagas', nome: 'Situação das vagas', precisaAndamento: true, gerar: () => {
+        const l = andamento || [];
+        Store.definirContagemVagas(Store.contagemDoAndamento(l));
+        const fD = App.filtros.distritoId;
+        const vagas = Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(v => v.aprovada && v.status !== 'cancelada')
+          .filter(v => !fD || v.porDistrito.some(d => d.distrito.id === fD));
+        const taxas = new Map(), taxasDe = pid => { if (!taxas.has(pid)) taxas.set(pid, Store.taxasAproveitamento(l.filter(p => p.projeto_id === pid))); return taxas.get(pid); };
+        const etapa = (v, did, e) => l.filter(p => p.vaga_id === v.id && p.situacao === 'em_andamento' && p.etapa === e && (did === null || (p.distrito_id || null) === did)).length;
+        const nomeRh = login => { const u = Store.usuarioPorLogin(login); return u ? u.nome : login; };
+        const linhas = [];
+        for (const v of vagas) {
+          const pv = Store.previsaoVaga(v, l, taxasDe(v.projetoId));
+          const base = { v, pv, rhs: (v.responsaveis || []).map(nomeRh).join(', ') };
+          if (v.porDistrito.length) {
+            for (const d of v.porDistrito) if (!fD || d.distrito.id === fD) linhas.push({ ...base, distrito: d.distrito.nome, pl: d.locais, pm: d.moveis, al: d.admLoc, am: d.admMov,
+              tri: etapa(v, d.distrito.id, 'triagem'), ent: etapa(v, d.distrito.id, 'entrevista'), doc: etapa(v, d.distrito.id, 'documentos') });
+          } else {
+            const loc = v.tipo !== 'MOVEL';
+            linhas.push({ ...base, distrito: v.cidade ? v.cidade.nome + '/' + v.cidade.uf : '—', pl: loc ? v.quantidade : 0, pm: loc ? 0 : v.quantidade, al: loc ? v.admitidosValidos : 0, am: loc ? 0 : v.admitidosValidos,
+              tri: etapa(v, null, 'triagem'), ent: etapa(v, null, 'entrevista'), doc: etapa(v, null, 'documentos') });
+          }
+        }
+        linhas.sort((a, b) => (a.v.dataNecessidade || '9999').localeCompare(b.v.dataNecessidade || '9999') || a.v.titulo.localeCompare(b.v.titulo, 'pt-BR') || a.distrito.localeCompare(b.distrito, 'pt-BR'));
+        const dataBR = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+        const situacao = r => r.pv ? r.pv.rotulo : (Store.STATUS_VAGA[r.v.status] || r.v.status);
+        return {
+          colunas: [
+            { titulo: 'Cargo', render: r => `${UI.esc(r.v.titulo)}${r.v.projeto && !App.filtros.projetoId ? `<div class="muted small">${UI.esc(r.v.projeto.nome)}</div>` : ''}` },
+            { titulo: 'Distrito', render: r => UI.esc(r.distrito) },
+            { titulo: 'Pedido L/M', classe: 'direita', render: r => `${r.pl}/${r.pm}` },
+            { titulo: 'Admitidos L/M', classe: 'direita', render: r => `<b>${r.al}/${r.am}</b>` },
+            { titulo: 'Triagem', classe: 'direita', render: r => r.tri },
+            { titulo: 'Entrevista', classe: 'direita', render: r => r.ent },
+            { titulo: 'Documentação', classe: 'direita', render: r => r.doc },
+            { titulo: 'Precisa até', render: r => dataBR(r.v.dataNecessidade) || '<span class="muted">—</span>' },
+            { titulo: 'Dias aberta', classe: 'direita', render: r => r.v.diasAberta == null ? '—' : r.v.diasAberta },
+            { titulo: 'RHs', render: r => UI.esc(r.rhs || '—') },
+            { titulo: 'Previsão', render: r => r.pv ? `<span class="vg-selo vg-selo-${r.pv.selo}">${r.pv.rotulo}</span> <span class="muted small">${UI.esc(r.pv.frase)}</span>` : `<span class="muted">${UI.esc(situacao(r))}</span>` }
+          ],
+          linhas,
+          csv: r => [r.v.titulo, r.v.projeto ? r.v.projeto.nome : '', r.distrito, r.pl, r.pm, r.al, r.am, r.tri, r.ent, r.doc, dataBR(r.v.dataNecessidade), r.v.diasAberta == null ? '' : r.v.diasAberta, r.rhs, situacao(r), r.pv ? r.pv.frase : ''],
+          cabecalhoCsv: ['CARGO', 'PROJETO', 'DISTRITO', 'PEDIDO LOCAL', 'PEDIDO MOVEL', 'ADMITIDOS LOCAL', 'ADMITIDOS MOVEL', 'EM TRIAGEM', 'EM ENTREVISTA', 'EM DOCUMENTACAO', 'PRECISA ATE', 'DIAS ABERTA', 'RHS', 'PREVISAO', 'DETALHE DA PREVISAO'],
+          nota: 'Vagas aprovadas (fora as canceladas). A previsão vale para a vaga inteira: prontos + quem está em processo × o quanto costuma chegar à admissão no projeto.',
+          total: `${vagas.length === 1 ? '1 vaga' : vagas.length + ' vagas'}`
+        };
+      } },
       { id: 'mes', nome: 'Cadastros por mês', gerar: (regs) => ({
         colunas: [{ titulo: 'Mês', render: r => Analise.rotuloMes(r.mes) }, ...colLM],
         linhas: Analise.porMes(regs),
@@ -156,12 +205,22 @@ Paginas.relatorios = {
       el.querySelectorAll('.lista-relatorios a').forEach(a => a.classList.toggle('ativo', a.dataset.id === atual));
       const rel = RELATORIOS.find(r => r.id === atual);
       const regs = App.regs();
-      const dados = rel.gerar(regs);
       const cont = el.querySelector('#rel-conteudo');
+      // relatório que usa o andamento dos candidatos: busca uma vez no banco e redesenha
+      if (rel.precisaAndamento && andamento === null) {
+        if (typeof Nuvem === 'undefined' || !Nuvem.ativa || !Nuvem.rh || !Nuvem.rh.andamento) { andamento = []; }
+        else {
+          cont.innerHTML = `<h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="vazio">Carregando o andamento dos candidatos…</div>`;
+          Nuvem.rh.andamento(App.filtros.projetoId).then(l => { andamento = l || []; }).catch(() => { andamento = []; UI.toast('Não foi possível carregar o andamento dos candidatos.', 'erro'); })
+            .then(() => { if (document.body.contains(cont) && atual === rel.id) renderRelatorio(); });
+          return;
+        }
+      }
+      const dados = rel.gerar(regs);
       cont.innerHTML = `
         <div class="cabecalho-impressao"><h2>Mapa RH — ${UI.esc(rel.nome)}</h2><div class="muted">${UI.esc(App.descricaoFiltro())} · gerado em ${UI.fmtDataHora(new Date().toISOString())}</div></div>
         <div class="card-titulo nao-imprimir">
-          <div><h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="muted small">${UI.esc(App.descricaoFiltro())} · ${UI.fmtNum(regs.length)} contratação(ões)${dados.nota ? ' · ' + UI.esc(dados.nota) : ''}</div></div>
+          <div><h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="muted small">${UI.esc(App.descricaoFiltro())} · ${dados.total || UI.fmtNum(regs.length) + ' contratação(ões)'}${dados.nota ? ' · ' + UI.esc(dados.nota) : ''}</div></div>
           <div class="linha"><button class="btn btn-pequeno" id="rel-csv">Exportar CSV</button><button class="btn btn-pequeno" id="rel-imprimir">Imprimir / PDF</button></div>
         </div>
         ${UI.tabela({ colunas: dados.colunas, linhas: dados.linhas, vazio: 'Nenhum dado para o filtro atual.' })}`;

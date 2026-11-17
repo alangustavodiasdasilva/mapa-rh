@@ -67,27 +67,20 @@ Paginas.dashboard = {
         document.getElementById('dr-tentar').addEventListener('click', () => App.recarregar()); return;
       }
       if (!document.body.contains(v)) return;
+      // contagem das vagas a partir do mesmo andamento (sem buscar de novo), sem os filtros de distrito e tipo:
+      // cada vaga conta todos os distritos dela (os filtros entram depois, no que aparece) — igual à tela Vagas
+      const lTodos = l;
+      Store.definirContagemVagas(Store.contagemDoAndamento(lTodos));
       if (App.filtros.distritoId) l = l.filter(p => p.distrito_id === App.filtros.distritoId);
       if (App.filtros.tipo) l = l.filter(p => p.tipo === App.filtros.tipo);
       const ab = l.filter(p => p.situacao === 'em_andamento'), n = e => ab.filter(p => p.etapa === e).length;
       v.textContent = UI.fmtNum(ab.length);
       s.textContent = ab.length ? `${n('triagem')} na triagem · ${n('entrevista')} em entrevista · ${n('documentos')} na documentação` : 'triagem, entrevista e documentação';
       if (!l.length) {
-        Store.definirContagemVagas({});
         const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = textoPendencias({ ...Store.resumoRecrutamento(App.usuario, App.filtros.projetoId), contagemPronta: true });
         alvo.innerHTML = '<div class="secao-titulo">Recrutamento</div><div class="card vazio mb">Nenhuma candidatura ainda neste filtro. Quando o RH importar ou cadastrar candidatos, o funil aparece aqui.</div>';
         return;
       }
-      // contagem das vagas a partir do mesmo andamento (sem buscar de novo)
-      const cont = {};
-      for (const p of l) {
-        if (!p.vaga_id || (p.situacao !== 'admitido' && p.situacao !== 'em_andamento')) continue;
-        const c = cont[p.vaga_id] || (cont[p.vaga_id] = { candidatos: 0, admitidos: 0, emProcesso: 0, etapas: { triagem: 0, entrevista: 0, documentos: 0 }, dist: {} });
-        const d = c.dist[p.distrito_id || '(sem)'] || (c.dist[p.distrito_id || '(sem)'] = { LOCAL: { adm: 0, proc: 0 }, MOVEL: { adm: 0, proc: 0 } });
-        const tp = d[p.tipo === 'MOVEL' ? 'MOVEL' : 'LOCAL'];
-        c.candidatos++; if (p.situacao === 'admitido') { c.admitidos++; tp.adm++; } else { c.emProcesso++; tp.proc++; c.etapas[p.etapa]++; }
-      }
-      Store.definirContagemVagas(cont);
       // com a contagem, o passo 1 passa a contar o que realmente falta (vaga completa sai das abertas)
       const rec2 = Store.resumoRecrutamento(App.usuario, App.filtros.projetoId), dv = document.getElementById('dash-vagas');
       // o que está travando: prontos parados, documentação parada, chegada da semana com pendência, sem RH
@@ -119,8 +112,32 @@ Paginas.dashboard = {
         } else if (!fD) { pedidas += x.quantidade; admV += Math.min(x.admitidos || 0, x.quantidade); }
       }
       const adm = l.filter(p => p.situacao === 'admitido'), fora = l.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu');
-      const DIA = 86400000, dias = adm.filter(p => p.admitido_em && p.criado_em).map(p => Math.max(0, (new Date(p.admitido_em + 'T12:00:00') - new Date(p.criado_em)) / DIA));
-      const tempo = dias.length ? dias.reduce((a, b) => a + b, 0) / dias.length : null;
+      // tempo de contratação único (o mesmo da tela Vagas): da aprovação da vaga à admissão, mediana em dias; e até chegar no campo
+      const tc = Store.tempoContratacao(Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }), l);
+      const fmtD = x => x == null ? '—' : x.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' d';
+      // aproveitamento histórico do próprio projeto (sem os filtros do topo) e previsão das vagas
+      const taxasPorProj = new Map();
+      const taxasDe = pid => { if (!taxasPorProj.has(pid)) taxasPorProj.set(pid, Store.taxasAproveitamento(lTodos.filter(p => p.projeto_id === pid))); return taxasPorProj.get(pid); };
+      const esperadoDe = lista => lista.reduce((t, p) => t + Store.esperadoDoFunil([p], taxasDe(p.projeto_id)), 0);
+      const ORD_SELO = { nao_fecha: 0, risco: 1, no_prazo: 2 };
+      const prevs = vagas.filter(x => !fD || x.porDistrito.some(d => d.distrito.id === fD))
+        .map(x => ({ v: x, p: Store.previsaoVaga(x, lTodos, taxasDe(x.projetoId)) })).filter(o => o.p);
+      const emRisco = prevs.filter(o => o.p.selo !== 'no_prazo')
+        .sort((a, b) => ORD_SELO[a.p.selo] - ORD_SELO[b.p.selo] || (b.p.faltam - b.p.cobre) - (a.p.faltam - a.p.cobre) || (a.v.dataNecessidade || '9999').localeCompare(b.v.dataNecessidade || '9999'));
+      // gargalo: quantos estão parados em cada etapa (pela última mudança: etapa_em ou atualizado_em, o mais recente)
+      const desde = p => { const t = [p.etapa_em, p.atualizado_em].filter(Boolean).map(x => new Date(x).getTime()).filter(x => !isNaN(x)); return t.length ? Math.max(...t) : null; };
+      const diasParado = p => { const t = desde(p); return t == null ? 0 : Math.max(0, Math.floor((Date.now() - t) / DIA2)); };
+      const FAIXAS = [['0-3 d', 0, 3], ['4-7 d', 4, 7], ['8+ d', 8, Infinity]];
+      const ETAPAS_G = [['triagem', 'Triagem'], ['entrevista', 'Entrevista'], ['documentos', 'Documentação']];
+      const gar = ETAPAS_G.map(([e, rot]) => ({ e, rot, n: FAIXAS.map(([, a, b]) => ab.filter(p => p.etapa === e && diasParado(p) >= a && diasParado(p) <= b).length) }));
+      const parados8 = gar.reduce((t, g) => t + g.n[2], 0), pior8 = gar.slice().sort((a, b) => b.n[2] - a.n[2])[0];
+      // tempo médio em cada etapa (só quem tem as duas datas)
+      const mediaDias = (lista, de, ate) => { const d = lista.filter(p => p[de] && p[ate]).map(p => (new Date(String(p[ate]).length === 10 ? p[ate] + 'T12:00:00' : p[ate]) - new Date(String(p[de]).length === 10 ? p[de] + 'T12:00:00' : p[de])) / DIA2).filter(x => !isNaN(x) && x >= 0); return d.length ? { m: d.reduce((a, b) => a + b, 0) / d.length, n: d.length } : null; };
+      const tempoEtapas = [['Triagem até a entrevista', mediaDias(l, 'criado_em', 'entrevista_em')], ['Entrevista até a documentação', mediaDias(l, 'entrevista_em', 'documentos_em')], ['Documentação até a admissão', mediaDias(adm, 'documentos_em', 'admitido_em')]];
+      // saídas por motivo, local e móvel separados
+      const motivos = new Map();
+      for (const p of fora) { const k = (p.motivo_saida || '').trim() || 'não informado'; const a = motivos.get(k) || { motivo: k, LOCAL: 0, MOVEL: 0, rep: 0, des: 0 }; a[p.tipo === 'MOVEL' ? 'MOVEL' : 'LOCAL']++; if (p.situacao === 'desistiu') a.des++; else a.rep++; motivos.set(k, a); }
+      const listaMotivos = [...motivos.values()].sort((a, b) => (b.LOCAL + b.MOVEL) - (a.LOCAL + a.MOVEL) || a.motivo.localeCompare(b.motivo, 'pt-BR'));
       // funil: até onde cada pessoa chegou (quem saiu fica na etapa em que saiu)
       const ORD = { triagem: 0, entrevista: 1, documentos: 2 };
       const chegou = k => l.filter(p => p.situacao === 'admitido' || ORD[p.etapa] >= k).length;
@@ -130,16 +147,29 @@ Paginas.dashboard = {
       const porD = new Map();
       for (const x of vagas) for (const d of x.porDistrito) {
         if (fD && d.distrito.id !== fD) continue;
-        const a = porD.get(d.distrito.id) || { nome: d.distrito.nome, pl: 0, pm: 0, al: 0, am: 0, proc: 0 };
+        const a = porD.get(d.distrito.id) || { id: d.distrito.id, nome: d.distrito.nome, pl: 0, pm: 0, al: 0, am: 0, proc: 0, esp: 0 };
         a.pl += d.locais; a.pm += d.moveis; a.al += Math.min(d.admLoc, d.locais); a.am += Math.min(d.admMov, d.moveis); a.proc += d.procLoc + d.procMov; porD.set(d.distrito.id, a);
       }
-      // por RH
+      // falta e cobertura do funil por distrito: admissões esperadas de quem está em processo nas vagas aprovadas, ÷ o que falta
+      const idsVagas = new Set(vagas.map(x => x.id));
+      for (const a of porD.values()) {
+        a.falta = Math.max(0, a.pl - a.al) + Math.max(0, a.pm - a.am);
+        a.esp = esperadoDe(lTodos.filter(p => p.situacao === 'em_andamento' && p.distrito_id === a.id && idsVagas.has(p.vaga_id)));
+        a.cob = a.falta ? a.esp / a.falta : null;
+      }
+      const piorD = [...porD.values()].filter(a => a.cob != null).sort((a, b) => a.cob - b.cob)[0];
+      // por RH: em processo, parado há (o mais antigo), aproveitamento (admitidos ÷ encerrados) e quanto falta nas vagas dele
       const porRh = new Map();
+      const rhDe = (k, u, nome) => porRh.get(k) || (porRh.set(k, { nome: u ? u.nome : (nome || 'Sem RH responsável'), u, proc: 0, adm: 0, fora: 0, total: 0, parado: 0, faltam: 0 }), porRh.get(k));
       for (const p of l) {
         const k = p.analista_login || p.analista || '(sem)';
-        const u = Store.usuarioPorLogin(p.analista_login);
-        const a = porRh.get(k) || { nome: u ? u.nome : (p.analista || 'Sem RH responsável'), u, proc: 0, adm: 0, fora: 0, total: 0 };
-        a.total++; if (p.situacao === 'admitido') a.adm++; else if (p.situacao === 'em_andamento') a.proc++; else a.fora++; porRh.set(k, a);
+        const a = rhDe(k, Store.usuarioPorLogin(p.analista_login), p.analista);
+        a.total++; if (p.situacao === 'admitido') a.adm++; else if (p.situacao === 'em_andamento') { a.proc++; a.parado = Math.max(a.parado, diasParado(p)); } else a.fora++;
+      }
+      const ABERTA = ['aberta', 'divulgada', 'selecao'];
+      for (const x of vagas.filter(x => ABERTA.includes(x.status) && (!fD || x.porDistrito.some(d => d.distrito.id === fD)))) {
+        const rs = x.responsaveis && x.responsaveis.length ? x.responsaveis : ['(sem)'];
+        for (const login of rs) rhDe(login, Store.usuarioPorLogin(login === '(sem)' ? '' : login), null).faltam += x.faltam;
       }
       // saídas: em que etapa e por quê
       const saiu = e => fora.filter(p => p.etapa === e).length;
@@ -152,7 +182,7 @@ Paginas.dashboard = {
       const barra = (val, max, cls = '') => `<div class="dr-barra ${cls}"><i style="width:${max ? Math.max(2, Math.round(100 * val / max)) : 0}%"></i></div>`;
       const qtd = (x, um, varios) => `${UI.fmtNum(x)} ${x === 1 ? um : varios}`;
       alvo.innerHTML = `
-        <div class="secao-titulo dr-titulo">Recrutamento ${App.usuario.perfil === 'analista' ? '<span class="muted small">(só o que está com você)</span>' : ''}<span class="espaco"></span><button class="btn btn-pequeno nao-imprimir" id="dr-imprimir" title="Gera uma versão para imprimir ou salvar em PDF">Imprimir / PDF</button></div>
+        <div class="secao-titulo dr-titulo">Recrutamento ${App.usuario.perfil === 'analista' ? '<span class="muted small">(só o que está com você)</span>' : ''}<span class="espaco"></span><button class="btn btn-pequeno nao-imprimir" id="dr-whats" title="Copia um resumo curto para colar no WhatsApp">Copiar resumo para WhatsApp</button><button class="btn btn-pequeno nao-imprimir" id="dr-imprimir" title="Gera uma versão para imprimir ou salvar em PDF">Imprimir / PDF</button></div>
         <section class="card dr-hero mb">
           <div>
             <div class="dr-hero-rot">Pedido preenchido${fD || fT ? ' <span class="muted small">(com o filtro do topo)</span>' : ''}</div>
@@ -164,7 +194,7 @@ Paginas.dashboard = {
             <li><b>${UI.fmtNum(Math.max(0, pedidas - admV))}</b>faltam contratar</li>
             <li><b>${UI.fmtNum(ab.length)}</b>em processo agora</li>
             <li><b>${UI.fmtNum(l.filter(p => (p.situacao === 'em_andamento' || p.situacao === 'admitido') && p.chegada_data && p.chegada_data >= seg && p.chegada_data <= (() => { const d = new Date(seg + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })()).length)}</b>chegam esta semana</li>
-            <li><b>${tempo == null ? '—' : tempo.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' d'}</b>em média até admitir</li>
+            <li title="Mediana: metade das admissões levou menos que isso, metade mais"><b>${fmtD(tc.admissao)}</b>da aprovação da vaga à admissão${tc.campo != null ? ` · ${fmtD(tc.campo)} até chegar no campo` : ''}</li>
           </ul>
         </section>
         <div class="grade kpis mb" hidden>
@@ -172,20 +202,41 @@ Paginas.dashboard = {
           <div class="card kpi kpi-local"><div class="rotulo">Admitidas</div><div class="valor">${UI.fmtNum(admV)}</div><div class="sub">${pedidas ? `${pct(admV, pedidas)}% do pedido preenchido` : 'sem vaga aprovada'}${adm.length > admV ? ` · +${adm.length - admV} fora do pedido` : ''}</div></div>
           <div class="card kpi"><div class="rotulo">Faltam</div><div class="valor">${UI.fmtNum(Math.max(0, pedidas - admV))}</div><div class="sub">${UI.fmtNum(ab.length)} em processo agora</div></div>
           <div class="card kpi"><div class="rotulo">Não seguiram</div><div class="valor">${UI.fmtNum(fora.length)}</div><div class="sub">${pct(fora.length, l.length)}% das candidaturas · ${fora.filter(p => p.situacao === 'desistiu').length} desistências</div></div>
-          <div class="card kpi"><div class="rotulo">Da candidatura à admissão</div><div class="valor">${tempo == null ? '—' : tempo.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' d'}</div><div class="sub">${tempo == null ? 'ainda sem admissão' : 'média de ' + qtd(dias.length, 'admissão', 'admissões')}</div></div>
+          <div class="card kpi"><div class="rotulo">Da aprovação à admissão</div><div class="valor">${fmtD(tc.admissao)}</div><div class="sub">${tc.admissao == null ? 'ainda sem admissão' : 'mediana de ' + qtd(tc.nAdmissao, 'admissão', 'admissões')}</div></div>
         </div>
         <div class="grade dr-grade mb">
+          <div class="card"><h2>Vagas em risco <span class="muted small" style="font-weight:400">${prevs.length ? `${emRisco.length} de ${qtd(prevs.length, 'vaga aberta', 'vagas abertas')}` : ''}</span></h2>
+            ${!prevs.length ? '<p class="muted small">Nenhuma vaga aprovada em aberto com posição faltando.</p>'
+              : !emRisco.length ? `<p class="dr-tudo-ok">Todas as ${qtd(prevs.length, 'vaga aberta', 'vagas abertas')} estão no prazo: o funil cobre o que falta.</p>`
+              : emRisco.slice(0, 8).map(o => `<a class="dr-risco" href="#/vagas"><span class="vg-selo vg-selo-${o.p.selo}">${o.p.rotulo}</span><b>${UI.esc(o.v.titulo)}</b><small>${UI.esc(o.v.porDistrito.map(d => d.distrito.nome).join(', ') || '')}${o.v.dataNecessidade ? ` · precisa até ${RH.fmtDia(o.v.dataNecessidade)}` : ''}</small><span class="dr-risco-frase">${UI.esc(o.p.frase)}</span></a>`).join('') + (emRisco.length > 8 ? `<p class="muted small">+ ${emRisco.length - 8} em Vagas.</p>` : '')}
+            <div class="dr-nota">Previsão = prontos + quem está na documentação, entrevista e triagem × o quanto costuma chegar à admissão neste projeto (padrão ${Math.round(Store.TAXAS_PADRAO.documentos * 100)}%, ${Math.round(Store.TAXAS_PADRAO.entrevista * 100)}% e ${Math.round(Store.TAXAS_PADRAO.triagem * 100)}% enquanto houver menos de 10 casos).</div>
+          </div>
+          <div class="card"><h2>Gargalo por etapa <span class="muted small" style="font-weight:400">tempo parado</span></h2>
+            <div class="dr-gar dr-tab-cab"><span>Etapa</span>${FAIXAS.map(f => `<span>${f[0]}</span>`).join('')}<span>Total</span></div>
+            ${gar.map(g => `<div class="dr-gar"><b>${g.rot}</b>${g.n.map((x, i) => Store.pode(App.usuario, 'candidatos') && x
+              ? `<button type="button" class="dr-gar-n dr-gar-${i} ${x ? 'tem' : ''}" data-seg="${g.e}" title="Ver em Candidatos quem está na ${UI.esc(g.rot.toLowerCase())}">${x}</button>`
+              : `<span class="dr-gar-n dr-gar-${i} ${x ? 'tem' : ''}">${x}</span>`).join('')}<span class="dr-gar-tot">${g.n.reduce((a, b) => a + b, 0)}</span></div>`).join('')}
+            <div class="dr-nota">Dias desde a última mudança do candidato. Clique no número para abrir a etapa em Candidatos.</div>
+          </div>
           <div class="card"><h2>Funil</h2>
             ${funil.map(([rot, val], i) => `<div class="dr-funil"><div class="dr-funil-rot"><span>${rot}</span><b>${UI.fmtNum(val)}</b>${i ? `<em>${pct(val, funil[i - 1][1])}%</em>` : ''}</div>${barra(val, funil[0][1], i === 3 ? 'dr-ok' : '')}</div>`).join('')}
             <div class="dr-nota">Saíram na triagem: <b>${saiu('triagem')}</b> · na entrevista: <b>${saiu('entrevista')}</b> · na documentação: <b>${saiu('documentos')}</b></div>
           </div>
-          <div class="card"><h2>Pedido x admitido por distrito</h2>
-            ${porD.size ? `<div class="dr-tab dr-tab-cab"><span>Distrito</span><span>Locais</span><span>Móveis</span><span>Preenchido</span></div>` + [...porD.values()].sort((a, b) => ((b.pl + b.pm) - (b.al + b.am)) - ((a.pl + a.pm) - (a.al + a.am)) || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => { const tot = a.pl + a.pm, ad = a.al + a.am; return `<div class="dr-tab">
-                <b>${UI.esc(a.nome)}</b><span class="${a.al >= a.pl ? 'ok' : ''}">${a.al}/${a.pl}</span><span class="${a.am >= a.pm ? 'ok' : ''}">${a.am}/${a.pm}</span>${barra(ad, tot, ad >= tot ? 'dr-ok' : '')}</div>`; }).join('') : '<p class="muted small">Nenhuma vaga aprovada com distritos.</p>'}
-          </div>
           <div class="card"><h2>Por RH</h2>
-            <div class="dr-tab dr-tab-rh dr-tab-cab"><span>RH</span><span>Em processo</span><span>Admitidos</span><span>Não seguiram</span></div>
-            ${[...porRh.values()].sort((a, b) => b.adm - a.adm || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => `<div class="dr-tab dr-tab-rh"><b class="com-avatar">${a.u ? UI.avatar(a.u, 22) : ''}<span>${UI.esc(a.nome)}</span></b><span>${a.proc}</span><span class="ok">${a.adm}</span><span>${a.fora}</span></div>`).join('')}
+            <div class="dr-tab dr-tab-rh dr-tab-cab"><span>RH</span><span>Em processo</span><span>Parado há</span><span title="Admitidos ÷ (admitidos + não seguiram)">Aproveit.</span><span title="Pessoas que faltam nas vagas abertas em que ele é responsável">Faltam</span></div>
+            ${[...porRh.values()].sort((a, b) => b.faltam - a.faltam || b.proc - a.proc || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => `<div class="dr-tab dr-tab-rh"><b class="com-avatar">${a.u ? UI.avatar(a.u, 22) : ''}<span>${UI.esc(a.nome)}</span></b><span>${a.proc}</span><span class="${a.parado >= 8 ? 'ruim' : a.parado >= 4 ? 'alerta' : ''}">${a.proc ? a.parado + ' d' : '—'}</span><span title="${a.adm} admitidos, ${a.fora} não seguiram">${a.adm + a.fora ? pct(a.adm, a.adm + a.fora) + '%' : '—'}</span><span class="${a.faltam ? 'ruim' : 'ok'}">${a.faltam}</span></div>`).join('')}
+            <div class="dr-nota">Parado há: o candidato em processo há mais tempo sem mudança. Aproveitamento: admitidos entre quem já encerrou.</div>
+          </div>
+          <div class="card" style="grid-column:1/-1;order:9"><h2>Pedido x admitido por distrito</h2>
+            ${porD.size ? `<div class="dr-tab dr-tab-dist dr-tab-cab"><span>Distrito</span><span>Locais</span><span>Móveis</span><span>Falta</span><span>Em processo</span><span title="Admissões esperadas do funil ÷ o que falta">Cobertura</span><span>Preenchido</span></div>` + [...porD.values()].sort((a, b) => b.falta - a.falta || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => { const tot = a.pl + a.pm, ad = a.al + a.am;
+                const cob = a.cob == null ? '<span class="ok">completo</span>' : `<span class="${a === piorD && a.cob < 1 ? 'ruim dr-pior' : a.cob < 0.5 ? 'ruim' : a.cob < 1 ? 'alerta' : 'ok'}" title="O funil deve render ${a.esp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} admissões para ${a.falta} que faltam">${Math.round(100 * a.cob)}%</span>`;
+                return `<div class="dr-tab dr-tab-dist ${a === piorD && a.cob < 1 ? 'dr-linha-pior' : ''}">
+                <b>${UI.esc(a.nome)}</b><span class="${a.al >= a.pl ? 'ok' : ''}">${a.al}/${a.pl}</span><span class="${a.am >= a.pm ? 'ok' : ''}">${a.am}/${a.pm}</span><span class="${a.falta ? '' : 'ok'}">${a.falta}</span><span>${a.proc}</span>${cob}${barra(ad, tot, ad >= tot ? 'dr-ok' : '')}</div>`; }).join('') : '<p class="muted small">Nenhuma vaga aprovada com distritos.</p>'}
+            ${porD.size ? '<div class="dr-nota">Cobertura = admissões esperadas de quem está em processo ÷ o que falta. Abaixo de 100% o funil não fecha o pedido: precisa de mais candidatos. O pior distrito fica em vermelho.</div>' : ''}
+          </div>
+          <div class="card"><h2>Saídas por motivo</h2>
+            ${listaMotivos.length ? `<div class="dr-tab dr-tab-mot dr-tab-cab"><span>Motivo</span><span>Local</span><span>Móvel</span><span>Total</span></div>` + listaMotivos.map(a => `<div class="dr-tab dr-tab-mot"><b title="${UI.esc(a.motivo)} · ${a.rep} reprovado(s), ${a.des} desistência(s)">${UI.esc(a.motivo)}</b><span>${a.LOCAL}</span><span>${a.MOVEL}</span><span>${a.LOCAL + a.MOVEL}</span></div>`).join('') : '<p class="muted small">Ninguém saiu do processo neste filtro.</p>'}
+            <div class="dr-nota"><b>Tempo médio em cada etapa</b>${tempoEtapas.map(([rot, t]) => `<div class="dr-tempo"><span>${rot}</span><b>${t ? fmtD(t.m) : '—'}</b>${t ? `<em>${qtd(t.n, 'pessoa', 'pessoas')}</em>` : ''}</div>`).join('')}</div>
           </div>
           <div class="card"><h2>Chegadas</h2>
             ${prox.length ? prox.map(([w, n]) => `<div class="dr-tab dr-tab-sem"><b>${RH.fmtDia(w)} a ${fimSem(w)}</b><span>${qtd(n, 'pessoa', 'pessoas')}</span>${barra(n, Math.max(...prox.map(x => x[1])))}</div>`).join('') : '<p class="muted small">Nenhuma chegada marcada a partir desta semana.</p>'}
@@ -193,6 +244,34 @@ Paginas.dashboard = {
           </div>
         </div>`;
       document.getElementById('dr-imprimir').addEventListener('click', () => window.print());
+      // gargalo: o número abre Candidatos na etapa (lista), sem filtro de vaga
+      alvo.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => {
+        try { sessionStorage.setItem('maparh:cand-seg', b.dataset.seg); localStorage.setItem('maparh:cand-vaga', ''); if (App.filtros.projetoId) localStorage.setItem('maparh:cand-projeto', App.filtros.projetoId); } catch (e) { /* ok */ }
+        App.ir('candidatos');
+      }));
+      // resumo curto para o WhatsApp (negrito com *)
+      document.getElementById('dr-whats').addEventListener('click', async () => {
+        const chegam = l.filter(p => (p.situacao === 'em_andamento' || p.situacao === 'admitido') && p.chegada_data && p.chegada_data >= segH && p.chegada_data <= fimH).length;
+        const t = [`*Recrutamento ${RH.fmtDia(RH.hoje())}*${App.descricaoFiltro() ? ' — ' + App.descricaoFiltro() : ''}`,
+          `Pedido x admitido: *${admV} de ${pedidas}* (${pct(admV, pedidas)}%) · faltam ${Math.max(0, pedidas - admV)}`,
+          `Em processo: ${ab.length} (${n('triagem')} triagem, ${n('entrevista')} entrevista, ${n('documentos')} documentação)`];
+        if (emRisco.length) {
+          t.push(`Vagas em risco: *${emRisco.length}* de ${prevs.length}`);
+          for (const o of emRisco.slice(0, 5)) t.push(`• ${o.v.titulo}${o.v.porDistrito.length ? ' (' + o.v.porDistrito.map(d => d.distrito.nome).join(', ') + ')' : ''}: ${o.p.rotulo.toLowerCase()}, ${o.p.frase}`);
+        } else if (prevs.length) t.push(`Vagas abertas: ${prevs.length}, todas no prazo`);
+        if (rec2.atrasadas) t.push(`Atrasadas: ${rec2.atrasadas}`);
+        if (rec2.aguardandoAprovacao) t.push(`Aguardando aprovação: ${rec2.aguardandoAprovacao}`);
+        t.push(`Chegam esta semana: ${chegam}`);
+        if (parados8) t.push(`Gargalo: ${parados8} parado${parados8 > 1 ? 's' : ''} há 8+ dias (mais na ${pior8.rot.toLowerCase()}: ${pior8.n[2]})`);
+        if (tc.admissao != null) t.push(`Da aprovação à admissão: ${fmtD(tc.admissao)} (mediana)`);
+        const texto = t.join('\n');
+        try { await navigator.clipboard.writeText(texto); UI.toast('Resumo copiado. Cole no WhatsApp.', 'sucesso'); }
+        catch (e) {
+          const ta = document.createElement('textarea'); ta.value = texto; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); UI.toast('Resumo copiado. Cole no WhatsApp.', 'sucesso'); } catch (e2) { UI.toast('Não foi possível copiar.', 'erro'); }
+          ta.remove();
+        }
+      });
     });
     el.innerHTML = `
       <div class="fluxo">

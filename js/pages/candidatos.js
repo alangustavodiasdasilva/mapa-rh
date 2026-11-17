@@ -95,6 +95,7 @@ Paginas.candidatos = {
     // ---------- mensagens do WhatsApp: modelos de cada RH, com marcadores ----------
     const MODELOS = [
       ['triagem', 'Primeiro contato (triagem)', 'Olá, {nome}! Aqui é {rh}, do RH. Recebemos sua candidatura para {cargo}.\nPodemos conversar rapidinho sobre a vaga? Qual o melhor horário para eu te ligar?'],
+      ['cobrar', 'Cobrar resposta', 'Oi, {nome}! Conseguiu ver minha mensagem sobre a vaga? Se ainda tiver interesse, me responda por aqui. {rh}'],
       ['entrevista', 'Entrevista marcada', 'Olá, {nome}! Aqui é {rh}, do RH. Sua entrevista para {cargo} ficou para {data} às {hora}.\nLocal: {local}\nPode confirmar?'],
       ['lembrete', 'Lembrete da entrevista', 'Oi, {nome}! Passando para lembrar da sua entrevista: {data} às {hora}.\nLocal: {local}\nQualquer imprevisto, me avise por aqui. {rh}'],
       ['documentos', 'Aprovado: documentos', 'Parabéns, {nome}! Você foi aprovado(a) para {cargo}. Agora vamos para a documentação.\nMe envie por aqui (foto legível): {documentos}'],
@@ -134,6 +135,42 @@ Paginas.candidatos = {
       const g = s => m.corpo.querySelector(s);
       const pintar = () => { g('#ms-txt').value = montarMensagem(mods[atual], p); g('#ms-tipos').querySelectorAll('[data-mod]').forEach(b => b.classList.toggle('ativa', b.dataset.mod === atual)); };
       g('#ms-tipos').addEventListener('click', e => { const b = e.target.closest('[data-mod]'); if (b) { atual = b.dataset.mod; pintar(); } });
+      pintar();
+    }
+    // mensagem para várias pessoas: uma por vez (o WhatsApp não manda em massa), com o texto pronto e editável
+    const modeloLote = p => p.etapa === 'triagem' && emAndamento(p) && contatoEm(p) ? 'cobrar' : modeloDaEtapa(p);
+    function mensagemEmLote(pessoas, chave) {
+      const fila = pessoas.filter(p => RH.soDigitos(p.pessoa.telefone).length >= 10), semTel = pessoas.length - fila.length;
+      if (!fila.length) { UI.toast(pessoas.length === 1 ? 'Esta pessoa está sem telefone válido.' : 'Ninguém da seleção tem telefone válido.', 'aviso', 5000); return; }
+      const mods = meusModelos(); let i = 0, enviados = 0, atual = '';
+      const m = UI.modal({ titulo: 'Mandar mensagem, uma por vez', largura: '560px', fecharAoClicarFora: false,
+        corpo: `${semTel ? `<div class="caixa caixa-aviso" style="margin-top:0">${qtd(semTel, 'pessoa ficou', 'pessoas ficaram')} de fora por estar sem telefone válido.</div>` : ''}
+          <div class="cd-pap-topo"><b id="pap-nome"></b><span class="cd-pap-cont" id="pap-cont"></span></div>
+          <div class="muted small" id="pap-sub"></div>
+          <div class="msg-tipos" id="pap-tipos">${MODELOS.map(([k, rot]) => `<button type="button" data-mod="${k}">${rot}</button>`).join('')}</div>
+          <label>Texto (dá para mexer antes de enviar)<textarea id="pap-txt" rows="6"></textarea></label>
+          <p class="muted small" style="margin-bottom:0">Cada clique abre o WhatsApp com o texto pronto: confira, envie e volte aqui para a próxima pessoa. O envio fica no histórico de cada um.</p>`,
+        botoes: [{ texto: 'Fechar', acao: () => { fim(); } }, { texto: 'Pular', classe: 'btn-secundario', acao: () => proximo() },
+          { texto: 'Abrir no WhatsApp e ir para o próximo', classe: 'btn-primario', acao: md => {
+            const p = fila[i], txt = md.corpo.querySelector('#pap-txt').value.trim(); if (!txt) throw new Error('Escreva a mensagem.');
+            window.open(`https://wa.me/55${RH.soDigitos(p.pessoa.telefone)}?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
+            anotarAuto(p, `Mensagem pelo WhatsApp: ${(MODELOS.find(x => x[0] === atual) || [, 'mensagem'])[1].toLowerCase()}.`);
+            enviados++;
+            return proximo();
+          } }] });
+      const g = s => m.corpo.querySelector(s);
+      function pintar() {
+        const p = fila[i]; atual = chave || modeloLote(p);
+        g('#pap-nome').textContent = p.pessoa.nome;
+        g('#pap-cont').textContent = `${i + 1} de ${fila.length}`;
+        g('#pap-sub').textContent = [p.pessoa.telefone, p.cargo, ETAPAS[p.etapa]].filter(Boolean).join(' · ');
+        texto();
+      }
+      function texto() { g('#pap-txt').value = montarMensagem(mods[atual], fila[i]); g('#pap-tipos').querySelectorAll('[data-mod]').forEach(b => b.classList.toggle('ativa', b.dataset.mod === atual)); }
+      function fim() { if (enviados) { UI.toast(`${qtd(enviados, 'mensagem aberta', 'mensagens abertas')} no WhatsApp e anotada${enviados > 1 ? 's' : ''} no histórico.`, 'sucesso', 4000); setTimeout(desenhar, 600); } }
+      // false = a janela continua aberta com a próxima pessoa
+      function proximo() { i++; if (i >= fila.length) { fim(); return true; } pintar(); return false; }
+      g('#pap-tipos').addEventListener('click', e => { const b = e.target.closest('[data-mod]'); if (b) { atual = b.dataset.mod; texto(); } });
       pintar();
     }
     // editor dos modelos do próprio RH
@@ -176,6 +213,32 @@ Paginas.candidatos = {
     const CONTATO = 'Mensagem pelo WhatsApp: primeiro contato';
     const contatoEm = p => { const a = (p.anotacoes || []).filter(x => String(x.texto || '').startsWith(CONTATO)).pop(); return a ? (a.em || true) : null; };
     const diaCurto = em => em && em !== true ? RH.fmtDia(String(em).slice(0, 10)) : '';
+    // triagem sem resposta: mandou o 1º contato há 2+ dias e a pessoa continua na triagem
+    const COBRANCA = 'Mensagem pelo WhatsApp: cobrar resposta';
+    const cobrancas = p => (p.anotacoes || []).filter(a => String(a.texto || '').startsWith(COBRANCA)).length;
+    const semResposta = p => { if (!emAndamento(p) || p.etapa !== 'triagem') return 0; const em = contatoEm(p); if (!em || em === true) return 0; const d = diasDesde(em); return d >= 2 ? d : 0; };
+    // já tentou bastante: sugere encerrar como "não respondeu"
+    const sugerirNaoRespondeu = p => emAndamento(p) && p.etapa === 'triagem' && (tentativas(p) + cobrancas(p) >= 3 || semResposta(p) >= 7);
+    const MOTIVO_SEM_RESPOSTA = 'Não respondeu / sem contato';
+    const seloSemResposta = p => { const d = semResposta(p); return d ? `<span class="cd-chip cd-chip-${d >= 7 ? 'ruim' : 'pend'}" title="Mandou o 1º contato e a pessoa ainda não respondeu">sem resposta há ${d} dias</span>` : ''; };
+    // entrevista: a pessoa confirmou que vem?
+    const confirmou = p => ((p.entrevista || {}).confirmou) || '';
+    const esperaConfirmar = p => { const e = p.entrevista || {}; return emAndamento(p) && p.etapa === 'entrevista' && !!e.data && e.data >= RH.hoje() && (e.resultado || 'aguardando') === 'aguardando'; };
+    const seloConfirmou = p => !esperaConfirmar(p) ? '' : confirmou(p) === 'sim' ? '<span class="cd-chip cd-chip-ok" title="A pessoa confirmou que vem">confirmado</span>'
+      : confirmou(p) === 'nao' ? '<span class="cd-chip cd-chip-ruim" title="A pessoa avisou que não vem">avisou que não vem</span>' : '<span class="cd-chip cd-chip-pend" title="Ainda não confirmou presença">não confirmou</span>';
+    // urgência da vaga da pessoa: atrasada primeiro, depois prioridade, depois a data em que precisa da pessoa
+    const PRIOR = { urgente: 0, alta: 1, normal: 2, baixa: 3 };
+    // vagas guardadas durante um desenho da tela (ordenar consulta a vaga muitas vezes)
+    let cacheVagas = null;
+    const vagaRapida = id => { if (!id) return null; if (!cacheVagas) { cacheVagas = new Map(vagasProjeto().map(v => [v.id, v])); setTimeout(() => { cacheVagas = null; }, 0); } return cacheVagas.get(id) || null; };
+    const chaveUrgencia = p => { const v = vagaRapida(p.vaga_id); return v ? [v.atrasada ? 0 : 1, PRIOR[v.prioridade] != null ? PRIOR[v.prioridade] : 2, v.dataNecessidade || '9999-12-31'] : [1, 4, '9999-12-31']; };
+    const porUrgencia = (x, y) => { const a = chaveUrgencia(x), b = chaveUrgencia(y); return a[0] - b[0] || a[1] - b[1] || a[2].localeCompare(b[2]); };
+    const seloPrazo = p => { const v = vagaRapida(p.vaga_id); if (!v || !emAndamento(p)) return '';
+      return v.atrasada ? `<span class="cd-prazo cd-prazo-ruim" title="A data em que a vaga precisava da pessoa (${RH.fmtDia(v.dataNecessidade)}) já passou">vaga atrasada</span>`
+        : v.dataNecessidade ? `<span class="cd-prazo${PRIOR[v.prioridade] <= 1 ? ' cd-prazo-alta' : ''}" title="Prioridade ${UI.esc(v.prioridade)}">vaga até ${RH.fmtDia(v.dataNecessidade)}</span>` : ''; };
+    const chegaDepoisDoPrazo = p => { const v = vagaRapida(p.vaga_id); return !!(v && v.dataNecessidade && p.chegada_data && p.chegada_data > v.dataNecessidade); };
+    // última movimentação: a anotação mais recente ou a última alteração, o que vier depois
+    const ultimoMovimento = p => { const a = (p.anotacoes || []).map(x => x.em).filter(Boolean).sort().pop(); return [a, p.atualizado_em].filter(Boolean).sort((x, y) => new Date(x) - new Date(y)).pop() || desdeEtapa(p); };
     // botão principal de quem está na triagem ou na entrevista (o mesmo no Quadro e na Lista)
     function acaoPrincipal(p, curto) {   // curto: rótulos menores para caber no cartão do Quadro
       if (p.etapa === 'triagem') return linkWhats(p.pessoa) && !contatoEm(p)
@@ -304,8 +367,13 @@ Paginas.candidatos = {
       semcpf: { rotulo: 'Sem CPF', teste: p => !p.pessoa.cpf },
       semnasc: { rotulo: 'Sem nascimento', teste: p => !p.pessoa.nascimento },
       menores: { rotulo: 'Menor de idade', teste: menor },
-      barradas: { rotulo: 'Inapto/reprovado', teste: p => !!barradaEm(p) }
+      barradas: { rotulo: 'Inapto/reprovado', teste: p => !!barradaEm(p) },
+      asohoje: { rotulo: 'ASO hoje', teste: p => naEtapa(p, 'documentos') && p.aso === 'agendado' && p.aso_data === RH.hoje() },
+      asoatraso: { rotulo: 'ASO passou sem resultado', teste: p => naEtapa(p, 'documentos') && p.aso === 'agendado' && !!p.aso_data && p.aso_data < RH.hoje() },
+      treamanha: { rotulo: 'Treinamento amanhã', teste: p => naEtapa(p, 'documentos') && p.treinamento === 'agendado' && p.treinamento_data === somarDias(RH.hoje(), 1) }
     };
+    // entrevistas de amanhã em que a pessoa ainda não confirmou
+    const amanhaSemConfirmar = l => l.filter(p => esperaConfirmar(p) && p.entrevista.data === somarDias(RH.hoje(), 1) && confirmou(p) !== 'sim');
     const diasDesde = ts => ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)) : null;
     const desdeEtapa = p => p.etapa_em || p.criado_em;
     function daLista(semPend = false) {
@@ -365,9 +433,16 @@ Paginas.candidatos = {
       const semRes = ab.filter(p => p.etapa === 'entrevista' && p.entrevista && p.entrevista.data && p.entrevista.data < hoje && (p.entrevista.resultado || 'aguardando') === 'aguardando').length;
       const triVelha = ab.filter(p => p.etapa === 'triagem' && diasNaEtapa(p) >= 3).length;
       const prontos = ab.filter(pronta).length;
+      const aguardam = ab.filter(semResposta).length, semConf = amanhaSemConfirmar(ab).length;
+      const asoHoje = ab.filter(PEND.asohoje.teste).length, asoPassou = ab.filter(PEND.asoatraso.teste).length, treAmanha = ab.filter(PEND.treamanha.teste).length;
       const itens = [entHoje && `<button type="button" data-hoje="agenda"><b>${entHoje}</b> ${entHoje === 1 ? 'entrevista hoje' : 'entrevistas hoje'}</button>`,
         semRes && `<button type="button" data-hoje="agenda" class="ruim"><b>${semRes}</b> sem resultado</button>`,
+        semConf && `<button type="button" data-hoje="confirmar" class="meio" title="Abre o lembrete para cada uma, uma por vez"><b>${semConf}</b> ${semConf === 1 ? 'entrevista amanhã sem confirmação' : 'entrevistas amanhã sem confirmação'}</button>`,
+        aguardam && `<button type="button" data-hoje="triagem" class="meio" title="Mandou o 1º contato há 2 dias ou mais e a pessoa não respondeu"><b>${aguardam}</b> aguardando resposta</button>`,
         triVelha && `<button type="button" data-hoje="triagem" class="meio"><b>${triVelha}</b> na triagem há 3+ dias</button>`,
+        asoHoje && `<button type="button" data-hoje="pend:asohoje"><b>${asoHoje}</b> ASO hoje</button>`,
+        asoPassou && `<button type="button" data-hoje="pend:asoatraso" class="ruim"><b>${asoPassou}</b> ASO já passou sem resultado</button>`,
+        treAmanha && `<button type="button" data-hoje="pend:treamanha"><b>${treAmanha}</b> ${treAmanha === 1 ? 'treinamento amanhã' : 'treinamentos amanhã'}</button>`,
         prontos && `<button type="button" data-hoje="prontos" class="ok"><b>${prontos}</b> ${prontos === 1 ? 'pronto' : 'prontos'} para admitir</button>`].filter(Boolean);
       q('#cd-hoje').innerHTML = itens.length && vista !== 'agenda' ? `<span class="cd-hoje-rot">Hoje</span>${itens.join('')}` : '';
       if (vista === 'quadro') desenharQuadro(b); else if (vista === 'lista') desenharLista(); else if (vista === 'agenda') desenharAgenda(b); else desenharPorRh();
@@ -398,6 +473,7 @@ Paginas.candidatos = {
           <span class="cd-ag-hora">${e.hora || 'sem hora'}${e.formato ? ' · ' + FORMATOS[e.formato] : ''}${conf ? ' · <em class="cd-ag-conf-tx">conflito</em>' : ''}</span>
           <b class="cd-ag-nome">${UI.esc(p.pessoa.nome)}</b>${semCnh(p.pessoa) ? '<span class="cd-cnh cd-cnh-sem">Sem CNH</span>' : ''}
           <span class="cd-ag-cargo" title="${UI.esc(p.cargo || '')}">${UI.esc(p.cargo || '—')}</span>
+          ${seloConfirmou(p) ? `<span class="cd-ag-confirma">${seloConfirmou(p)}</span>` : ''}
           <span class="cd-ag-pe">${veTudo && chaveAnalista(p) ? `<span class="cd-ag-rh">${fotoRh(chaveAnalista(p), 18)}<span>${UI.esc(nomeAnalista(p).split(' ')[0])}</span></span>` : '<span></span>'}<span class="cd-chip cd-chip-${passou ? 'ruim' : COR[res]}">${passou ? 'Sem resultado' : RESULTADOS[res]}</span></span>
         </button>`;
       };
@@ -439,18 +515,20 @@ Paginas.candidatos = {
       if (aberto && veTudo && !chaveAnalista(p)) alertas.push('sem RH');
       if (aberto && rhInativo(p)) alertas.push('RH inativo: redirecione');
       if (aberto && avisoVaga(p)) alertas.push(avisoVaga(p));
-      if (aberto && p.etapa === 'documentos' && diasNaEtapa(p) >= 7) alertas.push(`parado há ${diasNaEtapa(p)} dias`);
+      const semMov = diasDesde(ultimoMovimento(p));
+      if (aberto && p.etapa === 'documentos' && semMov >= 7) alertas.push(`sem movimento há ${semMov} dias`);
+      if (aberto && p.etapa === 'documentos' && chegaDepoisDoPrazo(p)) alertas.push('chegada depois do prazo da vaga');
       if (aberto && conflitoDe(p)) alertas.push(`mesmo horário que ${conflitoDe(p).pessoa.nome.split(' ')[0]}`);
       let doc = '';
       const ent = p.entrevista || {};
       // triagem/entrevista: há quanto tempo está na etapa e tentativas de contato sem resposta
       if (aberto && (p.etapa === 'triagem' || (p.etapa === 'entrevista' && !ent.data))) {
         const d = diasNaEtapa(p), tt = tentativas(p), ct = p.etapa === 'triagem' && contatoEm(p);
-        if (d >= 3 || tt || ct) doc = `<div class="cd-chips">${ct ? `<span class="cd-chip cd-chip-ok">1º contato${diaCurto(ct) ? ' ' + diaCurto(ct) : ''}</span>` : ''}${d >= 3 ? `<span class="cd-chip cd-chip-${d >= 7 ? 'ruim' : 'meio'}" title="Há quanto tempo está nesta etapa">há ${d} dias</span>` : ''}${tt ? `<span class="cd-chip cd-chip-meio">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</span>` : ''}</div>`;
+        if (d >= 3 || tt || ct) doc = `<div class="cd-chips">${ct ? `<span class="cd-chip cd-chip-ok">1º contato${diaCurto(ct) ? ' ' + diaCurto(ct) : ''}</span>` : ''}${seloSemResposta(p)}${d >= 3 ? `<span class="cd-chip cd-chip-${d >= 7 ? 'ruim' : 'meio'}" title="Há quanto tempo está nesta etapa">há ${d} dias</span>` : ''}${tt ? `<span class="cd-chip cd-chip-meio">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</span>` : ''}</div>`;
       }
       if (aberto && p.etapa === 'entrevista' && ent.data) {
         const cls = { aprovado: 'ok', reprovado: 'ruim', faltou: 'ruim', aguardando: 'meio' }[ent.resultado || 'aguardando'];
-        doc = `<div class="cd-chips">${ent.data ? `<span class="cd-chega">Entrevista ${RH.fmtDia(ent.data)}${ent.hora ? ' ' + ent.hora : ''}</span>` : ''}${ent.faltas ? `<span class="cd-chip cd-chip-ruim">${ent.faltas}ª falta</span>` : ''}<span class="cd-chip cd-chip-${cls}">${RESULTADOS[ent.resultado || 'aguardando']}</span>${ent.avaliacao ? `<span class="cd-estrelas" title="Avaliação">${'★'.repeat(+ent.avaliacao)}${'☆'.repeat(5 - ent.avaliacao)}</span>` : ''}</div>`;
+        doc = `<div class="cd-chips">${ent.data ? `<span class="cd-chega">Entrevista ${RH.fmtDia(ent.data)}${ent.hora ? ' ' + ent.hora : ''}</span>` : ''}${ent.faltas ? `<span class="cd-chip cd-chip-ruim">${ent.faltas}ª falta</span>` : ''}<span class="cd-chip cd-chip-${cls}">${RESULTADOS[ent.resultado || 'aguardando']}</span>${seloConfirmou(p)}${ent.avaliacao ? `<span class="cd-estrelas" title="Avaliação">${'★'.repeat(+ent.avaliacao)}${'☆'.repeat(5 - ent.avaliacao)}</span>` : ''}</div>`;
       }
       if (aberto && p.etapa === 'documentos') {
         const din = dinamicaDe(p), feitos = din.total - din.pendentes.length, cd = din.completa ? 'ok' : din.recusados.length ? 'ruim' : 'pend';
@@ -471,9 +549,11 @@ Paginas.candidatos = {
           if (p.etapa === 'triagem') {
             principal = acaoPrincipal(p, true);
             if (!/data-acao="avancar"/.test(principal)) menu.push('<button type="button" data-acao="avancar">Já falei com a pessoa: Entrevistar →</button>');
+            if (semResposta(p) && linkWhats(pe)) menu.push('<button type="button" data-acao="cobrar">Cobrar de novo (WhatsApp)</button>');
           } else if (p.etapa === 'entrevista') {
             const res = (p.entrevista && p.entrevista.resultado) || 'aguardando', temData = p.entrevista && p.entrevista.data;
             principal = acaoPrincipal(p, true);
+            if (esperaConfirmar(p)) menu.push(confirmou(p) === 'sim' ? '<button type="button" data-acao="confirmou-desfazer">Ainda não confirmou presença</button>' : '<button type="button" data-acao="confirmou">Confirmou presença</button>');
             if (res !== 'aprovado') menu.push('<button type="button" data-acao="avancar-direto">Aprovado → Documentação</button>');
             if (temData && res === 'aguardando') menu.push('<button type="button" data-acao="agendar">Remarcar entrevista</button>');
           }
@@ -494,8 +574,10 @@ Paginas.candidatos = {
         <div class="cd-nome-l"><div class="cd-nome" title="${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</div>${seloCnh(pe)}</div>
         <div class="cd-meta">${UI.badgeTipo(p.tipo)}${p.cargo ? `<span class="cd-cargo" title="${UI.esc(p.cargo)}">${UI.esc(p.cargo)}</span>` : ''}${km}</div>
         <div class="cd-rota" title="${UI.esc((origem || 'origem não informada') + ' → ' + (dest || 'destino não definido'))}">${origem ? UI.esc(origem) : '<span class="cd-falta">origem?</span>'} <i>→</i> ${dest ? UI.esc(dest) : '<span class="cd-falta">destino?</span>'}</div>
-        ${adm ? `<div class="cd-sit cd-sit-ok">Admitido em ${RH.fmtDataBR(p.admitido_em)}</div>` : !aberto ? `<div class="cd-sit">${SIT[p.situacao]}${p.observacao ? ': ' + UI.esc(p.observacao) : ''}</div>` : ''}
+        ${aberto && seloPrazo(p) ? `<div class="cd-prazo-l">${seloPrazo(p)}</div>` : ''}
+        ${adm ? `<div class="cd-sit cd-sit-ok">Admitido em ${RH.fmtDataBR(p.admitido_em)}</div>` : !aberto ? `<div class="cd-sit">${SIT[p.situacao]}${p.motivo_saida || p.observacao ? ': ' + UI.esc(p.motivo_saida || p.observacao) : ''}</div>` : ''}
         ${doc}
+        ${podeEditar && sugerirNaoRespondeu(p) ? `<div class="cd-sugere"><span>Já tentou bastante.</span><button type="button" class="btn-link perigo" data-acao="nao-respondeu" title="Abre o 'Não segue no processo' com o motivo: não respondeu">Não segue: não respondeu</button></div>` : ''}
         ${barrada && aberto ? `<div class="cd-sit cd-sit-ruim">${barrada}</div>` : ''}
         ${alertas.length ? `<div class="cd-alertas">${alertas.map(a => `<span>${a}</span>`).join('')}</div>` : ''}
         ${rh || principal || menu.length ? `<div class="cd-pe">${rh}${linkWhats(pe) && podeEditar ? `<button type="button" class="cd-wa" data-acao="mensagem" title="Mandar mensagem pelo WhatsApp" aria-label="Mensagem no WhatsApp"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.5-.3Z"/></svg></button>` : ''}<span class="espaco"></span>${principal}
@@ -508,7 +590,9 @@ Paginas.candidatos = {
         admitido: b.filter(p => p.situacao === 'admitido') };
       // na documentação: quem está pronto para admitir vem primeiro
       col.documentos.sort((x, y) => pronta(y) - pronta(x) || porNome(x, y));
-      for (const k of ['triagem', 'entrevista', 'admitido']) col[k].sort(porNome);
+      // triagem e entrevista: a vaga mais urgente primeiro (atrasada, prioridade, data em que precisa)
+      for (const k of ['triagem', 'entrevista']) col[k].sort((x, y) => porUrgencia(x, y) || porNome(x, y));
+      col.admitido.sort(porNome);
       const fora = b.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu').sort(porNome);
       const rot = { ...ETAPAS, admitido: 'Admitidos' };
       if (!colMob || !col[colMob]) colMob = ['triagem', 'entrevista', 'documentos', 'admitido'].find(k => col[k].length) || 'triagem';
@@ -533,7 +617,7 @@ Paginas.candidatos = {
       let sub = '';
       if (seg === 'documentos') {
         if (pend && !PEND[pend]) pend = '';
-        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${Object.entries(PEND).map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
+        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${Object.entries(PEND).map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc', 'asoatraso'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
       }
       if (seg === 'documentos' || seg === 'admitido') {
         const cont = new Map(); let sem = 0;
@@ -544,7 +628,7 @@ Paginas.candidatos = {
       }
       // ordenação por etapa
       const ts = x => new Date(x || 0).getTime();
-      if (seg === 'triagem' || seg === 'entrevista') lista.sort((x, y) => ts(desdeEtapa(x)) - ts(desdeEtapa(y)) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
+      if (seg === 'triagem' || seg === 'entrevista') lista.sort((x, y) => porUrgencia(x, y) || ts(desdeEtapa(x)) - ts(desdeEtapa(y)) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
       else if (seg === 'documentos') lista.sort((x, y) => (x.chegada_data || '9999').localeCompare(y.chegada_data || '9999') || bloqueios(y).length - bloqueios(x).length || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
       else if (seg === 'admitido') lista.sort((x, y) => String(y.admitido_em || '').localeCompare(String(x.admitido_em || '')) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
       else lista.sort((x, y) => ts(desdeEtapa(y)) - ts(desdeEtapa(x)));
@@ -555,6 +639,7 @@ Paginas.candidatos = {
       const todosMarcados = loteOk && vis.length && vis.every(p => marcados.has(p.id));
       const barraLote = loteOk && marcados.size ? `<div class="cd-lote"><b>${qtd(marcados.size, 'selecionado', 'selecionados')}</b>
           ${seg !== 'documentos' ? `<button class="btn btn-pequeno btn-primario" data-lote="avancar">Avançar para ${ETAPAS[ORDEM[ORDEM.indexOf(seg) + 1]]}</button>` : ''}
+          <button class="btn btn-pequeno" data-lote="mensagem" title="Abre o WhatsApp de uma pessoa por vez, com o texto pronto">Mandar mensagem</button>
           ${veTudo ? '<button class="btn btn-pequeno" data-lote="direcionar">Direcionar para um RH</button>' : ''}
           <button class="btn btn-pequeno" data-lote="fora">Não seguem</button>
           <button class="btn-link" data-lote="limpar">Limpar seleção</button></div>` : '';
@@ -569,7 +654,7 @@ Paginas.candidatos = {
       const modo = seg === 'triagem' || seg === 'entrevista' ? 'fila' : seg;
       const cfg = COLS[modo];
       const marca = p => loteOk ? `<button type="button" class="cd-marca ${marcados.has(p.id) ? 'on' : ''}" data-marca="${p.id}" aria-label="Selecionar"></button>` : '';
-      const vagaTxt = p => { const v = vagaDe(p.vaga_id) || (p.vaga_id && Store.vaga(p.vaga_id)); return `${v ? `<div class="pre-rota">${UI.esc(v.titulo)}</div>` : '<div class="pre-rota muted">sem vaga</div>'}${p.cargo && (!v || p.cargo !== v.titulo) ? `<div class="pre-sub">${UI.esc(p.cargo)}</div>` : ''}`; };
+      const vagaTxt = p => { const v = vagaDe(p.vaga_id) || (p.vaga_id && Store.vaga(p.vaga_id)); return `${v ? `<div class="pre-rota">${UI.esc(v.titulo)}</div>` : '<div class="pre-rota muted">sem vaga</div>'}${p.cargo && (!v || p.cargo !== v.titulo) ? `<div class="pre-sub">${UI.esc(p.cargo)}</div>` : ''}${seloPrazo(p) ? `<div class="cd-prazo-l">${seloPrazo(p)}</div>` : ''}`; };
       const celRh = p => veTudo ? `<div class="pre-cel pre-uma pre-analista" data-rot="RH" title="${UI.esc(nomeAnalista(p))}">${p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 24)}<span>${UI.esc(nomeAnalista(p).split(' ')[0])}</span></span>` : `<span class="pre-falta" title="${UI.esc(p.analista ? 'Na planilha: ' + p.analista : '')}">sem RH</span>`}</div>` : '';
       const editar = '<button class="btn-link" data-acao="editar">Abrir</button>';
       function quem(p) {
@@ -578,6 +663,8 @@ Paginas.candidatos = {
         if (!pe.cpf && noDoc) al.push(['sem CPF', 1]);
         if (!pe.nascimento && noDoc) al.push(['sem nascimento', 1]);
         if (menor(p)) al.push([`menor de idade (${RH.idade(pe.nascimento)})`, 1]);
+        if (noDoc && emAndamento(p) && chegaDepoisDoPrazo(p)) al.push(['chegada depois do prazo da vaga', 1]);
+        if (noDoc && emAndamento(p) && diasDesde(ultimoMovimento(p)) >= 7) al.push([`sem movimento há ${diasDesde(ultimoMovimento(p))} dias`, 0]);
         if (barradaEm(p) && emAndamento(p)) al.push([barradaEm(p), 1]);
         if (!pe.cidade_origem_id) al.push(['sem cidade de origem', 0]);
         if (pe.ex_colaborador) al.push(['ex-colaborador', 2]);
@@ -599,15 +686,16 @@ Paginas.candidatos = {
           const e = p.entrevista || {}, ct = contatoEm(p), tt = tentativas(p);
           const sit = p.etapa === 'triagem'
             ? (ct ? `<span class="cd-chip cd-chip-ok">1º contato${diaCurto(ct) ? ' ' + diaCurto(ct) : ''}</span>` : '<span class="cd-chip cd-chip-meio">sem contato</span>') + (tt ? `<div class="pre-sub">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</div>` : '')
-            : e.data ? `<b>${RH.fmtDia(e.data)}${e.hora ? ' ' + e.hora : ''}</b><div class="pre-sub">${RESULTADOS[e.resultado || 'aguardando']}${e.faltas ? ` · ${e.faltas}ª falta` : ''}</div>` : '<span class="cd-chip cd-chip-meio">sem data</span>';
+              + (semResposta(p) ? `<div class="cd-sel-l">${seloSemResposta(p)}${podeEditar && linkWhats(p.pessoa) ? ' <button type="button" class="btn-link" data-acao="cobrar">Cobrar de novo</button>' : ''}</div>` : '')
+            : e.data ? `<b>${RH.fmtDia(e.data)}${e.hora ? ' ' + e.hora : ''}</b><div class="pre-sub">${RESULTADOS[e.resultado || 'aguardando']}${e.faltas ? ` · ${e.faltas}ª falta` : ''}</div>${seloConfirmou(p) ? `<div class="cd-sel-l">${seloConfirmou(p)}</div>` : ''}` : '<span class="cd-chip cd-chip-meio">sem data</span>';
           cel = rota(p) + `<div class="pre-cel" data-rot="Vaga">${vagaTxt(p)}</div><div class="pre-cel" data-rot="${p.etapa === 'triagem' ? 'Contato' : 'Entrevista'}">${sit}<div class="pre-sub ${d >= 7 ? 'cd-velho' : ''}">na etapa ${d === 0 ? 'desde hoje' : 'há ' + dias(d)}</div></div>`;
-          if (podeEditar) acoes = `${acaoPrincipal(p)}<button class="btn-link perigo" data-acao="fora">Não segue</button>${editar}`;
+          if (podeEditar) acoes = `${acaoPrincipal(p)}${sugerirNaoRespondeu(p) ? '<button class="btn-link perigo" data-acao="nao-respondeu" title="Já tentou bastante: não segue no processo, com o motivo &quot;não respondeu&quot;">Não respondeu</button>' : '<button class="btn-link perigo" data-acao="fora">Não segue</button>'}${editar}`;
         } else if (modo === 'documentos') {
           const din = dinamicaDe(p), classeDin = din.completa ? 'ok' : din.recusados.length ? 'ruim' : 'pend';
           const rotDocs = din.completa ? 'Completa' : `${din.total - din.pendentes.length} de ${din.total}`;
           const etapaCel = (campo, rotulo) => `<div class="pre-cel" data-rot="${rotulo}">${podeEditar
             ? `<select class="pre-st pre-st-${classeEstado(campo, p[campo])}" data-campo="${campo}" aria-label="${rotulo}">${opcoes(OPCOES[campo], p[campo])}</select>`
-            : `<span class="pre-st-txt pre-st-${classeEstado(campo, p[campo])}">${OPCOES[campo][p[campo]]}</span>`}${campo === 'aso' && p.aso_data ? `<span class="pre-nota">${RH.fmtDia(p.aso_data)}</span>` : ''}</div>`;
+            : `<span class="pre-st-txt pre-st-${classeEstado(campo, p[campo])}">${OPCOES[campo][p[campo]]}</span>`}${campo === 'aso' && p.aso_data ? `<span class="pre-nota${p.aso === 'agendado' && p.aso_data < RH.hoje() ? ' cd-velho' : ''}" title="${UI.esc(p.aso_local || '')}">${RH.fmtDia(p.aso_data)}</span>` : ''}${campo === 'treinamento' && p.treinamento === 'agendado' && p.treinamento_data ? `<span class="pre-nota" title="${UI.esc(p.treinamento_local || '')}">${RH.fmtDia(p.treinamento_data)}</span>` : ''}</div>`;
           cel = rota(p) + `<div class="pre-cel" data-rot="Documentos">${podeEditar ? `<button type="button" class="pre-st pre-din pre-st-${classeDin}" data-acao="docs">${rotDocs}${din.completa ? '' : ' entregues'}</button>` : `<span class="pre-st-txt pre-st-${classeDin}">${rotDocs}</span>`}</div>`
             + etapaCel('aso', 'ASO') + etapaCel('treinamento', 'Treinamento')
             + `<div class="pre-cel pre-uma" data-rot="Chegada">${p.chegada_data ? `${RH.fmtDia(p.chegada_data)}${p.chegada_hora ? ` <span class="muted">${p.chegada_hora.slice(0, 5)}</span>` : ''}` : '<span class="muted">—</span>'}</div>`;
@@ -624,7 +712,7 @@ Paginas.candidatos = {
             + `<div class="pre-cel pre-uma" data-rot="Chegada">${p.chegada_data ? RH.fmtDia(p.chegada_data) : '<span class="muted">—</span>'}</div>`;
           if (podeEditar) acoes = `<button class="btn-link perigo" data-acao="desfazer">Desfazer</button>${editar}`;
         } else {
-          cel = `<div class="pre-cel pre-uma" data-rot="Parou na">${ETAPAS[p.etapa] || '—'}</div><div class="pre-cel" data-rot="O que aconteceu"><b class="${p.situacao === 'desistiu' ? 'cd-desistiu' : 'cd-reprovado'}">${SIT[p.situacao]}</b>${p.observacao ? `<div class="pre-sub">${UI.esc(p.observacao)}</div>` : ''}</div>`
+          cel = `<div class="pre-cel pre-uma" data-rot="Parou na">${ETAPAS[p.etapa] || '—'}</div><div class="pre-cel" data-rot="O que aconteceu"><b class="${p.situacao === 'desistiu' ? 'cd-desistiu' : 'cd-reprovado'}">${SIT[p.situacao]}</b>${p.motivo_saida ? `<div class="pre-sub">${UI.esc(p.motivo_saida)}</div>` : ''}${p.observacao ? `<div class="pre-sub">${UI.esc(p.observacao)}</div>` : ''}</div>`
             + `<div class="pre-cel pre-uma" data-rot="Quando">${p.etapa_em ? RH.fmtDataBR(String(p.etapa_em).slice(0, 10)) : '—'}</div>`;
           if (podeEditar) acoes = `<button class="btn-link" data-acao="retomar">Retomar</button>${editar}`;
         }
@@ -650,13 +738,17 @@ Paginas.candidatos = {
       if (acao === 'limpar') { marcados.clear(); return desenhar(); }
       if (!sel.length) return;
       if (acao === 'direcionar') { analista = ''; return direcionarIds(sel.map(p => p.id)); }
+      if (acao === 'mensagem') return mensagemEmLote(sel);
       if (acao === 'fora') {
         UI.modal({ titulo: `${qtd(sel.length, 'pessoa não segue', 'pessoas não seguem')} no processo`, largura: '460px',
-          corpo: `<label>O que aconteceu<select id="ns-sit"><option value="reprovado">Reprovados na seleção</option><option value="desistiu">Desistiram</option></select></label>`,
+          corpo: `<label>Motivo (vale para todos)<select id="ns-mot">${MOTIVOS_SAIDA.map(([sit, m]) => `<option value="${sit}|${m}">${m}</option>`).join('')}</select></label>
+            <label style="margin-top:10px">Detalhe (opcional)<input id="ns-obs" placeholder="Ex.: vaga preenchida por outro candidato"></label>
+            <p class="muted small" style="margin-bottom:0">Saem do quadro e ficam em "Não seguiram", com o motivo anotado no histórico de cada um. Dá para retomar depois.</p>`,
           botoes: [{ texto: 'Cancelar' }, { texto: 'Confirmar', classe: 'btn-primario', acao: async md => {
-            const sit = md.corpo.querySelector('#ns-sit').value;
-            await Nuvem.rh.atualizarVarios(sel.map(p => p.id), { situacao: sit }); sel.forEach(p => { p.situacao = sit; });
+            const [sit, mot] = md.corpo.querySelector('#ns-mot').value.split('|'), det = md.corpo.querySelector('#ns-obs').value.trim(), motivo = mot + (det ? ' — ' + det : '');
+            await Nuvem.rh.atualizarVarios(sel.map(p => p.id), { situacao: sit, motivo_saida: motivo }); sel.forEach(p => { p.situacao = sit; p.motivo_saida = motivo; });
             marcados.clear(); desenhar(); UI.toast(`${qtd(sel.length, 'pessoa guardada', 'pessoas guardadas')} em "Não seguiram".`, 'sucesso');
+            Promise.all(sel.map(p => anotarAuto(p, `Não segue no processo: ${motivo}`))).then(desenhar);   // histórico de cada um, sem segurar a janela
           } }] });
         return;
       }
@@ -665,10 +757,15 @@ Paginas.candidatos = {
       for (const p of sel) { const i = ORDEM.indexOf(p.etapa); if (i >= 0 && i < ORDEM.length - 1) (grupos[ORDEM[i + 1]] = grupos[ORDEM[i + 1]] || []).push(p); }
       const n = Object.values(grupos).reduce((a, l) => a + l.length, 0);
       if (!n) { UI.toast('Quem está na Documentação é admitido um por um, pelo botão Admitir (só quando tudo estiver entregue).', 'aviso', 5000); return; }
-      if (!await UI.confirmar(`Avançar ${qtd(n, 'pessoa', 'pessoas')} para a etapa seguinte? ${Object.entries(grupos).map(([k, l]) => `${l.length} → ${ETAPAS[k]}`).join(', ')}.`, { textoOk: 'Avançar' })) return;
+      // para a Documentação: define vaga, distrito e LOCAL/MÓVEL de cada um antes
+      if (grupos.documentos && !grupos.entrevista) return enquadrarLote(grupos.documentos);
+      const soEnt = grupos.entrevista && !grupos.documentos;
+      if (!await UI.confirmar(soEnt ? `Avançar ${qtd(n, 'pessoa', 'pessoas')} para a Entrevista? ${n === 1 ? 'Ela entra' : 'Elas entram'} SEM DATA marcada: depois é só agendar cada uma na Agenda de entrevistas.`
+        : `Avançar ${qtd(n, 'pessoa', 'pessoas')} para a etapa seguinte? ${Object.entries(grupos).map(([k, l]) => `${l.length} → ${ETAPAS[k]}`).join(', ')}.`, { textoOk: 'Avançar' })) return;
       try {
         for (const [k, l] of Object.entries(grupos)) { await Nuvem.rh.atualizarVarios(l.map(p => p.id), { etapa: k }); l.forEach(p => { p.etapa = k; }); }
-        marcados.clear(); desenhar(); UI.toast(`${qtd(n, 'pessoa avançou', 'pessoas avançaram')} de etapa.`, 'sucesso');
+        marcados.clear(); UI.toast(`${qtd(n, 'pessoa avançou', 'pessoas avançaram')} de etapa.${soEnt ? ' Agende as entrevistas na lista "sem data marcada", embaixo da Agenda.' : ''}`, 'sucesso', soEnt ? 6000 : 3500);
+        if (soEnt) { semanaAg = null; mudarVista('agenda'); } else desenhar();
       } catch (err) { UI.toast(err.message, 'erro', 6000); await carregar(); }
     }
 
@@ -761,6 +858,7 @@ Paginas.candidatos = {
             if (!data) { g('#ag-data').focus(); throw new Error('Escolha a data da entrevista.'); }
             const ent = { ...e, data, hora: g('#ag-hora').value || null, formato: g('#ag-formato').value || null, local: g('#ag-local').value.trim() || null, resultado: 'aguardando' };
             if (faltou) ent.faltas = (e.faltas || 0) + 1;
+            if (e.data !== data || (e.hora || null) !== ent.hora) ent.confirmou = '';   // data nova: a confirmação volta a valer só depois de a pessoa responder
             const campos = { entrevista: ent }; if (p.etapa !== 'entrevista') campos.etapa = 'entrevista'; if (!emAndamento(p)) campos.situacao = 'em_andamento';
             const msg = g('#ag-msg').value.trim(), wa = linkWhats(p.pessoa, msg);
             const janela = wa ? window.open('about:blank', '_blank') : null;   // abre já no clique (o navegador bloqueia depois do await)
@@ -790,13 +888,27 @@ Paginas.candidatos = {
     }
     // Enquadrar: aprovado na entrevista, a pessoa vai para a Documentação e aqui se define a vaga e onde vai trabalhar,
     // olhando quanto cada distrito da vaga ainda precisa (locais e móveis) e a distância de onde ela mora.
+    // peças do enquadrar, usadas por uma pessoa (enquadrar) e por várias de uma vez (enquadrarLote)
+    const falta = (x, t) => Math.max(0, t === 'MOVEL' ? x.moveis - x.admMov : x.locais - x.admLoc);
+    const saldoVaga = v => v.porDistrito.length ? v.porDistrito.reduce((a, x) => a + falta(x, 'LOCAL') + falta(x, 'MOVEL'), 0) : Math.max(0, v.quantidade - (v.admitidos || 0));
+    const vagasParaEnquadrar = p => vagasProjeto().filter(v => !['preenchida', 'cancelada', 'recusada'].includes(v.status) || v.id === p.vaga_id);
+    const vagaInicial = (p, vagasAb) => p.vaga_id && vagasAb.some(v => v.id === p.vaga_id) ? p.vaga_id : (vagasAb.find(v => Store.normalizar(v.titulo) === Store.normalizar(p.cargo || '')) || {}).id || '';
+    // distritos possíveis (os da vaga, ou todos do projeto) do mais perto ao mais longe de onde a pessoa mora, e o sugerido:
+    // o mais perto que ainda precisa de gente do tipo que a distância indica (usados: o que outros do mesmo lote já ocuparam)
+    function opcoesEnquadrar(p, vg, usados = {}) {
+      const origem = p.pessoa.cidade_origem_id;
+      const lista = vg && vg.porDistrito.length ? vg.porDistrito.map(x => ({ d: x.distrito, x })) : distritosProjeto().map(d => ({ d, x: null }));
+      const comKm = lista.map(o => ({ ...o, r: origem ? Store.distritoMaisProximo(origem, [o.d.id]) : null })).sort((a, b) => (a.r ? a.r.km : 1e9) - (b.r ? b.r.km : 1e9) || a.d.nome.localeCompare(b.d.nome, 'pt-BR'));
+      const tipoDe = o => o.r && (o.r.dentro || o.r.km <= limiteKm) ? 'LOCAL' : 'MOVEL';
+      const resta = (o, t) => o.x ? falta(o.x, t) - (usados[`${vg.id}|${o.d.id}|${t}`] || 0) : 1;
+      return { comKm, sug: comKm.find(o => resta(o, tipoDe(o)) > 0) || comKm[0] || null };
+    }
+    // LOCAL/MÓVEL pela distância de onde mora até o distrito (sem distância, fica o que já tinha)
+    const tipoPeloDistrito = (p, dId) => { const r = dId && p.pessoa.cidade_origem_id ? Store.distritoMaisProximo(p.pessoa.cidade_origem_id, [dId]) : null; return { r, tipo: r ? (r.dentro || r.km <= limiteKm ? 'LOCAL' : 'MOVEL') : (p.tipo || 'LOCAL') }; };
     function enquadrar(p) {
       const origem = p.pessoa.cidade_origem_id;
-      const vagasAb = vagasProjeto().filter(v => !['preenchida', 'cancelada', 'recusada'].includes(v.status) || v.id === p.vaga_id);
-      const falta = (x, t) => Math.max(0, t === 'MOVEL' ? x.moveis - x.admMov : x.locais - x.admLoc);
-      const saldoVaga = v => v.porDistrito.length ? v.porDistrito.reduce((a, x) => a + falta(x, 'LOCAL') + falta(x, 'MOVEL'), 0) : Math.max(0, v.quantidade - (v.admitidos || 0));
-      const kmAte = d => { const r = origem ? Store.distritoMaisProximo(origem, [d.id]) : null; return r ? r : null; };
-      const vIni = p.vaga_id && vagasAb.some(v => v.id === p.vaga_id) ? p.vaga_id : (vagasAb.find(v => Store.normalizar(v.titulo) === Store.normalizar(p.cargo || '')) || {}).id || '';
+      const vagasAb = vagasParaEnquadrar(p);
+      const vIni = vagaInicial(p, vagasAb);
       const m = UI.modal({ titulo: `Onde ${p.pessoa.nome} vai trabalhar?`, largura: '560px',
         corpo: `<p class="muted" style="margin-top:0">${p.pessoa.nome} vai para a <b>Documentação</b>. Escolha a vaga e o distrito; ao lado de cada distrito aparece quanto a vaga ainda precisa.${origem ? ` Mora em <b>${UI.esc(nomeCidade(origem))}</b>.` : ' <span class="cd-falta">Sem cidade de origem: a distância não aparece.</span>'}</p>
           <div class="form-linha">
@@ -817,19 +929,14 @@ Paginas.candidatos = {
       const g = s => m.corpo.querySelector(s);
       let mexeuTipo = false;
       function distritos() {
-        const vg = vagaDe(g('#en-vaga').value);
-        const lista = vg && vg.porDistrito.length ? vg.porDistrito.map(x => ({ d: x.distrito, x })) : distritosProjeto().map(d => ({ d, x: null }));
-        const comKm = lista.map(o => ({ ...o, r: kmAte(o.d) })).sort((a, b) => (a.r ? a.r.km : 1e9) - (b.r ? b.r.km : 1e9) || a.d.nome.localeCompare(b.d.nome, 'pt-BR'));
         // sugerido: o mais perto que ainda precisa de gente (do tipo que a distância indica)
-        const tipoDe = o => o.r && (o.r.dentro || o.r.km <= limiteKm) ? 'LOCAL' : 'MOVEL';
-        const sug = comKm.find(o => !o.x || falta(o.x, tipoDe(o)) > 0) || comKm[0];
+        const { comKm, sug } = opcoesEnquadrar(p, vagaDe(g('#en-vaga').value));
         const atual = g('#en-dist').value || (p.distrito_id && comKm.some(o => o.d.id === p.distrito_id) ? p.distrito_id : sug ? sug.d.id : '');
         g('#en-dist').innerHTML = '<option value="">Ainda não definido</option>' + comKm.map(o => `<option value="${o.d.id}" ${o.d.id === atual ? 'selected' : ''}>${UI.esc(o.d.nome)}${o.r ? ` · ${o.r.dentro ? 'mora no distrito' : UI.fmtKm(o.r.km)}` : ''}${o.x ? ` · faltam ${falta(o.x, 'LOCAL')} locais e ${falta(o.x, 'MOVEL')} móveis` : ''}${sug && o.d.id === sug.d.id ? ' (sugerido)' : ''}</option>`).join('');
         atualizarTipo();
       }
       function atualizarTipo() {
-        const dId = g('#en-dist').value, r = dId && origem ? Store.distritoMaisProximo(origem, [dId]) : null;
-        const t = r ? (r.dentro || r.km <= limiteKm ? 'LOCAL' : 'MOVEL') : (p.tipo || 'LOCAL');
+        const dId = g('#en-dist').value, { r, tipo: t } = tipoPeloDistrito(p, dId);
         if (!mexeuTipo) g('#en-tipo').value = p.distrito_id === dId && p.tipo ? p.tipo : t;
         const vg = vagaDe(g('#en-vaga').value), x = vg && dId ? vg.porDistrito.find(y => y.distrito.id === dId) : null;
         const tp = g('#en-tipo').value, sem = x && falta(x, tp) === 0;
@@ -841,21 +948,89 @@ Paginas.candidatos = {
       g('#en-tipo').addEventListener('change', () => { mexeuTipo = true; atualizarTipo(); });
       distritos();
     }
+    // Várias pessoas para a Documentação de uma vez: uma linha por pessoa com vaga, distrito (o sugerido já vem marcado) e LOCAL/MÓVEL
+    function enquadrarLote(sel) {
+      const usados = {}, conta = (vg, dId, t, n) => { if (vg && dId) { const k = `${vg.id}|${dId}|${t}`; usados[k] = (usados[k] || 0) + n; } };
+      // escolha inicial de cada um, descontando do saldo o que os anteriores do lote já ocuparam
+      const escolhas = sel.map(p => {
+        const vagasAb = vagasParaEnquadrar(p), vg = vagaDe(vagaInicial(p, vagasAb));
+        const { sug } = opcoesEnquadrar(p, vg, usados), dId = p.distrito_id || (sug ? sug.d.id : '');
+        const tipo = p.distrito_id && p.tipo ? p.tipo : tipoPeloDistrito(p, dId).tipo;
+        conta(vg, dId, tipo, 1);
+        return { p, vagasAb, vagaId: vg ? vg.id : '', dId, tipo };
+      });
+      const linhaHtml = (o, i) => `<div class="cd-enq-linha" data-i="${i}">
+          <div class="cd-enq-quem"><b>${UI.esc(o.p.pessoa.nome)}</b><span class="muted small">${nomeCidade(o.p.pessoa.cidade_origem_id) ? 'mora em ' + UI.esc(nomeCidade(o.p.pessoa.cidade_origem_id)) : '<span class="cd-falta">sem cidade de origem</span>'}</span></div>
+          <label><span class="cd-enq-rot">Vaga</span><select data-c="vaga"><option value="">Sem vaga por enquanto</option>${o.vagasAb.map(v => `<option value="${v.id}" ${v.id === o.vagaId ? 'selected' : ''}>${UI.esc(rotuloVaga(v))} — ${saldoVaga(v) ? `faltam ${saldoVaga(v)}` : 'completa'}</option>`).join('')}</select></label>
+          <label><span class="cd-enq-rot">Distrito</span><select data-c="dist"></select></label>
+          <label><span class="cd-enq-rot">Tipo</span><select data-c="tipo"><option value="LOCAL">Local</option><option value="MOVEL">Móvel</option></select></label>
+        </div>`;
+      const m = UI.modal({ titulo: `${qtd(sel.length, 'pessoa vai', 'pessoas vão')} para a Documentação`, largura: '900px', fecharAoClicarFora: false,
+        corpo: `<p class="muted" style="margin-top:0">Confira onde cada um vai trabalhar. O distrito sugerido é o mais perto de onde a pessoa mora que ainda precisa de gente; LOCAL ou MÓVEL vem da distância (até ${limiteKm} km conta como LOCAL). Dá para deixar o distrito em branco e definir depois na ficha.</p>
+          <div class="cd-enq">${escolhas.map(linhaHtml).join('')}</div>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Ir todos para a Documentação', classe: 'btn-primario', acao: async () => {
+          let ok = 0; const erros = [];
+          for (const o of escolhas) {
+            const p = o.p, vg = vagaDe(o.vagaId), dId = o.dId || null, r = dId && p.pessoa.cidade_origem_id ? Store.distritoMaisProximo(p.pessoa.cidade_origem_id, [dId]) : null;
+            const campos = { etapa: 'documentos', vaga_id: vg ? vg.id : null, distrito_id: dId, tipo: o.tipo, distancia_km: r ? Math.round(r.km * 10) / 10 : null };
+            if (vg && !p.cargo) campos.cargo = vg.titulo;
+            try { await Nuvem.rh.atualizar(p.id, campos); Object.assign(p, campos); ok++; }
+            catch (err) { erros.push(`${p.pessoa.nome}: ${err.message}`); }
+          }
+          marcados.clear(); desenhar();
+          if (ok) UI.toast(`${qtd(ok, 'pessoa foi', 'pessoas foram')} para a Documentação.`, 'sucesso', 4000);
+          if (erros.length) UI.toast(`Não foi possível mover: ${erros.join(' · ')}`, 'erro', 9000);
+        } }] });
+      const linhaEl = i => m.corpo.querySelector(`.cd-enq-linha[data-i="${i}"]`);
+      function pintarDistritos(i) {
+        const o = escolhas[i], el2 = linhaEl(i), vg = vagaDe(o.vagaId), { comKm, sug } = opcoesEnquadrar(o.p, vg, usados);
+        el2.querySelector('[data-c="dist"]').innerHTML = '<option value="">Ainda não definido</option>' + comKm.map(x => `<option value="${x.d.id}" ${x.d.id === o.dId ? 'selected' : ''}>${UI.esc(x.d.nome)}${x.r ? ` · ${x.r.dentro ? 'mora no distrito' : UI.fmtKm(x.r.km)}` : ''}${x.x ? ` · faltam ${falta(x.x, 'LOCAL')}L/${falta(x.x, 'MOVEL')}M` : ''}${sug && x.d.id === sug.d.id ? ' (sugerido)' : ''}</option>`).join('');
+        el2.querySelector('[data-c="tipo"]').value = o.tipo;
+      }
+      escolhas.forEach((o, i) => pintarDistritos(i));
+      m.corpo.querySelector('.cd-enq').addEventListener('change', e => {
+        const s = e.target.closest('select[data-c]'), l = s && s.closest('[data-i]'); if (!l) return;
+        const i = +l.dataset.i, o = escolhas[i];
+        conta(vagaDe(o.vagaId), o.dId, o.tipo, -1);   // tira a escolha antiga do saldo e põe a nova
+        if (s.dataset.c === 'vaga') { o.vagaId = s.value; const { sug } = opcoesEnquadrar(o.p, vagaDe(o.vagaId), usados); o.dId = sug ? sug.d.id : ''; o.tipo = tipoPeloDistrito(o.p, o.dId).tipo; }
+        else if (s.dataset.c === 'dist') { o.dId = s.value; o.tipo = tipoPeloDistrito(o.p, o.dId).tipo; }
+        else o.tipo = s.value;
+        conta(vagaDe(o.vagaId), o.dId, o.tipo, 1);
+        pintarDistritos(i);
+      });
+    }
     const voltar = p => { const i = ORDEM.indexOf(p.etapa); if (i > 0) gravar(p, { etapa: ORDEM[i - 1] }, `${p.pessoa.nome} voltou para ${ETAPAS[ORDEM[i - 1]]}.`); };
-    function naoSeguiu(p) {
+    // motivoIni: motivo já escolhido (ex.: "não respondeu", vindo da sugestão do cartão)
+    function naoSeguiu(p, motivoIni) {
+      const marcado = m => motivoIni ? m === motivoIni : (p.entrevista && p.entrevista.resultado === 'reprovado' && m === 'Reprovado na entrevista') || (p.entrevista && p.entrevista.resultado === 'faltou' && m === 'Não compareceu à entrevista');
       UI.modal({ titulo: `${p.pessoa.nome} não segue no processo`, largura: '460px',
-        corpo: `<label>Motivo<select id="ns-mot">${MOTIVOS_SAIDA.map(([sit, m]) => `<option value="${sit}|${m}" ${p.entrevista && p.entrevista.resultado === 'reprovado' && m === 'Reprovado na entrevista' ? 'selected' : p.entrevista && p.entrevista.resultado === 'faltou' && m === 'Não compareceu à entrevista' ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+        corpo: `<label>Motivo<select id="ns-mot">${MOTIVOS_SAIDA.map(([sit, m]) => `<option value="${sit}|${m}" ${marcado(m) ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
           <label style="margin-top:10px">Detalhe (opcional)<input id="ns-obs" placeholder="Ex.: não tem disponibilidade para viajar"></label>
           <p class="muted small" style="margin-bottom:0">A pessoa sai do quadro e fica guardada em "Não seguiram". Dá para retomar depois.</p>`,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Confirmar', classe: 'btn-primario', acao: async md => {
-          const [sit, mot] = md.corpo.querySelector('#ns-mot').value.split('|'), det = md.corpo.querySelector('#ns-obs').value.trim();
-          if (await gravar(p, { situacao: sit }, 'Guardado em "Não seguiram".')) anotarAuto(p, `Não segue no processo: ${mot}${det ? ' — ' + det : ''}`);
+          const [sit, mot] = md.corpo.querySelector('#ns-mot').value.split('|'), det = md.corpo.querySelector('#ns-obs').value.trim(), motivo = mot + (det ? ' — ' + det : '');
+          if (!await gravar(p, { situacao: sit, motivo_saida: motivo })) return false;
+          anotarAuto(p, `Não segue no processo: ${motivo}`);
+          // depois de guardar: oferece avisar a pessoa
+          setTimeout(() => avisarSaida(p), 0);
         } }] });
+    }
+    function avisarSaida(p) {
+      const tem = !!linkWhats(p.pessoa);
+      UI.modal({ titulo: 'Guardado em "Não seguiram"', largura: '440px',
+        corpo: `<p style="margin-top:0"><b>${UI.esc(p.pessoa.nome)}</b> saiu do processo.${tem ? ' Quer avisar a pessoa pelo WhatsApp? A mensagem já vem pronta.' : ' Ela está sem telefone válido, então não dá para avisar pelo WhatsApp.'}</p>`,
+        botoes: [{ texto: tem ? 'Agora não' : 'Fechar' }].concat(tem ? [{ texto: 'Avisar pelo WhatsApp', classe: 'btn-primario', acao: () => { setTimeout(() => mandarMensagem(p, 'naoseguiu'), 0); } }] : []) });
     }
     const MOTIVOS_SAIDA = [['reprovado', 'Reprovado na triagem'], ['reprovado', 'Reprovado na entrevista'], ['desistiu', 'Não compareceu à entrevista'], ['desistiu', 'Não respondeu / sem contato'],
       ['desistiu', 'Salário ou benefícios'], ['desistiu', 'Distância, alojamento ou viagem'], ['reprovado', 'Documentação'], ['desistiu', 'Desistiu (outro motivo)'], ['reprovado', 'Reprovado (outro motivo)']];
     // anotação automática no histórico (quem e quando ficam gravados pelo banco); falha aqui não desfaz a ação
     async function anotarAuto(p, texto) { try { p.anotacoes = await Nuvem.rh.anotar(p.id, texto); } catch (e) { console.warn('anotação automática', e); } }
+    // atalho do cartão: a pessoa confirmou (ou não) que vem na entrevista
+    async function marcarConfirmou(p, valor) {
+      const e = p.entrevista || {}; if (!e.data) return;
+      if (await gravar(p, { entrevista: { ...e, confirmou: valor } }, valor === 'sim' ? `${p.pessoa.nome}: presença confirmada.` : `${p.pessoa.nome}: confirmação desmarcada.`))
+        anotarAuto(p, valor === 'sim' ? `Confirmou presença na entrevista de ${RH.fmtDia(e.data)}.` : 'Confirmação da entrevista desmarcada.');
+    }
     async function encerrar(p, perguntarSoUmaVez) {
       const motivo = barradaEm(p); if (!motivo) return;
       if (!await UI.confirmar(`${p.pessoa.nome} ficou como ${motivo}. Encerrar o processo agora? A pessoa sai do andamento e fica guardada em "Não seguiram".${perguntarSoUmaVez ? ' Se cancelar, ela continua na lista, sem poder ser admitida, com o botão Encerrar.' : ''}`, { titulo: 'Encerrar processo', textoOk: 'Encerrar' })) return;
@@ -977,7 +1152,9 @@ Paginas.candidatos = {
       else if (a === 'agendar') agendar(p, false); else if (a === 'remarcar') agendar(p, true); else if (a === 'resultado') formulario(p, 'entrevista');
       else if (a === 'avancar-direto') enquadrar(p);
       else if (a === 'nao-atendeu') { anotarAuto(p, NAO_ATENDEU).then(() => { desenhar(); UI.toast(`${p.pessoa.nome}: ${tentativas(p)}ª tentativa sem resposta anotada.`, 'sucesso', 3000); }); }
-      else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento' }, `${p.pessoa.nome} voltou para o processo.`);
+      else if (a === 'cobrar') mandarMensagem(p, 'cobrar'); else if (a === 'nao-respondeu') naoSeguiu(p, MOTIVO_SEM_RESPOSTA);
+      else if (a === 'confirmou' || a === 'confirmou-desfazer') marcarConfirmou(p, a === 'confirmou' ? 'sim' : '');
+      else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${p.pessoa.nome} voltou para o processo.`);
       else if (a === 'admitir') admitir(p); else if (a === 'encerrar') encerrar(p, false); else if (a === 'desfazer') desfazerAdmissao(p);
     });
     q('#cd-corpo').addEventListener('keydown', e => {
@@ -998,8 +1175,23 @@ Paginas.candidatos = {
     // Cabeçalho fixo (resumo + trilha das etapas + abas). Aba Dados: quem é, vaga e destino, observação.
     // Aba Documentação: os documentos em cartões + ASO, treinamento e chegada. Trocar de aba não fecha nada; um Salvar grava tudo.
     const documentos = p => formulario(p, 'docs');
+    // ---------- salvar só o que mudou ----------
+    // valor comparável: vazio = null; objeto com as chaves em ordem e sem as vazias; horário sem os segundos
+    function comparavel(x) {
+      if (x == null || x === '') return 'null';
+      if (typeof x === 'object') { const ks = Object.keys(x).sort().filter(k => x[k] != null && x[k] !== ''); return ks.length ? JSON.stringify(ks.map(k => [k, comparavel(x[k])])) : 'null'; }
+      const s = String(x); return /^\d\d:\d\d:\d\d$/.test(s) ? s.slice(0, 5) : s;
+    }
+    // documento "falta" é o mesmo que não estar no mapa (a ficha completa a lista com os do cargo)
+    const semFalta = d => d && typeof d === 'object' ? Object.fromEntries(Object.entries(d).filter(([, e]) => e !== 'falta')) : d;
+    const soMudou = (novo, antigo) => Object.fromEntries(Object.entries(novo).filter(([k, val]) => k === 'id'
+      || (k === 'documentos' ? comparavel(semFalta(val)) !== comparavel(semFalta(antigo && antigo[k])) : comparavel(val) !== comparavel(antigo ? antigo[k] : null))));
     function formulario(p, abaIni = null) {
       const pe = p ? p.pessoa : {};
+      // retrato do que a ficha abriu (para mandar só o que mudou) e a versão lida
+      const foto = p ? JSON.parse(JSON.stringify(p)) : null, versaoIni = p ? p.atualizado_em || null : null;
+      // anotação que eu fiz com a ficha aberta também muda a versão no banco: não conta como conflito
+      const versaoAtual = () => { if (!versaoIni) return null; const minhas = (p.anotacoes || []).filter(a => a.por === eu.login && a.em && new Date(a.em) > new Date(versaoIni)).map(a => a.em).sort((x, y) => new Date(x) - new Date(y)); return minhas.length ? minhas.pop() : versaoIni; };
       const ufs = Store.ufsProjeto(projeto());
       const co = cidade(pe.cidade_origem_id), ca = p ? cidade(p.cidade_atuacao_id) : null, cb = p ? cidade(p.base_id) : null;
       const v = x => UI.esc(x == null ? '' : x);
@@ -1070,6 +1262,7 @@ Paginas.candidatos = {
             <label>Formato<select id="e-formato"><option value="">—</option>${opcoes(FORMATOS, p && p.entrevista && p.entrevista.formato)}</select></label>
             <label>Local ou link<input id="e-local" value="${v(p && p.entrevista && p.entrevista.local)}" placeholder="Endereço ou link"></label>
             <label>Quem entrevistou<input id="e-quem" value="${v(p && p.entrevista && p.entrevista.entrevistador)}" placeholder="${UI.esc(eu.nome)}"></label>
+            <label>Confirmou presença?<select id="e-conf">${opcoes({ '': 'Sem resposta', sim: 'Sim, confirmou', nao: 'Não, avisou que não vem' }, (p && p.entrevista && p.entrevista.confirmou) || '')}</select></label>
             <label>Resultado<select id="e-res">${opcoes(RESULTADOS, (p && p.entrevista && p.entrevista.resultado) || 'aguardando')}</select></label>
             <div><span class="vg-rot">Avaliação</span><div class="fi-estrelas" id="e-aval">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-nota="${n}" class="${p && p.entrevista && +p.entrevista.avaliacao >= n ? 'on' : ''}" aria-label="${n} de 5">★</button>`).join('')}</div></div>
             <label style="grid-column:1/-1">Observações da entrevista<textarea id="e-notas" rows="4" placeholder="Experiência, disponibilidade (horário, viagem, alojamento), pontos fortes, pontos de atenção…">${v(p && p.entrevista && p.entrevista.notas)}</textarea></label>
@@ -1083,8 +1276,11 @@ Paginas.candidatos = {
           <div class="pre-form-titulo" style="margin-top:20px">Exame, treinamento e chegada</div>
           <div class="form-linha fi-linha-3">
             <label>ASO (exame admissional)<select id="f-aso">${opcoes(ASO, p ? p.aso : 'pendente')}</select></label>
-            <label>Data do ASO<input id="f-aso-data" type="date" value="${v(p && p.aso_data)}"></label>
+            <label><span id="f-aso-data-rot">Data do ASO</span><input id="f-aso-data" type="date" value="${v(p && p.aso_data)}"></label>
+            <label id="f-aso-local-w">Local/clínica<input id="f-aso-local" value="${v(p && p.aso_local)}" placeholder="Ex.: Clínica São Lucas, Passo Fundo"></label>
             <label>Treinamento<select id="f-tre">${opcoes(TRE, p ? p.treinamento : 'pendente')}</select></label>
+            <label id="f-tre-data-w">Data do treinamento<input id="f-tre-data" type="date" value="${v(p && p.treinamento_data)}"></label>
+            <label id="f-tre-local-w">Local do treinamento<input id="f-tre-local" value="${v(p && p.treinamento_local)}" placeholder="Ex.: escritório de Lagoa Vermelha"></label>
             <label>Data de chegada<input id="f-chegada" type="date" value="${v(p && p.chegada_data)}"></label>
             <label>Horário previsto<input id="f-hora" type="time" value="${p && p.chegada_hora ? p.chegada_hora.slice(0, 5) : ''}"></label>
             <label>Grupo do WhatsApp<input id="f-grupo" value="${v(p && p.grupo_whatsapp)}"></label>
@@ -1101,8 +1297,13 @@ Paginas.candidatos = {
         if (!await UI.confirmar(`Excluir ${pe.nome} deste processo? O cadastro da pessoa continua guardado.`, { perigo: true, textoOk: 'Excluir' })) return false;
         await Nuvem.rh.excluir(p.id); await carregar();
       } });
+      // LGPD: a pessoa pediu para apagar os dados dela (só admin; quem está admitido não)
+      if (p && eu.perfil === 'admin' && !adm && pe.nome !== 'Dados apagados (LGPD)' && Nuvem.rh.anonimizar) botoes.push({ texto: 'Apagar dados pessoais (LGPD)', classe: 'btn-secundario fi-esq', acao: async () => {
+        if (!await UI.confirmar(`Apagar nome, CPF, telefone, e-mail e nascimento de ${pe.nome}? Use quando a pessoa pedir (LGPD). O histórico do processo fica, sem identificar a pessoa. Não dá para desfazer.`, { perigo: true, textoOk: 'Apagar os dados', titulo: 'Dados pessoais (LGPD)' })) return false;
+        await Nuvem.rh.anonimizar(pe.id, 'pedido do titular'); UI.toast('Dados pessoais apagados.', 'sucesso'); await carregar();
+      } });
       if (p && podeEditar && aberto) botoes.push({ texto: 'Não segue no processo', classe: 'btn-secundario fi-esq', acao: () => { setTimeout(() => naoSeguiu(p), 0); } });
-      if (p && podeEditar && !aberto && !adm) botoes.push({ texto: 'Retomar o processo', classe: 'btn-secundario fi-esq', acao: async () => { await gravar(p, { situacao: 'em_andamento' }, `${pe.nome} voltou para o processo.`); } });
+      if (p && podeEditar && !aberto && !adm) botoes.push({ texto: 'Retomar o processo', classe: 'btn-secundario fi-esq', acao: async () => { await gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${pe.nome} voltou para o processo.`); } });
       if (p && podeEditar && adm) botoes.push({ texto: 'Desfazer admissão', classe: 'btn-secundario fi-esq', acao: () => { setTimeout(() => desfazerAdmissao(p), 0); } });
       const retrato = () => [...m.corpo.querySelectorAll('input, select, textarea')].filter(x => x.id && x.id !== 'f-etapa').map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001') + '|' + notaEntrevista;
       let retratoIni = null;
@@ -1139,14 +1340,15 @@ Paginas.candidatos = {
           tipo, cidade_atuacao_id: resolver(g('#f-atuacao'), ufs, 'Cidade de trabalho'), base_id: tipo === 'MOVEL' ? resolver(g('#f-base'), ufs, 'Base de contratação') : null,
           cargo: g('#f-cargo').value.trim() || null, unidade: g('#f-unidade').value.trim() || null,
           analista: rh === 'n:' ? nomeSolto : (uRh ? uRh.nome : null), analista_login: uRh ? uRh.login : null,
-          aso: g('#f-aso').value, aso_data: g('#f-aso-data').value || null, treinamento: g('#f-tre').value,
+          aso: g('#f-aso').value, aso_data: g('#f-aso-data').value || null, aso_local: g('#f-aso-local').value.trim() || null,
+          treinamento: g('#f-tre').value, treinamento_data: g('#f-tre-data').value || null, treinamento_local: g('#f-tre-local').value.trim() || null,
           chegada_data: g('#f-chegada').value || null, chegada_hora: g('#f-hora').value || null, grupo_whatsapp: g('#f-grupo').value.trim() || null, observacao: g('#f-obs').value.trim() || null };
         const entAntes = (p && p.entrevista) || {};
         if (p) {
           const ent = { ...(p.entrevista || {}), data: g('#e-data').value || null, hora: g('#e-hora').value || null, formato: g('#e-formato').value || null, local: g('#e-local').value.trim() || null, entrevistador: g('#e-quem').value.trim() || null,
-            resultado: g('#e-res').value || 'aguardando', avaliacao: notaEntrevista || null, notas: g('#e-notas').value.trim() || null };
+            resultado: g('#e-res').value || 'aguardando', avaliacao: notaEntrevista || null, notas: g('#e-notas').value.trim() || null, confirmou: g('#e-conf').value || '' };
           if (ent.resultado !== 'aguardando' && !ent.entrevistador) ent.entrevistador = eu.nome;
-          const vazia = !ent.data && !ent.hora && !ent.formato && !ent.local && !ent.entrevistador && ent.resultado === 'aguardando' && !ent.avaliacao && !ent.notas;
+          const vazia = !ent.data && !ent.hora && !ent.formato && !ent.local && !ent.entrevistador && ent.resultado === 'aguardando' && !ent.avaliacao && !ent.notas && !ent.confirmou;
           if (!(vazia && !p.entrevista)) pre.entrevista = vazia ? null : ent;
         }
         if (!destinoAberto()) {
@@ -1161,7 +1363,17 @@ Paginas.candidatos = {
         }
         const barrouAgora = p && aberto && ((pre.aso === 'inapto' && p.aso !== 'inapto') || (pre.treinamento === 'reprovado' && p.treinamento !== 'reprovado'));
         const entNova = pre.entrevista || {}, resMudou = p && aberto && entNova.resultado && entNova.resultado !== (entAntes.resultado || 'aguardando');
-        await Nuvem.rh.salvar(pessoa, pre);
+        // ficha que já existia: manda só o que mudou desde que abriu, com a versão lida (o banco recusa se outra pessoa mexeu depois)
+        const preEnvio = p ? soMudou(pre, foto) : pre, pessoaEnvio = p && pessoa.id ? soMudou(pessoa, foto.pessoa) : pessoa;
+        const mudouAlgo = !p || Object.keys(preEnvio).length > 1 || Object.keys(pessoaEnvio).length > 1;
+        if (p) preEnvio.versao = versaoAtual();
+        try { if (mudouAlgo) await Nuvem.rh.salvar(pessoaEnvio, preEnvio); }
+        catch (err) {
+          const txt = String((err && err.message) || err);
+          if (!/CONFLITO_VERSAO/.test(txt)) throw err;
+          mostrarConflito(txt.replace(/^[\s\S]*?CONFLITO_VERSAO:\s*/, ''));
+          return false;   // a janela fica aberta: nada foi gravado
+        }
         // histórico automático: remarcação e anotação digitada que não foi enviada
         if (p) {
           if (entAntes.data && entNova.data && (entAntes.data !== entNova.data || (entAntes.hora || '') !== (entNova.hora || '')))
@@ -1188,6 +1400,22 @@ Paginas.candidatos = {
       if (p) { App.olhar('candidato:' + p.id); pintarFicha(); document.addEventListener('maparh:presenca', pintarFicha); }
       m.el.querySelector('.modal').classList.add('fi-modal');
       const g = s => m.corpo.querySelector(s);
+      // outra pessoa salvou esta ficha depois que você abriu: avisa, não fecha e oferece buscar de novo
+      function mostrarConflito(txt) {
+        let cx = g('#f-conflito');
+        if (!cx) { cx = document.createElement('div'); cx.id = 'f-conflito'; cx.className = 'caixa caixa-aviso fi-conflito'; g('.fi-cab').prepend(cx); }
+        cx.innerHTML = `<span><b>Não foi salvo.</b> ${UI.esc(txt)}</span><button type="button" class="btn btn-pequeno btn-primario" data-recarregar-ficha>Recarregar a ficha</button>`;
+        m.corpo.scrollTop = 0;
+        UI.toast('Não foi salvo: outra pessoa alterou esta ficha.', 'aviso', 6000);
+        cx.querySelector('[data-recarregar-ficha]').addEventListener('click', async ev => {
+          if (!await UI.confirmar('Buscar os dados mais novos? O que você mudou aqui e não salvou se perde (anote antes, se precisar).', { textoOk: 'Recarregar' })) return;
+          ev.target.disabled = true;
+          await carregar();
+          const nova = linhas.find(x => x.id === p.id);
+          m.fechar();
+          if (nova) formulario(nova, painelAtual); else UI.toast('Esta pessoa não está mais na sua lista (pode ter sido direcionada para outro RH).', 'aviso', 6000);
+        });
+      }
       let cpfDeOutro = false;
       let destinoAberto = () => true, modoDestino = null;
       let pessoaId = p ? pe.id : null, mexeuDestino = !!(p && (p.distrito_id || p.tipo === 'MOVEL'));
@@ -1280,6 +1508,13 @@ Paginas.candidatos = {
 
       const mostrarIdade = () => { const n = g('#f-nasc').value, i = RH.idade(n), el2 = g('#f-idade'); el2.className = 'small ' + (i != null && i < 18 ? 'erro' : 'muted'); el2.textContent = !n ? 'Obrigatória para admitir' : i < 0 || n > RH.hoje() ? 'Data no futuro' : i < 18 ? `${i} anos: menor de idade, não pode ser admitido` : `${i} anos`; };
       g('#f-nasc').addEventListener('input', mostrarIdade); mostrarIdade();
+      // ASO / treinamento agendado: aparecem a data e o local (o local fica guardado mesmo se esconder)
+      const agendados = () => {
+        const aso = g('#f-aso').value === 'agendado', tre = g('#f-tre').value === 'agendado';
+        g('#f-aso-data-rot').textContent = aso ? 'Data do exame' : 'Data do ASO';
+        g('#f-aso-local-w').hidden = !aso && !g('#f-aso-local').value; g('#f-tre-data-w').hidden = !tre && !g('#f-tre-data').value; g('#f-tre-local-w').hidden = !tre && !g('#f-tre-local').value;
+      };
+      g('#f-aso').addEventListener('change', agendados); g('#f-tre').addEventListener('change', agendados); agendados();
       UI.sugestoes(g('#f-cargo'), () => Store.cargos().map(c => ({ valor: c.nome, sub: c.documentos.length + ' documentos' })), { vazio: 'Nenhum cargo cadastrado ainda.' });
       UI.sugestoes(g('#f-cnh'), () => ['Não tem', 'A', 'B', 'AB', 'C', 'D', 'E']);
       // ----- destino: distrito sugerido -----
@@ -1584,6 +1819,8 @@ Paginas.candidatos = {
       const b = e.target.closest('[data-hoje]'); if (!b) return;
       if (b.dataset.hoje === 'agenda') { semanaAg = null; return mudarVista('agenda'); }
       if (b.dataset.hoje === 'triagem') { seg = 'triagem'; pend = ''; return mudarVista('lista'); }
+      if (b.dataset.hoje === 'confirmar') return mensagemEmLote(amanhaSemConfirmar(base().filter(emAndamento)), 'lembrete');
+      if (b.dataset.hoje.startsWith('pend:')) { seg = 'documentos'; pend = b.dataset.hoje.slice(5); semana = 'todas'; return mudarVista('lista'); }
       seg = 'documentos'; pend = 'prontas'; mudarVista('lista');
     });
     function mudarVista(v) { vista = v; guardar('maparh:cand-vista', v); desenhar(); }

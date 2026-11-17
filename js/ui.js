@@ -102,7 +102,7 @@ const UI = (() => {
     return api;
   }
 
-  function confirmar(mensagem, { titulo = 'Confirmação', textoOk = 'Confirmar', perigo = false } = {}) {
+  function confirmar(mensagem, { titulo = 'Confirmação', textoOk = 'Confirmar', perigo = false, textoCancelar = 'Cancelar' } = {}) {
     return new Promise(resolve => {
       let respondido = false;
       modal({
@@ -111,7 +111,7 @@ const UI = (() => {
         largura: '440px',
         aoFechar: () => { if (!respondido) resolve(false); }, fecharAoClicarFora: true,
         botoes: [
-          { texto: 'Cancelar', classe: 'btn-secundario', acao: () => { respondido = true; resolve(false); } },
+          { texto: textoCancelar, classe: 'btn-secundario', acao: () => { respondido = true; resolve(false); } },
           { texto: textoOk, classe: perigo ? 'btn-perigo' : 'btn-primario', acao: () => { respondido = true; resolve(true); } }
         ]
       });
