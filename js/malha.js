@@ -6,6 +6,7 @@ const Malha = (() => {
   const URL_LISTA = uf => `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`;
   const NOME_DB = 'maparh-malha', LOJA = 'malhas';
   const memoria = new Map(); // uf -> Promise<{ uf, codigos, features }>
+  const prontas = new Map(); // uf -> dados já carregados (para consultas imediatas)
 
   // ---------- cache no IndexedDB (não ocupa o espaço limitado do localStorage) ----------
   function abrirDB() {
@@ -95,7 +96,9 @@ const Malha = (() => {
         const compactos = new Map(lista.map(([id, nome]) => [Store.normalizar(nome).replace(/\s+/g, ''), String(id)]));
         const features = new Map(geo.features.map(f => [String(f.properties && f.properties.codarea), f]));
         const nomes = new Map(lista.map(([id, nome]) => [String(id), nome]));
-        return { uf, codigos, compactos, nomes, features };
+        const d = { uf, codigos, compactos, nomes, features };
+        prontas.set(uf, d);
+        return d;
       })();
       p.catch(() => memoria.delete(uf)); // falhou (sem internet?): permite tentar de novo depois
       memoria.set(uf, p);
@@ -121,10 +124,20 @@ const Malha = (() => {
     }
     return dentro;
   }
+  // caixa (min/max) do município, calculada uma vez: descarta rápido quase todos antes do teste ponto-no-polígono
+  function caixa(f, poligonos) {
+    if (f._cx) return f._cx;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of poligonos) for (const pt of (p[0] || [])) { if (pt[0] < x0) x0 = pt[0]; if (pt[0] > x1) x1 = pt[0]; if (pt[1] < y0) y0 = pt[1]; if (pt[1] > y1) y1 = pt[1]; }
+    Object.defineProperty(f, '_cx', { value: [x0, y0, x1, y1], enumerable: false });
+    return f._cx;
+  }
   function pontoEmFeature(f, lng, lat) {
     const g = f && f.geometry;
     if (!g) return false;
     const poligonos = g.type === 'Polygon' ? [g.coordinates] : (g.type === 'MultiPolygon' ? g.coordinates : []);
+    const cx = caixa(f, poligonos);
+    if (lng < cx[0] || lng > cx[2] || lat < cx[1] || lat > cx[3]) return false;
     for (const p of poligonos) {
       if (!p.length || !dentroDoAnel(p[0], lng, lat)) continue;
       let buraco = false;
@@ -145,6 +158,16 @@ const Malha = (() => {
     return null;
   }
   function ufsCarregadas() { return [...memoria.keys()]; }
+  // Versão imediata (sem baixar nada): só olha as malhas que já estão na memória. Usada ao passar o mouse.
+  function municipioNoPontoCarregado(lat, lng, ufs) {
+    for (const uf of ufs) {
+      const d = prontas.get(uf);
+      if (!d) continue;
+      for (const [codigo, f] of d.features) if (pontoEmFeature(f, lng, lat)) return { uf, codigo, nome: d.nomes.get(codigo) || '', feature: f };
+    }
+    return null;
+  }
+  function malhaPronta(uf) { return prontas.get(uf) || null; }
 
   // Versões anteriores guardavam um arquivo por município e a lista completa (objetos) no localStorage.
   // Remove esses restos para liberar espaço; a malha atual fica no IndexedDB.
@@ -161,7 +184,7 @@ const Malha = (() => {
     } catch (e) { /* ignora */ }
   }
   async function limparCache() {
-    memoria.clear();
+    memoria.clear(); prontas.clear();
     await limparDB();
     limparCacheAntigo();
     try {
@@ -169,5 +192,5 @@ const Malha = (() => {
     } catch (e) { /* ignora */ }
   }
 
-  return { carregarUF, codigoDaCidade, featureDaCidade, municipioNoPonto, ufsCarregadas, limparCacheAntigo, limparCache };
+  return { carregarUF, codigoDaCidade, featureDaCidade, municipioNoPonto, municipioNoPontoCarregado, malhaPronta, ufsCarregadas, limparCacheAntigo, limparCache };
 })();

@@ -35,7 +35,8 @@ Paginas.mapa = {
           <select id="mapa-filtro-silos-mapa" class="sub" style="width:calc(100% - 18px);font-size:11px;padding:2px 4px" hidden>
             <option value="">Todos os mapas</option>
           </select>
-          <label><input type="checkbox" id="c-limites" checked> Limite do estado</label>
+          <label title="Contorno dos estados dos projetos"><input type="checkbox" id="c-limites" checked> Limite dos estados</label>
+          <label title="Contorno de todos os municípios da área que está na tela (aparece ao aproximar o zoom). Clique em qualquer cidade para abrir a ficha."><input type="checkbox" id="c-divisas" checked> Divisas dos municípios</label>
           <label id="c-sine-wrap" title="Agências do SINE dos estados em uso (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
           <div class="secao">Linhas: de onde vêm → onde trabalham</div>
           <select id="c-modo-linhas">
@@ -59,6 +60,7 @@ Paginas.mapa = {
         </div>
         <div class="card mapa-legenda nao-imprimir" id="legenda"></div>
         <div class="malha-status nao-imprimir" id="malha-status" hidden></div>
+        <div class="cidade-hover nao-imprimir" id="cidade-hover" hidden></div>
         <div class="mapa-kpis nao-imprimir" id="mapa-kpis"></div>
         <div class="card mapa-painel" id="painel" hidden></div>
       </div>`;
@@ -92,7 +94,11 @@ Paginas.mapa = {
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, opacity: 0.85, pane: 'tilePane' })
       ]),
       ruas: () => L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }),
-      satelite: () => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagens &copy; Esri, Maxar, Earthstar Geographics' })
+      // satélite + nomes das cidades e divisas por cima (sem isso não dá para saber onde se está clicando)
+      satelite: () => L.layerGroup([
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagens &copy; Esri, Maxar, Earthstar Geographics' }),
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, pane: 'tilePane' })
+      ])
     };
     let fundoAtual = null;
     function definirFundo(nome) {
@@ -101,7 +107,9 @@ Paginas.mapa = {
       fundoAtual = FUNDOS[nome]().addTo(mapa);
       localStorage.setItem('maparh:mapa-fundo', nome);
       el.querySelector('#c-fundo').value = nome;
+      if (typeof redesenharDivisas === 'function') redesenharDivisas();
     }
+    let redesenharDivisas = null;
     definirFundo(localStorage.getItem('maparh:mapa-fundo') || 'claro');
     el.querySelector('#c-fundo').addEventListener('change', e => definirFundo(e.target.value));
     mapa.zoomControl.setPosition('bottomright');
@@ -611,7 +619,7 @@ Paginas.mapa = {
     function renderSilos() {
       camadas.silos.clearLayers();
       const qtdEl = el.querySelector('#qtd-silos');
-      if (!el.querySelector('#c-silos').checked) { if (qtdEl) qtdEl.textContent = '0'; return; }
+      if (!el.querySelector('#c-silos').checked) { if (qtdEl) qtdEl.textContent = UI.fmtNum(App.silosFiltrados().length); return; }
       // com uma cidade selecionada ficam só as unidades que são dela (ou das cidades ligadas a ela)
       const siloEmFoco = s => { if (!foco) return true; const c = Store.cidadeDoSilo(s, s.uf || ''); return !!(c && foco.has(c.id)); };
       const mapaSel = el.querySelector('#mapa-filtro-silos-mapa').value || '';
@@ -712,7 +720,7 @@ Paginas.mapa = {
       }
       return geo;
     }
-    const projetosComDados = projetos.filter(p => regs.some(r => r.projetoId === p.id));
+    const projetosComDados = projetos.filter(p => p.ativo !== false || regs.some(r => r.projetoId === p.id));
     [...new Set(projetosComDados.flatMap(p => Store.ufsProjeto(p)))].forEach(async uf => {
       try {
         const geo = await carregarLimite(uf);
@@ -869,7 +877,14 @@ Paginas.mapa = {
     }
 
     // ---------- ficha da cidade: dados do IBGE, contratações, anotações do RH e divisa ----------
-    const ufsMalha = () => [...new Set([...Store.distritos().map(d => d.uf), ...projetos.map(p => p.uf), ...Malha.ufsCarregadas()].filter(Boolean))];
+    // Estados onde o ponto pode estar: os das cidades mais próximas (lista do IBGE). Vale para o Brasil inteiro,
+    // não só para os estados dos projetos — a malha do estado é baixada na hora, uma vez, e fica guardada.
+    function ufsDoPonto(lat, lng) {
+      const perto = [];
+      for (const c of Store.cidades()) { const d = (c.lat - lat) ** 2 + (c.lng - lng) ** 2; if (d < 4) perto.push([d, c.uf]); }
+      perto.sort((a, b) => a[0] - b[0]);
+      return [...new Set(perto.slice(0, 10).map(x => x[1]))].slice(0, 4);
+    }
     async function destacarMunicipio(cid, feature) {
       camadaDestaque.clearLayers();
       if (!feature) {
@@ -1139,8 +1154,8 @@ Paginas.mapa = {
       if (l) { abrirPainelFluxo(l._fluxo, l); return; }
       fecharPainel();
       if (identificando) return;
-      const ufs = ufsMalha();
-      if (!ufs.length) return;
+      const ufs = ufsDoPonto(e.latlng.lat, e.latlng.lng);
+      if (!ufs.length) return; // mar ou fora do Brasil
       identificando = true;
       definirStatus('Identificando o município…');
       try {
@@ -1156,6 +1171,55 @@ Paginas.mapa = {
       } catch (err) { definirStatus(''); console.warn(err); }
       finally { identificando = false; }
     });
+
+    // ---------- divisas de todos os municípios da área visível + nome da cidade sob o mouse ----------
+    mapa.createPane('divisas').style.zIndex = 345;
+    mapa.getPane('divisas').style.pointerEvents = 'none';
+    const rendDivisas = L.canvas({ pane: 'divisas' });
+    const camadaDivisas = L.layerGroup();
+    const divisasDesenhadas = new Set();
+    const ZOOM_MIN_DIVISAS = 7;
+    function ufsNaTela() {
+      const b = mapa.getBounds().pad(0.05), cont = {};
+      for (const c of Store.cidades()) if (b.contains([c.lat, c.lng])) cont[c.uf] = (cont[c.uf] || 0) + 1;
+      return Object.keys(cont).sort((a, b2) => cont[b2] - cont[a]).slice(0, 6);
+    }
+    async function atualizarDivisas() {
+      const ligada = el.querySelector('#c-divisas').checked && mapa.getZoom() >= ZOOM_MIN_DIVISAS;
+      if (!ligada) { if (mapa.hasLayer(camadaDivisas)) mapa.removeLayer(camadaDivisas); return; }
+      if (!mapa.hasLayer(camadaDivisas)) camadaDivisas.addTo(mapa);
+      const satelite = el.querySelector('#c-fundo').value === 'satelite';
+      for (const uf of ufsNaTela()) {
+        if (divisasDesenhadas.has(uf)) continue;
+        divisasDesenhadas.add(uf);
+        try {
+          const d = await Malha.carregarUF(uf);
+          if (!ativo) return;
+          camadaDivisas.addLayer(L.geoJSON({ type: 'FeatureCollection', features: [...d.features.values()] }, { renderer: rendDivisas, pane: 'divisas', interactive: false,
+            style: { color: satelite ? '#ffffff' : '#475569', weight: satelite ? 0.8 : 0.6, opacity: satelite ? 0.6 : 0.5, fill: false } }));
+        } catch (e) { divisasDesenhadas.delete(uf); console.warn('Divisas indisponíveis', uf, e); }
+      }
+    }
+    redesenharDivisas = () => { camadaDivisas.clearLayers(); divisasDesenhadas.clear(); atualizarDivisas(); };
+    mapa.on('moveend', atualizarDivisas);
+    el.querySelector('#c-divisas').addEventListener('change', e => { atualizarDivisas(); if (e.target.checked && mapa.getZoom() < ZOOM_MIN_DIVISAS) UI.toast('Aproxime o zoom para ver as divisas dos municípios.', 'info', 3500); });
+    atualizarDivisas();
+    // nome da cidade sob o mouse (só com a malha já carregada: não baixa nada ao mover)
+    const hoverEl = el.querySelector('#cidade-hover');
+    let ultimoHover = 0, hoverCodigo = '';
+    mapa.on('mousemove', e => {
+      const agora = Date.now(); if (agora - ultimoHover < 90) return; ultimoHover = agora;
+      if (mapa.getZoom() < 6) { hoverEl.hidden = true; hoverCodigo = ''; return; }
+      const m = Malha.municipioNoPontoCarregado(e.latlng.lat, e.latlng.lng, ufsDoPonto(e.latlng.lat, e.latlng.lng));
+      if (!m) { hoverEl.hidden = true; hoverCodigo = ''; return; }
+      if (m.codigo === hoverCodigo) return;
+      hoverCodigo = m.codigo;
+      const c = Store.resolverCidade(m.nome, m.uf);
+      const reg = c ? Store.distritoDaCidade(c.id) : null;
+      hoverEl.innerHTML = `<b>${UI.esc(m.nome)}/${m.uf}</b>${reg ? ' · ' + UI.esc(reg.micro.nome) : ''} <span>clique para abrir a ficha</span>`;
+      hoverEl.hidden = false;
+    });
+    mapa.on('mouseout', () => { hoverEl.hidden = true; hoverCodigo = ''; });
 
     // ---------- mapa de calor ----------
     function montarCalor() {

@@ -61,7 +61,7 @@ Paginas.distritos = {
       const totalMicros = lista.reduce((n, d) => n + (d.micros || []).length, 0);
       const totalCidades = lista.reduce((n, d) => n + Store.cidadesDoDistrito(d).length, 0);
       el.querySelector('#dist-resumo').innerHTML = lista.length
-        ? `<span><b>${lista.length}</b> distrito(s)</span><span><b>${totalMicros}</b> microrregião(ões)</span><span><b>${UI.fmtNum(totalCidades)}</b> cidade(s) vinculada(s)</span>`
+        ? `<span>${pl(lista.length, 'distrito', 'distritos')}</span><span>${pl(totalMicros, 'microrregião', 'microrregiões')}</span><span>${pl(totalCidades, 'cidade vinculada', 'cidades vinculadas')}</span>`
         : '';
       if (!lista.length) {
         cont.innerHTML = `
@@ -94,31 +94,29 @@ Paginas.distritos = {
       return achadas.length ? { distrito: d, micros: achadas } : null;
     }
 
+    const pl = (n, um, varios) => `<b>${UI.fmtNum(n)}</b> ${n === 1 ? um : varios}`;
     function renderDistrito(d, micros, filtrado) {
       const r = Store.resumoDistrito(d, regsAtuais);
       const recolhido = recolhidos.has(d.id) && !filtrado;
+      const numeros = [pl(r.micros, 'microrregião', 'microrregiões'), pl(r.cidades, 'cidade', 'cidades')];
+      if (r.silos) numeros.push(pl(r.silos, 'unidade PDR', 'unidades PDR'));
+      if (r.contratacoes) numeros.push(pl(r.contratacoes, 'contratação', 'contratações'));
       return `
         <div class="card dist-card ${recolhido ? 'recolhido' : ''}" data-id="${d.id}" style="--cor:${UI.esc(d.cor || '#2563eb')}">
           <div class="dist-cab">
             <button class="btn-icone dist-toggle" title="${recolhido ? 'Mostrar microrregiões' : 'Recolher'}">${recolhido ? '&#9656;' : '&#9662;'}</button>
-            <span class="dist-cor"></span>
             <div class="dist-titulo">
+              <span class="dist-sobre">Distrito${d.uf ? ' · ' + UI.esc(Store.UFS[d.uf] || d.uf) : ''}${d.uf ? '' : ' · <span class="status-erro" title="Defina o estado em Editar">sem estado definido</span>'}</span>
               <h3>${UI.esc(d.nome)}</h3>
-              ${d.uf ? `<span class="badge badge-cinza" title="${UI.esc(Store.UFS[d.uf] || d.uf)}">${d.uf}</span>` : '<span class="badge badge-amarelo" title="Defina o estado em Editar">sem UF</span>'}
               ${d.descricao ? `<span class="muted small">${UI.esc(d.descricao)}</span>` : ''}
             </div>
-            <div class="dist-numeros">
-              <span><b>${r.micros}</b> microrregião(ões)</span>
-              <span><b>${r.cidades}</b> cidade(s)</span>
-              ${r.silos ? `<span title="Unidades dos mapas PDR situadas nas cidades deste distrito"><b>${r.silos}</b> silo(s) PDR</span>` : ''}
-              ${r.contratacoes ? `<span title="Contratações com atuação ou base nas cidades deste distrito"><b>${r.contratacoes}</b> contratação(ões)</span>` : ''}
-            </div>
+            <div class="dist-numeros">${numeros.map(n => `<span>${n}</span>`).join('')}</div>
             <div class="dist-acoes nao-imprimir">
-              <button class="btn btn-pequeno acao-mapa" title="Ver este distrito no mapa">${icone('mapa', 14)} Mapa</button>
+              <button class="btn btn-pequeno acao-mapa" title="Ver este distrito no mapa">Ver no mapa</button>
               ${podeEditar ? `
-              <button class="btn btn-primario btn-pequeno acao-nova-micro">+ Microrregião</button>
+              <button class="btn btn-pequeno acao-nova-micro">+ Microrregião</button>
               <button class="btn btn-pequeno acao-editar">Editar</button>
-              <button class="btn-icone perigo acao-excluir" title="Excluir distrito">&#128465;</button>` : ''}
+              <button class="btn-link perigo acao-excluir" title="Excluir distrito">Excluir</button>` : ''}
             </div>
           </div>
           <div class="dist-micros">
@@ -128,28 +126,30 @@ Paginas.distritos = {
         </div>`;
     }
 
+    // Uma linha por microrregião: à esquerda a cidade polo (o nome que manda), à direita as cidades atendidas em texto corrido
     function renderMicro(d, m) {
       const polo = Store.cidade(m.poloCidadeId);
       const outras = (m.cidadeIds || []).map(id => Store.cidade(id)).filter(c => c && (!polo || c.id !== polo.id))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const mostrar = expandidas.has(m.id) ? outras : outras.slice(0, LIMITE_CHIPS);
       const sufixo = c => c.uf !== d.uf ? '/' + c.uf : '';
-      const chips = (polo ? `<span class="chip-cidade chip-polo" style="color:${Store.corTexto(m.cor || d.cor)}" title="Cidade polo (sede)">&#128081; ${UI.esc(polo.nome)}${sufixo(polo)}</span>` : '') +
-        mostrar.map(c => `<span class="chip-cidade">${UI.esc(c.nome)}${sufixo(c)}</span>`).join('') +
-        (outras.length > mostrar.length ? `<button type="button" class="btn-link chip-mais acao-mais">+${outras.length - mostrar.length} cidades</button>` : '');
+      const nomeDiferente = polo && Store.normalizar(m.nome) !== Store.normalizar(polo.nome);
+      const total = (m.cidadeIds || []).length;
       return `
         <div class="micro-linha" data-micro="${m.id}" style="--cor:${UI.esc(m.cor || d.cor || '#2563eb')}">
-          <span class="micro-cor"></span>
-          <div class="micro-corpo">
-            <div class="micro-cab">
-              <b>${UI.esc(m.nome)}</b>
-              <span class="muted small">${(m.cidadeIds || []).length} cidade(s)${polo ? '' : ' · <span class="status-erro">sem cidade polo</span>'}</span>
-              <span class="micro-acoes nao-imprimir">
-                <button class="btn-icone acao-mapa-micro" title="Ver esta microrregião no mapa">&#128506;</button>${podeEditar ? `
-                <button class="btn-icone acao-editar-micro" title="Editar microrregião e cidades">&#9998;</button>
-                <button class="btn-icone perigo acao-excluir-micro" title="Excluir microrregião">&#128465;</button>` : ''}</span>
-            </div>
-            <div class="chips-wrap">${chips || '<span class="muted small">Nenhuma cidade.</span>'}</div>
+          <div class="micro-polo">
+            <span class="micro-rotulo">${polo ? 'Cidade polo' : 'Microrregião'}</span>
+            <div class="micro-polo-nome"><i class="micro-cor"></i>${polo ? UI.esc(polo.nome) + sufixo(polo) : UI.esc(m.nome)}</div>
+            <span class="micro-sub">${nomeDiferente ? 'microrregião ' + UI.esc(m.nome) + ' · ' : ''}${total} ${total === 1 ? 'cidade' : 'cidades'}${polo ? '' : ' · <span class="status-erro">sem cidade polo</span>'}</span>
+          </div>
+          <div class="micro-cidades">
+            <span class="micro-rotulo">Cidades atendidas${outras.length ? ' (' + outras.length + ')' : ''}</span>
+            <p>${mostrar.map(c => `<span>${UI.esc(c.nome)}${sufixo(c)}</span>`).join('') || '<em>Só a cidade polo.</em>'}${outras.length > mostrar.length ? ` <button type="button" class="btn-link acao-mais">e mais ${outras.length - mostrar.length}</button>` : ''}</p>
+          </div>
+          <div class="micro-acoes nao-imprimir">
+            <button class="btn-link acao-mapa-micro" title="Ver esta microrregião no mapa">Mapa</button>${podeEditar ? `
+            <button class="btn-link acao-editar-micro" title="Editar microrregião e cidades">Editar</button>
+            <button class="btn-link perigo acao-excluir-micro" title="Excluir microrregião">Excluir</button>` : ''}
           </div>
         </div>`;
     }
@@ -402,7 +402,7 @@ Paginas.distritos = {
         const polo = poloId ? Store.cidade(poloId) : null;
         if (polo) {
           const conf = Store.conflitosCidades([polo.id], m ? m.id : null)[0];
-          info.innerHTML = `&#128081; Polo: <b>${UI.esc(polo.nome)}/${polo.uf}</b> — dá nome à microrregião e recebe destaque no mapa.` +
+          info.innerHTML = `Polo: <b>${UI.esc(polo.nome)}/${polo.uf}</b> — dá nome à microrregião e recebe destaque no mapa.` +
             (conf ? ` <span class="status-erro">Esta cidade está em ${UI.esc(conf.distrito.nome)} · ${UI.esc(conf.micro.nome)}; marque "mover" abaixo.</span>` : '');
         } else if (textoNaoAchado) {
           const ufsOnde = ondeExiste(textoNaoAchado);
@@ -416,7 +416,7 @@ Paginas.distritos = {
         if (!selecionadas.length) { wrap.innerHTML = '<span class="muted small">Nenhuma cidade ainda. Escolha a cidade polo no passo 1 ou cole a lista.</span>'; return; }
         const polo = selecionadas.find(c => c.id === poloId);
         const outras = selecionadas.filter(c => c.id !== poloId).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-        wrap.innerHTML = (polo ? `<span class="chip-cidade chip-polo" style="--cor:${UI.esc(corInp.value)};color:${Store.corTexto(corInp.value)}" title="Cidade polo">&#128081; ${UI.esc(polo.nome)}/${polo.uf}</span>` : '') +
+        wrap.innerHTML = (polo ? `<span class="chip-cidade chip-polo" style="--cor:${UI.esc(corInp.value)};color:${Store.corTexto(corInp.value)}" title="Cidade polo">Polo · ${UI.esc(polo.nome)}/${polo.uf}</span>` : '') +
           outras.map(c => `<span class="chip-cidade chip-editavel" data-id="${c.id}">${UI.esc(c.nome)}/${c.uf}
             <button type="button" class="chip-btn chip-polo-btn" title="Tornar cidade polo">&#9733;</button><button type="button" class="chip-btn chip-x" title="Remover da microrregião">&times;</button></span>`).join('');
         wrap.querySelectorAll('.chip-polo-btn').forEach(b => b.addEventListener('click', () => { const c = Store.cidade(b.closest('.chip-cidade').dataset.id); if (c) definirPolo(c); }));
