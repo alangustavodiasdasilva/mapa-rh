@@ -150,6 +150,7 @@ const Nuvem = (() => {
     if (!navigator.onLine) { mudarEstado('offline'); return; }
     enviando = true; mudarEstado('enviando');
     try {
+      await liberandoProjeto;
       const atual = itensDe(Store.dados);
       const lote = [...fila].slice(0, 400).map(([chave, op]) => {
         const [colecao, id] = partes(chave);
@@ -225,7 +226,16 @@ const Nuvem = (() => {
     if (e2) throw new Error(e2.message);
     Store.auditar('usuario.senha', 'Alterou a própria senha', u);
   }
-  function incluirProjeto(projetoId) { funcao({ acao: 'incluirProjeto', projetoId }).catch(e => console.warn(e)); }
+  // Gestor restrito que cria um projeto: o banco só aceita o projeto novo depois de ele entrar na lista do gestor,
+  // por isso o envio espera esta chamada terminar.
+  let liberandoProjeto = Promise.resolve();
+  function incluirProjeto(projetoId) { liberandoProjeto = funcao({ acao: 'incluirProjeto', projetoId }).catch(e => console.warn(e)); }
+  // Registro de alterações gravado pelo próprio banco (só administrador lê)
+  async function auditoriaBanco(limite = 300) {
+    const { data, error } = await sb.from('maparh_auditoria').select('quando,login,operacao,tabela,colecao,item_id,antes,depois').order('quando', { ascending: false }).limit(limite);
+    if (error) throw new Error(error.message);
+    return data;
+  }
   async function limparAuditoria() {
     for (const k of [...espelho.keys()]) if (k.startsWith('auditoria/')) espelho.delete(k);
     for (const k of [...fila.keys()]) if (k.startsWith('auditoria/')) fila.delete(k);
@@ -349,5 +359,5 @@ const Nuvem = (() => {
   if (ativa) Store.definirGanchoSalvar(mudou);
 
   return { ativa, iniciar, entrar, sair, temAdmin, criarPrimeiroAdmin, salvarUsuario, excluirUsuario, alterarSenha, incluirProjeto, limparAuditoria,
-    carregarMembros, puxar, enviarAgora, aoReceber, textoEstado, get pendentes() { return fila.size; } };
+    carregarMembros, puxar, enviarAgora, aoReceber, auditoriaBanco, textoEstado, get pendentes() { return fila.size; } };
 })();

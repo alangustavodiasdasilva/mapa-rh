@@ -102,8 +102,14 @@ Paginas.auditoria = {
       'distrito.criar': 'Distrito criado', 'distrito.editar': 'Distrito editado', 'distrito.excluir': 'Distrito excluído', 'distrito.importar': 'Distritos importados',
       'micro.criar': 'Microrregião criada', 'micro.editar': 'Microrregião editada', 'micro.excluir': 'Microrregião excluída',
       'mapaPdr.adicionar': 'Mapa PDR adicionado', 'mapaPdr.excluir': 'Mapa PDR excluído', 'cidade.info': 'Anotações da cidade' };
+    const nuvem = App.nuvem();
     el.innerHTML = `
-      <div class="card sem-padding">
+      ${nuvem ? `<div class="abas mb"><button class="aba ativa" data-aud="acoes">Ações no sistema</button><button class="aba" data-aud="banco">Alterações nos dados</button></div>
+      <div class="card sem-padding" id="aud-banco" hidden>
+        <div style="padding:12px 16px;border-bottom:1px solid var(--borda)" class="muted small">Registro feito pelo próprio banco de dados a cada inclusão, alteração ou exclusão. Não depende do navegador de quem alterou e não pode ser apagado pela tela. Mostra as 300 alterações mais recentes.</div>
+        <div id="aud-banco-lista"><div class="vazio">Carregando…</div></div>
+      </div>` : ''}
+      <div class="card sem-padding" id="aud-acoes">
         <div class="linha entre" style="padding:12px 16px;border-bottom:1px solid var(--borda)">
           <div class="linha"><input class="busca" id="aud-busca" placeholder="Filtrar por usuário, ação ou detalhe…"></div>
           <div class="linha"><button class="btn btn-pequeno" id="aud-csv">Exportar CSV</button><button class="btn btn-pequeno btn-perigo" id="aud-limpar">Limpar histórico</button></div>
@@ -127,6 +133,46 @@ Paginas.auditoria = {
         linhas: itens.slice(0, 500)
       }) + (itens.length > 500 ? `<div class="rodape-tabela">Mostrando os 500 eventos mais recentes de ${UI.fmtNum(itens.length)}.</div>` : '');
     }
+    // ----- alterações nos dados (registro do banco) -----
+    const TIPOS = { projetos: 'Projeto', registros: 'Contratação', vagas: 'Vaga', candidatos: 'Candidato', distritos: 'Distrito', mapasPdr: 'Mapa de unidades',
+      cidades: 'Cidade', infoCidades: 'Anotação de cidade', meta: 'Configuração', usuarios: 'Usuário' };
+    const VERBO = { criou: 'criou', alterou: 'alterou', removeu: 'excluiu', apagou: 'apagou' };
+    function nomeDoItem(a) {
+      const o = a.depois || a.antes || {};
+      if (a.colecao === 'registros') { const c = Store.cidade(o.cidadeId), at = Store.cidade(o.atuacao); return `${o.tipo || ''} ${c ? c.nome + '/' + c.uf : ''}${at ? ' → ' + at.nome : ''}`.trim() || a.item_id; }
+      if (a.colecao === 'infoCidades') { const c = Store.cidade(a.item_id); return c ? c.nome + '/' + c.uf : a.item_id; }
+      return o.nome || o.titulo || o.login || a.item_id;
+    }
+    function camposAlterados(a) {
+      if (a.operacao !== 'alterou' || !a.antes || !a.depois) return '';
+      const ignorar = new Set(['atualizadoEm']);
+      const chaves = [...new Set([...Object.keys(a.antes), ...Object.keys(a.depois)])].filter(k => !ignorar.has(k) && JSON.stringify(a.antes[k]) !== JSON.stringify(a.depois[k]));
+      const curto = v => { const s = v == null ? '—' : typeof v === 'object' ? '(lista)' : String(v); return s.length > 40 ? s.slice(0, 40) + '…' : s; };
+      return chaves.slice(0, 5).map(k => `${k}: ${curto(a.antes[k])} → ${curto(a.depois[k])}`).join(' · ') + (chaves.length > 5 ? ` · e mais ${chaves.length - 5}` : '');
+    }
+    async function carregarBanco() {
+      const alvo = el.querySelector('#aud-banco-lista');
+      try {
+        const linhas = await Nuvem.auditoriaBanco(300);
+        alvo.innerHTML = UI.tabela({
+          vazio: 'Nenhuma alteração registrada ainda.',
+          colunas: [
+            { titulo: 'Quando', classe: 'nowrap', render: a => UI.fmtDataHora(a.quando) },
+            { titulo: 'Usuário', render: a => UI.esc(a.login || '—') },
+            { titulo: 'O que fez', render: a => `${UI.esc(VERBO[a.operacao] || a.operacao)} ${UI.esc((TIPOS[a.colecao] || a.colecao || '').toLowerCase())}` },
+            { titulo: 'Item', render: a => UI.esc(nomeDoItem(a)) },
+            { titulo: 'O que mudou', render: a => `<span class="muted small">${UI.esc(camposAlterados(a))}</span>` }
+          ],
+          linhas
+        });
+      } catch (e) { alvo.innerHTML = `<div class="vazio erro">Não foi possível carregar: ${UI.esc(e.message)}</div>`; }
+    }
+    el.querySelectorAll('[data-aud]').forEach(b => b.addEventListener('click', () => {
+      el.querySelectorAll('[data-aud]').forEach(x => x.classList.toggle('ativa', x === b));
+      const banco = b.dataset.aud === 'banco';
+      el.querySelector('#aud-banco').hidden = !banco; el.querySelector('#aud-acoes').hidden = banco;
+      if (banco) carregarBanco();
+    }));
     el.querySelector('#aud-busca').addEventListener('input', UI.debounce(e => { filtro = e.target.value; renderLista(); }, 150));
     el.querySelector('#aud-csv').addEventListener('click', () => UI.baixarCSV('auditoria.csv', [['QUANDO', 'USUARIO', 'ACAO', 'DETALHES']].concat(lista().map(a => [UI.fmtDataHora(a.quando), a.usuario, NOMES[a.acao] || a.acao, a.detalhes]))));
     el.querySelector('#aud-limpar').addEventListener('click', async () => {
