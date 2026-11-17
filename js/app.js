@@ -31,7 +31,7 @@ const App = {
   paginaAtual: null,
   destruirAtual: null,
   // O menu segue a ordem do trabalho do RH: abrir a vaga → selecionar → contratar → acompanhar
-  GRUPOS: [{ id: 'inicio', rotulo: '' }, { id: 'recrutamento', rotulo: 'Recrutamento' }, { id: 'acompanhamento', rotulo: 'Contratações' }, { id: 'cadastros', rotulo: 'Cadastros' }, { id: 'sistema', rotulo: 'Sistema' }],
+  GRUPOS: [{ id: 'inicio', rotulo: '' }, { id: 'recrutamento', rotulo: 'Recrutamento' }, { id: 'acompanhamento', rotulo: 'Resultados' }, { id: 'cadastros', rotulo: 'Cadastros' }, { id: 'sistema', rotulo: 'Sistema' }],
   MENU: [
     { id: 'dashboard', rotulo: 'Início', grupo: 'inicio' },
     { id: 'vagas', rotulo: 'Vagas', grupo: 'recrutamento' },

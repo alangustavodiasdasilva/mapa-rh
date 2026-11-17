@@ -516,3 +516,7 @@ button.cd-wa { border: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; c
 .fi-conflito { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
 .fi-conflito span { flex: 1 1 260px; }
 .fi-modal label[hidden] { display: none; }
+
+/* Admitidos no Quadro: só os recentes, com atalho para Contratações */
+.cd-adm-sub { font-weight: 400; text-transform: none; letter-spacing: 0; }
+.cd-adm-rodape { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--muted); padding: 10px 4px 4px; border-top: 1px dashed var(--borda); margin-top: 6px; }

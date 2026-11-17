@@ -498,7 +498,7 @@ Paginas.candidatos = {
 
     // ---------- QUADRO: cartões por etapa ----------
     const DICAS = { triagem: 'Candidaturas recebidas. Ligue, confira o perfil e decida quem segue.', entrevista: 'Agendados ou entrevistados. Aprovou? Avance para a documentação.',
-      documentos: 'Aprovados: documentos do cargo, ASO, treinamento e chegada.', admitido: 'Contratados. Já estão no mapa e nos relatórios.' };
+      documentos: 'Aprovados: documentos do cargo, ASO, treinamento e chegada.', admitido: 'Contratados nos últimos 7 dias. A lista completa fica em Contratações.' };
     // Cartão: nome; tipo · cargo · km; rota numa linha; na Documentação a barra dos documentos e os três selos;
     // embaixo o RH (iniciais), UMA ação principal com texto e o menu ⋯ com o resto. Borda esquerda: verde = pronta, vermelha = barrada.
     const iniciais = nome => String(nome || '').trim().split(/\s+/).filter(Boolean).map((x, i, a) => i === 0 || i === a.length - 1 ? x[0] : '').join('').toUpperCase().slice(0, 2);
@@ -592,18 +592,27 @@ Paginas.candidatos = {
       col.documentos.sort((x, y) => pronta(y) - pronta(x) || porNome(x, y));
       // triagem e entrevista: a vaga mais urgente primeiro (atrasada, prioridade, data em que precisa)
       for (const k of ['triagem', 'entrevista']) col[k].sort((x, y) => porUrgencia(x, y) || porNome(x, y));
-      col.admitido.sort(porNome);
-      const fora = b.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu').sort(porNome);
+      // Admitidos: no Quadro só quem entrou nos últimos 7 dias (a lista completa fica em Contratações; com a safra seriam centenas)
+      const DIAS_ADM = 7, desdeAdm = (() => { const d = new Date(RH.hoje() + 'T12:00:00'); d.setDate(d.getDate() - DIAS_ADM); return d.toISOString().slice(0, 10); })();
+      const totalAdm = col.admitido.length;
+      col.admitido = col.admitido.filter(p => String(p.admitido_em || '') >= desdeAdm)
+        .sort((x, y) => String(y.admitido_em || '').localeCompare(String(x.admitido_em || '')) || porNome(x, y));
+      const admNaColuna = col.admitido.slice(0, 6);
+      // Não seguiram: os mais recentes primeiro, 30 no Quadro (o resto na Lista)
+      const fora = b.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu').sort((x, y) => String(y.etapa_em || '').localeCompare(String(x.etapa_em || '')) || porNome(x, y));
       const rot = { ...ETAPAS, admitido: 'Admitidos' };
       if (!colMob || !col[colMob]) colMob = ['triagem', 'entrevista', 'documentos', 'admitido'].find(k => col[k].length) || 'triagem';
-      q('#cd-corpo').innerHTML = `<div class="cd-col-sel">${['triagem', 'entrevista', 'documentos', 'admitido'].map(k => `<button type="button" data-col="${k}" class="${k === colMob ? 'ativa' : ''}">${rot[k]} <b>${col[k].length}</b></button>`).join('')}</div>
+      q('#cd-corpo').innerHTML = `<div class="cd-col-sel">${['triagem', 'entrevista', 'documentos', 'admitido'].map(k => `<button type="button" data-col="${k}" class="${k === colMob ? 'ativa' : ''}">${rot[k]} <b>${k === 'admitido' ? totalAdm : col[k].length}</b></button>`).join('')}</div>
         <div class="cd-quadro" data-col="${colMob}">${['triagem', 'entrevista', 'documentos', 'admitido'].map((k, i) => `<div class="coluna cd-coluna" data-etapa="${k}">
-          <div class="coluna-cab" title="${UI.esc(DICAS[k])}"><span class="passo-num">${i + 1}</span> ${rot[k]}${k === 'documentos' && col.documentos.some(pronta) ? ` <button type="button" class="cd-prontos" data-ver-prontos title="Ver na Lista quem já pode ser admitido">${col.documentos.filter(pronta).length} pronto${col.documentos.filter(pronta).length > 1 ? 's' : ''} para admitir</button>` : ''} <span class="aba-num">${col[k].length}</span></div>
-          <div class="cd-coluna-lista">${col[k].slice(0, verMais[k] || 30).map(cartao).join('') || `<div class="coluna-vazia"><b>${busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`}
-            ${col[k].length > (verMais[k] || 30) ? `<button type="button" class="cd-ver-mais" data-ver-mais="${k}">Mostrar mais ${Math.min(30, col[k].length - (verMais[k] || 30))} de ${col[k].length - (verMais[k] || 30)} restantes</button>` : ''}</div>
+          <div class="coluna-cab" title="${UI.esc(DICAS[k])}"><span class="passo-num">${i + 1}</span> ${rot[k]}${k === 'documentos' && col.documentos.some(pronta) ? ` <button type="button" class="cd-prontos" data-ver-prontos title="Ver na Lista quem já pode ser admitido">${col.documentos.filter(pronta).length} pronto${col.documentos.filter(pronta).length > 1 ? 's' : ''} para admitir</button>` : ''}${k === 'admitido' ? ` <span class="muted small cd-adm-sub">últimos ${DIAS_ADM} dias</span>` : ''} <span class="aba-num" ${k === 'admitido' ? 'title="Total de admitidos neste filtro"' : ''}>${k === 'admitido' ? totalAdm : col[k].length}</span></div>
+          <div class="cd-coluna-lista">${k === 'admitido'
+            ? (admNaColuna.map(cartao).join('') || `<div class="coluna-vazia"><b>${totalAdm ? `Ninguém admitido nos últimos ${DIAS_ADM} dias` : busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
+              + (totalAdm ? `<div class="cd-adm-rodape">${col.admitido.length > admNaColuna.length ? `+${col.admitido.length - admNaColuna.length} desta semana · ` : ''}${totalAdm === 1 ? '1 admitido' : totalAdm + ' admitidos'} no total<button type="button" class="btn btn-pequeno" data-ir-contratacoes>Ver todos em Contratações →</button></div>` : '')
+            : (col[k].slice(0, verMais[k] || 30).map(cartao).join('') || `<div class="coluna-vazia"><b>${busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
+              + (col[k].length > (verMais[k] || 30) ? `<button type="button" class="cd-ver-mais" data-ver-mais="${k}">Mostrar mais ${Math.min(30, col[k].length - (verMais[k] || 30))} de ${col[k].length - (verMais[k] || 30)} restantes</button>` : '')}</div>
         </div>`).join('')}</div>
         ${podeEditar ? '<div class="cd-solta-fora" data-solta="fora">Solte aqui quem <b>não segue</b> no processo (reprovado ou desistiu)</div>' : ''}
-        ${fora.length ? `<details class="cd-fora"><summary>Não seguiram no processo (${fora.length})</summary><div class="kanban kanban-reprovados">${fora.map(cartao).join('')}</div></details>` : ''}`;
+        ${fora.length ? `<details class="cd-fora"><summary>Não seguiram no processo (${fora.length})</summary><div class="kanban kanban-reprovados">${fora.slice(0, 30).map(cartao).join('')}</div>${fora.length > 30 ? `<button type="button" class="cd-ver-mais" data-seg="fora" data-ir-lista>Ver todos os ${fora.length} na Lista</button>` : ''}</details>` : ''}`;
     }
 
     // ---------- LISTA: conferência de uma etapa por vez ----------
@@ -1128,6 +1137,8 @@ Paginas.candidatos = {
       if (e.target.closest('[data-recarregar]')) { q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; return carregar(); }
       if (e.target.closest('[data-limpar]')) { vagaId = ''; distritoId = ''; analista = ''; busca = ''; pend = ''; q('#cd-busca').value = ''; guardar('maparh:cand-vaga', ''); return desenhar(); }
       if (e.target.closest('[data-ver-prontos]')) { e.stopPropagation(); seg = 'documentos'; pend = 'prontas'; return mudarVista('lista'); }
+      if (e.target.closest('[data-ir-contratacoes]')) { App.filtros.projetoId = projetoId; try { localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros)); } catch (er) { /* ok */ } return App.ir('cadastro'); }
+      if (e.target.closest('[data-ir-lista]')) { seg = 'fora'; pend = ''; return mudarVista('lista'); }
       const vm = e.target.closest('[data-ver-mais]'); if (vm) { const k = vm.dataset.verMais, passo = k === 'lista' ? 50 : 30; verMais[k] = (verMais[k] || passo) + passo; return desenhar(); }
       const sg = e.target.closest('[data-seg]'); if (sg) { seg = sg.dataset.seg; pend = ''; marcados.clear(); verMais.lista = 50; return desenhar(); }
       const pn = e.target.closest('[data-pend]'); if (pn) { pend = pn.dataset.pend; marcados.clear(); return desenhar(); }
