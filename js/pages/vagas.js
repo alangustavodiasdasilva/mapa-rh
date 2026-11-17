@@ -181,6 +181,11 @@ Paginas.vagas = {
       if (v.cidade && Store.BASES_SINE.includes(v.cidade.uf)) await Store.carregarBaseSine(v.cidade.uf);
       const texto = Store.textoAnuncio(v);
       const c = v.cidade;
+      // Estado sem base embutida e cidade sem agência: procura na internet aqui mesmo (antes mandava abrir o mapa)
+      if (c && !Store.BASES_SINE.includes(c.uf) && !Store.sineDaCidade(c).length && !Store.buscaSineRecente(c.id)) {
+        UI.toast(`Procurando a agência do SINE de ${c.nome} na internet…`, 'info', 4000);
+        try { await Geo.buscarSineOnline(c); } catch (e) { console.warn('Busca do SINE falhou', e); }
+      }
       const sines = c ? Store.sineDaCidade(c) : [];
       const prox = !sines.length && c ? Store.sineMaisProximo(c) : null;
       const info = c ? Store.infoCidade(c.id) : null;
@@ -201,7 +206,7 @@ Paginas.vagas = {
             extra = `<div class="small muted" style="margin-top:4px">Agência ${UI.esc(a.nome)}${prox ? ` (a ${UI.fmtKm(prox.distancia)}, a mais próxima)` : ''}${tel ? ' · ' + UI.esc(tel) : ''}${a.email ? ` · <a href="mailto:${UI.esc(a.email)}?subject=${enc('Vaga: ' + v.titulo)}&body=${enc(texto)}">enviar por e-mail</a>` : ''}</div>`;
           }
           const portal = c ? Store.portalSine(c.uf) : null;
-          if (!a && c) extra = `<div class="small muted" style="margin-top:4px">Sem agência na base para ${UI.esc(c.nome)}: abra a ficha da cidade no mapa (botão Mapa) — o sistema busca a agência na internet e salva.</div>`;
+          if (!a && c) extra = `<div class="small muted" style="margin-top:4px">Não achei agência do SINE para ${UI.esc(c.nome)} nem na base nem na internet. Use o portal do estado ao lado ou anote o contato na ficha da cidade (botão Mapa).</div>`;
           return abrir(k.url, 'Abrir Emprega Brasil') + (portal ? abrir(portal.url, portal.nome) : '') + extra;
         }
         if (k.id === 'cartaz') return `<button class="btn btn-pequeno" data-imprimir>Imprimir cartaz</button>`;

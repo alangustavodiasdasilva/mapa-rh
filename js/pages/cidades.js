@@ -9,7 +9,9 @@ Paginas.cidades = {
       <div class="grade grade-2 mb">
         <div class="card">
           <h2>Lista completa de municípios (IBGE)</h2>
-          <p class="muted small">O sistema já traz ${UI.fmtNum((window.CIDADES_SEED || []).length)} cidades principais. Baixe a lista oficial com os 5.570 municípios e suas coordenadas para que qualquer cidade do Brasil seja reconhecida automaticamente ao digitar ou importar. É feito uma única vez e fica guardado neste navegador.</p>
+          <p class="muted small">${Store.temIBGE()
+            ? 'A lista oficial dos municípios do Brasil (com coordenadas) já está carregada: qualquer cidade é reconhecida ao digitar ou importar. O sistema baixa sozinho ao entrar; use "Atualizar lista" só se quiser renovar.'
+            : `O sistema já traz ${UI.fmtNum((window.CIDADES_SEED || []).length)} cidades principais e baixa sozinho a lista oficial com os 5.570 municípios ao entrar (precisa de internet). Se não baixou, clique no botão abaixo.`}</p>
           <div class="linha">
             <span id="ibge-status">${Store.temIBGE() ? `<span class="badge badge-verde">carregada — ${UI.fmtNum(Store.totalIBGE())} municípios</span>` : '<span class="badge badge-amarelo">não carregada</span>'}</span>
             ${podeEditar ? `<button class="btn btn-primario btn-pequeno" id="btn-ibge">${Store.temIBGE() ? 'Atualizar lista' : 'Baixar agora'}</button>` : ''}

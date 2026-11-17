@@ -2,6 +2,8 @@ Paginas.usuarios = {
   titulo: 'Controle de acesso',
   semFiltros: true,
   render(el) {
+    const nuvem = App.nuvem();
+    if (nuvem) Nuvem.carregarMembros().then(() => { if (App.paginaAtual === 'usuarios' && !document.querySelector('.modal-overlay')) renderLista(); }).catch(() => {});
     function renderLista() {
       const usuarios = Store.usuarios().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       el.innerHTML = `
@@ -28,13 +30,14 @@ Paginas.usuarios = {
             linhas: usuarios
           })}
         </div>
-        <p class="muted small mt">Observação: nesta versão os dados ficam no navegador de quem usa o sistema. O controle de acesso organiza o uso, mas a proteção real dos dados depende do computador/navegador. Para vários usuários em máquinas diferentes, é preciso publicar o sistema com um servidor central.</p>`;
+        <p class="muted small mt">${nuvem ? 'Os usuários e os dados ficam no banco central: cada pessoa entra com o próprio login em qualquer computador e todos veem os mesmos dados. Só quem está nesta lista (e ativo) consegue ler ou gravar; o Visualizador não grava nada.'
+          : 'Observação: nesta versão os dados ficam no navegador de quem usa o sistema. O controle de acesso organiza o uso, mas a proteção real dos dados depende do computador/navegador. Para vários usuários em máquinas diferentes, é preciso publicar o sistema com um servidor central.'}</p>`;
       el.querySelector('#btn-novo').addEventListener('click', () => abrirForm(null));
       el.querySelectorAll('.ed').forEach(b => b.addEventListener('click', () => abrirForm(Store.usuarios().find(u => u.id === b.dataset.id))));
       el.querySelectorAll('.ex').forEach(b => b.addEventListener('click', async () => {
         const u = Store.usuarios().find(x => x.id === b.dataset.id);
         if (await UI.confirmar(`Excluir o usuário ${u.nome} (${u.login})?`, { textoOk: 'Excluir', perigo: true })) {
-          try { Store.excluirUsuario(u.id, App.usuario); UI.toast('Usuário excluído.', 'sucesso'); renderLista(); } catch (e) { UI.toast(e.message, 'erro'); }
+          try { if (nuvem) await Nuvem.excluirUsuario(u); else Store.excluirUsuario(u.id, App.usuario); UI.toast('Usuário excluído.', 'sucesso'); renderLista(); } catch (e) { UI.toast(e.message, 'erro'); }
         }
       }));
     }
@@ -50,7 +53,7 @@ Paginas.usuarios = {
             <label>Login<input id="u-login" value="${UI.esc(u ? u.login : '')}" ${u && u.id === App.usuario.id ? 'disabled' : ''}></label>
           </div>
           <div class="form-linha">
-            <label>${u ? 'Nova senha (deixe em branco para manter)' : 'Senha'}<input type="password" id="u-senha" autocomplete="new-password"></label>
+            <label>${u ? 'Nova senha (deixe em branco para manter)' : (nuvem ? 'Senha (mínimo 6 caracteres)' : 'Senha')}<input type="password" id="u-senha" autocomplete="new-password"></label>
             <label>Perfil<select id="u-perfil" ${u && u.id === App.usuario.id ? 'disabled' : ''}>
               ${Object.entries(Store.PERFIS).map(([k, v]) => `<option value="${k}" ${u && u.perfil === k ? 'selected' : ''}>${v}</option>`).join('')}
             </select></label>
@@ -64,13 +67,14 @@ Paginas.usuarios = {
           </div>`,
         botoes: [
           { texto: 'Cancelar' },
-          { texto: 'Salvar', classe: 'btn-primario', acao: (m) => {
+          { texto: 'Salvar', classe: 'btn-primario', acao: async (m) => {
             const q = s => m.corpo.querySelector(s);
             const perfil = q('#u-perfil').value;
             const todosSel = q('#u-todos').checked;
             const projSel = [...m.corpo.querySelectorAll('#u-projetos input:checked')].map(c => c.value);
-            Store.salvarUsuario({ id: u ? u.id : null, nome: q('#u-nome').value, login: u && u.id === App.usuario.id ? u.login : q('#u-login').value,
-              senha: q('#u-senha').value, perfil, ativo: q('#u-ativo').checked, projetos: perfil === 'admin' || todosSel ? null : projSel }, App.usuario);
+            const obj = { id: u ? u.id : null, nome: q('#u-nome').value, login: u && u.id === App.usuario.id ? u.login : q('#u-login').value,
+              senha: q('#u-senha').value, perfil, ativo: q('#u-ativo').checked, projetos: perfil === 'admin' || todosSel ? null : projSel };
+            if (nuvem) await Nuvem.salvarUsuario(obj); else Store.salvarUsuario(obj, App.usuario);
             if (u && u.id === App.usuario.id) { App.usuario = Store.usuarioAtual(); App.atualizarBanner(); }
             UI.toast('Usuário salvo.', 'sucesso'); renderLista();
           } }
@@ -159,7 +163,8 @@ Paginas.backup = {
       </div>
       <div class="card mt">
         <h2>Onde os dados ficam?</h2>
-        <p class="muted small">Nesta versão os dados são gravados no armazenamento local deste navegador, neste computador. Eles não são apagados ao fechar o navegador, mas podem ser perdidos se o histórico/dados do site forem limpos ou se o computador for trocado. Por isso, faça backups periódicos. Se precisar que várias pessoas usem o sistema ao mesmo tempo em computadores diferentes, o próximo passo é publicá-lo em um servidor com banco de dados central.</p>
+        <p class="muted small">${App.nuvem() ? 'Os dados ficam no banco central (Supabase) e são os mesmos em qualquer computador: basta entrar com o seu usuário. Este navegador guarda uma cópia para abrir rápido e para continuar funcionando se a internet cair (as alterações sobem quando ela voltar). O backup em arquivo continua valendo como cópia de segurança. <b>Restaurar um backup substitui os dados de todos os usuários.</b>'
+          : 'Nesta versão os dados são gravados no armazenamento local deste navegador, neste computador. Eles não são apagados ao fechar o navegador, mas podem ser perdidos se o histórico/dados do site forem limpos ou se o computador for trocado. Por isso, faça backups periódicos. Se precisar que várias pessoas usem o sistema ao mesmo tempo em computadores diferentes, o próximo passo é publicá-lo em um servidor com banco de dados central.'}</p>
       </div>`;
     el.querySelector('#bk-exportar').addEventListener('click', () => {
       const data = new Date().toISOString().slice(0, 10);
@@ -174,6 +179,7 @@ Paginas.backup = {
       try {
         const texto = await f.text();
         Store.importar(texto, App.usuario);
+        if (App.nuvem()) { UI.toast('Backup restaurado e enviado para o banco central.', 'sucesso', 5000); App.recarregar(); return; }
         UI.toast('Backup restaurado. Entre novamente.', 'sucesso', 5000);
         setTimeout(() => App.sair(), 800);
       } catch (err) { UI.toast(err.message, 'erro', 7000); arq.value = ''; }

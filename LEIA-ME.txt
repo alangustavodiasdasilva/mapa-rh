@@ -4,8 +4,9 @@ MAPA RH — Vagas, seleção e contratações por cidade de origem e de atuaçã
 COMO ABRIR
 ----------
 1. Dê dois cliques no arquivo  index.html  (abre no navegador: Chrome, Edge ou Firefox).
-2. Entre com usuário  admin  e senha  admin .
-3. Troque a senha em "Minha senha" (canto inferior esquerdo).
+2. No primeiro acesso, crie o usuário administrador (a tela pede). Depois, entre com
+   o seu usuário e senha.
+3. Para trocar a senha: "Minha senha" (canto inferior esquerdo).
 
 Não precisa instalar nada. Só é necessária internet para carregar o mapa,
 os gráficos e para buscar cidades desconhecidas.
@@ -192,16 +193,27 @@ PERFIS DE ACESSO (menu Controle de acesso)
 - Visualizador: só consulta (dashboard, mapa, relatórios, distritos e mapas PDRs)
   dos projetos liberados.
 
-ONDE OS DADOS FICAM
--------------------
-Os dados são gravados no próprio navegador deste computador (não vão para a internet).
-Faça backups pelo menu "Backup" (gera um arquivo .json, com projetos, contratações,
-distritos, mapas PDR, cidades e usuários) — ele também serve para levar os dados para
-outro computador ("Restaurar backup").
-Atenção: limpar o histórico/dados do navegador apaga os dados do sistema.
-
-Se várias pessoas precisarem usar ao mesmo tempo em computadores diferentes, o próximo
-passo é publicar o sistema em um servidor com banco de dados central.
+ONDE OS DADOS FICAM (BANCO CENTRAL, desde nov/2026)
+---------------------------------------------------
+Os dados ficam num banco central (Supabase) e são os mesmos em qualquer computador:
+cada pessoa entra com o próprio usuário e senha.
+- PRIMEIRO ACESSO: enquanto não existe nenhum usuário, a tela de entrada pede para criar
+  o ADMINISTRADOR (nome, login e senha de 6+ caracteres). Não existe mais admin/admin.
+- Os demais usuários são criados pelo administrador em "Usuários e acesso" (login e
+  senha; não precisa de e-mail). Só quem está na lista e ativo lê ou grava; o
+  Visualizador não grava nada.
+- O navegador guarda uma cópia para abrir rápido e continuar funcionando sem internet;
+  o que for alterado offline sobe quando a conexão volta. No rodapé do menu aparece
+  "salvo na nuvem", "salvando na nuvem…" ou "sem internet".
+- O que outro usuário altera aparece sozinho em até 30 segundos.
+- Quando um navegador que já tinha dados entra no banco pela primeira vez, o sistema
+  baixa um backup e pergunta se deve juntar os dados dele com os do banco. As
+  contratações antigas (de antes do banco) não são levadas.
+- O menu "Backup" continua valendo como cópia de segurança. Atenção: "Restaurar backup"
+  substitui os dados de TODOS os usuários.
+- Arquivos: js/nuvem-config.js (endereço e chave pública do banco), js/nuvem.js
+  (sincronização) e supabase/functions/maparh-usuarios (gestão de usuários no servidor).
+  Com o nuvem-config.js vazio o sistema volta a funcionar só no navegador, como antes.
 
 PASTA
 -----

@@ -68,6 +68,13 @@ Paginas.projetos = {
             <label>Estado principal (centro do mapa)<select id="p-uf">${UI.opcoesUF(p ? p.uf : '')}</select></label>
           </div>
           <label style="margin-bottom:4px">Estados (UF) onde o projeto contrata — marque um ou mais</label>
+          <div class="linha" id="p-atalhos" style="gap:6px;margin-bottom:6px;flex-wrap:wrap">
+            <span class="muted small">Atalhos:</span>
+            <button type="button" class="btn btn-pequeno" data-ufs="RS,SC,PR">Sul inteiro</button>
+            <button type="button" class="btn btn-pequeno" data-ufs="RS,SC,PR,SP,MS">Sul + SP e MS</button>
+            <button type="button" class="btn btn-pequeno" data-ufs="*">Brasil inteiro</button>
+            <button type="button" class="btn btn-pequeno" data-ufs="">Limpar</button>
+          </div>
           <div class="ufs-grade" id="p-ufs">${Object.keys(Store.UFS).sort().map(u => `<label class="uf-opcao"><input type="checkbox" value="${u}" ${(p ? Store.ufsProjeto(p) : []).includes(u) ? 'checked' : ''}> ${u}</label>`).join('')}</div>
           <label>Descrição (opcional)<input id="p-desc" value="${UI.esc(p ? p.descricao : '')}"></label>
           <div class="form-linha">
@@ -98,6 +105,15 @@ Paginas.projetos = {
       md.corpo.querySelectorAll('#p-ufs input').forEach(i => i.addEventListener('change', () => {
         // marcar o estado principal quando ainda não há nenhum
         sincronizar();
+      }));
+      // atalhos: marca um grupo de estados de uma vez (Sul, Sul + vizinhos, Brasil)
+      md.corpo.querySelectorAll('#p-atalhos [data-ufs]').forEach(b => b.addEventListener('click', () => {
+        const alvo = b.dataset.ufs === '*' ? null : new Set(b.dataset.ufs.split(',').filter(Boolean));
+        const principalAntes = selUF.value;
+        md.corpo.querySelectorAll('#p-ufs input').forEach(i => { i.checked = alvo ? alvo.has(i.value) : true; });
+        sincronizar();
+        // o estado principal (centro do mapa) fica no primeiro do atalho quando o anterior saiu da seleção
+        if (alvo && alvo.size && !alvo.has(principalAntes)) selUF.value = [...alvo][0];
       }));
       sincronizar();
     }

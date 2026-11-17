@@ -183,10 +183,34 @@ const Store = (() => {
     if (dados.versao !== VERSAO) { dados.versao = VERSAO; mudou = true; }
     if (mudou) salvar();
   }
-  function salvar() {
+  // Com o banco central ligado (js/nuvem.js), cada gravação avisa a sincronização
+  let ganchoSalvar = null;
+  function definirGanchoSalvar(fn) { ganchoSalvar = fn; }
+  function salvar(silencioso = false) {
     try { localStorage.setItem(CHAVE, JSON.stringify(dados)); }
     catch (e) { UI.toast('Não foi possível salvar: espaço do navegador cheio. Faça um backup.', 'erro', 6000); throw e; }
+    if (ganchoSalvar && silencioso !== true) ganchoSalvar();
   }
+  const nuvemAtiva = () => typeof Nuvem !== 'undefined' && Nuvem.ativa;
+  function normalizarDados() {
+    for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos', 'sineExtra']) if (!Array.isArray(dados[k])) dados[k] = [];
+    if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
+  }
+  // Troca os dados locais pelos que vieram da nuvem (os usuários vêm da lista de membros, não daqui)
+  function adotarDados(novo) {
+    const usuariosAtuais = dados.usuarios;
+    dados = novo; dados.usuarios = usuariosAtuais;
+    normalizarDados();
+    reconstruirIndice();
+    cacheSineCidade.clear();
+    salvar(true);
+    migrar();
+  }
+  // Depois de aplicar mudanças vindas de outro computador direto em Store.dados
+  function reindexar() { normalizarDados(); reconstruirIndice(); cacheSineCidade.clear(); salvar(true); }
+  function definirUsuarios(lista) { dados.usuarios = lista; salvar(true); }
+  function abrirSessao(usuarioId) { localStorage.setItem(CHAVE_SESSAO, JSON.stringify({ usuarioId, expira: Date.now() + DURACAO_SESSAO_MS })); }
+  function fecharSessao() { localStorage.removeItem(CHAVE_SESSAO); }
 
   // ---------- cidades ----------
   const cacheSilos = new Map(); // 'UF|nome' -> cidade | null
@@ -382,7 +406,7 @@ const Store = (() => {
     Object.assign(p, { nome: obj.nome.trim(), uf, ufs, ano, descricao: (obj.descricao || '').trim(),
       cor: obj.cor || '#2563eb', ativo: obj.ativo !== false, atualizadoEm: agora() });
     delete p.cidadeId; delete p.metaLocal;
-    if (novo && autor && autor.projetos) { autor.projetos.push(p.id); }
+    if (novo && autor && autor.projetos) { autor.projetos.push(p.id); if (nuvemAtiva()) Nuvem.incluirProjeto(p.id); }
     salvar();
     auditar(novo ? 'projeto.criar' : 'projeto.editar', `Projeto ${rotuloProjeto(p)}`, autor);
     ufs.forEach(u => carregarBaseSine(u));
@@ -1204,6 +1228,8 @@ const Store = (() => {
     if (!obj.titulo || !obj.titulo.trim()) throw new Error('Informe o cargo / título da vaga.');
     if (!projeto(obj.projetoId)) throw new Error('Escolha o projeto (estado/ano) da vaga.');
     if (!cidade(obj.cidadeId)) throw new Error('Escolha a cidade onde a pessoa vai trabalhar.');
+    // mesma regra da contratação: sem isso a vaga era aceita e só travava lá na admissão do candidato
+    if (!ufDoProjeto(projeto(obj.projetoId), cidade(obj.cidadeId).uf)) throw new Error(`${cidade(obj.cidadeId).nome}/${cidade(obj.cidadeId).uf} não está nos estados do projeto (${ufsProjeto(projeto(obj.projetoId)).join('/')}). Escolha outro projeto ou inclua o estado em Cadastros → Projetos.`);
     if (!['LOCAL', 'MOVEL'].includes(obj.tipo)) throw new Error('Tipo deve ser LOCAL ou MÓVEL.');
     const qtd = parseInt(obj.quantidade, 10);
     if (isNaN(qtd) || qtd < 1) throw new Error('Quantidade de vagas deve ser 1 ou mais.');
@@ -1346,6 +1372,9 @@ const Store = (() => {
     const cs = candidatosVisiveis(usuario, { projetoId });
     return { vagasAbertas: abertas.length, posicoes: abertas.reduce((n, v) => n + v.faltam, 0),
       semDivulgacao: abertas.filter(v => !v.canaisDivulgados).length,
+      prazoVencido: abertas.filter(v => v.prazo && new Date(v.prazo + 'T23:59:59') < new Date()).length,
+      semCandidatos: abertas.filter(v => v.canaisDivulgados && !v.candidatos).length,
+      semCidade: cs.filter(c => !['admitido', 'reprovado'].includes(c.etapa) && !c.cidadeId).length,
       candidatos: cs.filter(c => !['admitido', 'reprovado'].includes(c.etapa)).length,
       emDocumentos: cs.filter(c => c.etapa === 'documentos').length,
       admitidos: cs.filter(c => c.etapa === 'admitido').length };
@@ -1358,7 +1387,7 @@ const Store = (() => {
     salvar();
   }
   function auditoria() { return dados.auditoria.slice().reverse(); }
-  function limparAuditoria(autor) { dados.auditoria = []; auditar('auditoria.limpar', 'Histórico de auditoria limpo', autor); }
+  function limparAuditoria(autor) { dados.auditoria = []; if (nuvemAtiva()) Nuvem.limparAuditoria(); auditar('auditoria.limpar', 'Histórico de auditoria limpo', autor); }
 
   // ---------- backup ----------
   function exportar() {
@@ -1368,7 +1397,9 @@ const Store = (() => {
     let obj;
     try { obj = JSON.parse(texto); } catch (e) { throw new Error('Arquivo inválido (não é um backup do Mapa RH).'); }
     if (!obj || obj.app !== 'maparh' || !obj.dados) throw new Error('Arquivo inválido (não é um backup do Mapa RH).');
+    const usuariosNuvem = nuvemAtiva() ? dados.usuarios : null; // com o banco central, os usuários não vêm do backup
     dados = obj.dados;
+    if (usuariosNuvem) dados.usuarios = usuariosNuvem;
     for (const k of ['usuarios', 'projetos', 'cidades', 'registros', 'auditoria', 'distritos', 'mapasPdr', 'vagas', 'candidatos', 'sineExtra']) if (!Array.isArray(dados[k])) dados[k] = [];
     if (!dados.infoCidades || typeof dados.infoCidades !== 'object') dados.infoCidades = {};
     if (!dados.usuarios.some(u => u.perfil === 'admin' && u.ativo)) dados.usuarios.push(dadosPadrao().usuarios[0]);
@@ -1428,6 +1459,7 @@ const Store = (() => {
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
     STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,
+    definirGanchoSalvar, adotarDados, reindexar, definirUsuarios, abrirSessao, fecharSessao,
     auditar, auditoria, limparAuditoria, exportar, importar, estatisticasArmazenamento, dadosDeExemplo,
     get dados() { return dados; } };
 })();

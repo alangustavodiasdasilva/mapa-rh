@@ -50,12 +50,40 @@ const App = {
     Store.init();
     if (typeof Malha !== 'undefined') Malha.limparCacheAntigo();
     try { Object.assign(this.filtros, JSON.parse(localStorage.getItem('maparh:filtros') || '{}')); } catch (e) { /* ignora */ }
+    if (this.nuvem()) return this.iniciarComNuvem();
     this.usuario = Store.usuarioAtual();
     if (!this.usuario) return this.renderLogin();
+    this.entrarNoApp();
+  },
+  nuvem() { return typeof Nuvem !== 'undefined' && Nuvem.ativa; },
+  entrarNoApp() {
     this.renderShell();
     window.onhashchange = () => this.rotear();
     this.rotear();
     this.prepararBases();
+  },
+  // Banco central: retoma a sessão guardada (ou pede login) e passa a receber o que os outros alteram
+  async iniciarComNuvem() {
+    Nuvem.aoReceber(() => this.aoReceberDaNuvem());
+    try { this.usuario = await Nuvem.iniciar(); }
+    catch (e) { console.warn(e); this.usuario = null; this._erroLogin = e.message || String(e); }
+    if (!this.usuario) return this.renderLogin();
+    this.entrarNoApp();
+  },
+  // Chegaram dados de outro computador: atualiza a tela sem atrapalhar quem está digitando ou olhando o mapa
+  aoReceberDaNuvem() {
+    if (!this.usuario) return;
+    const atual = Store.usuarioAtual();
+    if (!atual) return this.sair();
+    this.usuario = atual;
+    clearTimeout(this._timerNuvem);
+    const tentar = () => {
+      const ocupado = document.querySelector('.modal-overlay') || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '');
+      if (ocupado) { this._timerNuvem = setTimeout(tentar, 4000); return; }
+      if (this.paginaAtual === 'mapa') { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); UI.toast('Outro usuário alterou dados. Troque de tela ou recarregue o mapa para ver.', 'info', 5000); return; }
+      this.recarregar();
+    };
+    tentar();
   },
   // ---------- busca de agências em segundo plano (continua mesmo trocando de tela) ----------
   loteSine: null,
@@ -139,6 +167,7 @@ const App = {
 
   // ---------- login ----------
   renderLogin() {
+    if (this.nuvem()) return this.renderLoginNuvem();
     document.getElementById('app').innerHTML = `
       <div class="login-wrap">
         <form class="login card" id="form-login" autocomplete="off">
@@ -156,16 +185,58 @@ const App = {
       const u = Store.login(document.getElementById('login-usuario').value, document.getElementById('login-senha').value);
       if (!u) { const er = document.getElementById('login-erro'); er.textContent = 'Usuário ou senha inválidos (ou usuário inativo).'; er.hidden = false; return; }
       this.usuario = u;
-      this.renderShell();
-      window.onhashchange = () => this.rotear();
-      this.rotear();
-      this.prepararBases();
+      this.entrarNoApp();
     });
     setTimeout(() => document.getElementById('login-usuario').focus(), 50);
+  },
+  // Login com o banco central. Enquanto não existe nenhum usuário, a tela cria o administrador.
+  async renderLoginNuvem() {
+    const app = document.getElementById('app');
+    const moldura = miolo => `<div class="login-wrap"><form class="login card" id="form-login" autocomplete="off">
+      <div class="marca-login">${icone('mapa', 30)}<span>Mapa RH</span></div>${miolo}<p class="erro" id="login-erro" hidden></p></form></div>`;
+    const erro = msg => { const er = document.getElementById('login-erro'); if (er) { er.textContent = msg; er.hidden = !msg; } };
+    app.innerHTML = moldura('<p class="muted">Conectando ao banco de dados…</p>');
+    let temAdmin = true, semConexao = false;
+    try { temAdmin = await Nuvem.temAdmin(); } catch (e) { semConexao = true; }
+    if (!temAdmin) {
+      app.innerHTML = moldura(`
+        <p class="muted"><b>Primeiro acesso.</b> Crie o usuário administrador. Depois, em <b>Usuários e acesso</b>, você cadastra o resto da equipe.</p>
+        <label>Seu nome<input id="pa-nome" required></label>
+        <label>Usuário (login)<input id="pa-login" autocomplete="username" placeholder="ex.: alan" required></label>
+        <label>Senha (mínimo 6 caracteres)<input type="password" id="pa-senha" autocomplete="new-password" minlength="6" required></label>
+        <label>Repita a senha<input type="password" id="pa-conf" autocomplete="new-password" minlength="6" required></label>
+        <button class="btn btn-primario btn-bloco" type="submit">Criar administrador e entrar</button>
+        <p class="muted small">O que já está neste navegador (projetos, vagas, candidatos, distritos, unidades PDR) sobe para o banco na hora. As contratações antigas não sobem: fica um backup baixado.</p>`);
+    } else {
+      app.innerHTML = moldura(`
+        <p class="muted">Vagas, seleção e contratações</p>
+        <label>Usuário<input id="login-usuario" autocomplete="username" required></label>
+        <label>Senha<input type="password" id="login-senha" autocomplete="current-password" required></label>
+        <button class="btn btn-primario btn-bloco" type="submit">Entrar</button>
+        <p class="muted small">Não tem usuário? Peça ao administrador do sistema.</p>`);
+    }
+    if (this._erroLogin) { erro(this._erroLogin); this._erroLogin = null; }
+    else if (semConexao) erro('Sem conexão com o banco de dados. Verifique a internet.');
+    const form = document.getElementById('form-login');
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const q = id => (document.getElementById(id) || {}).value || '';
+      const bt = form.querySelector('button[type="submit"]'); const rotulo = bt.textContent;
+      bt.disabled = true; bt.textContent = 'Entrando…'; erro('');
+      try {
+        if (!temAdmin) {
+          if (q('pa-senha') !== q('pa-conf')) throw new Error('As senhas não conferem.');
+          this.usuario = await Nuvem.criarPrimeiroAdmin({ nome: q('pa-nome'), login: q('pa-login'), senha: q('pa-senha') });
+        } else this.usuario = await Nuvem.entrar(q('login-usuario'), q('login-senha'));
+        this.entrarNoApp();
+      } catch (err) { erro(err.message || String(err)); bt.disabled = false; bt.textContent = rotulo; }
+    });
+    const primeiro = form.querySelector('input'); if (primeiro) setTimeout(() => primeiro.focus(), 50);
   },
 
   sair() {
     Store.logout();
+    if (this.nuvem()) Nuvem.sair();
     this.usuario = null;
     if (this.destruirAtual) { try { this.destruirAtual(); } catch (e) { /* ignora */ } this.destruirAtual = null; }
     location.hash = '';
@@ -189,6 +260,7 @@ const App = {
             <div class="usuario-nome">${UI.esc(u.nome)}</div>
             <div class="usuario-perfil">${UI.esc(Store.PERFIS[u.perfil])}</div>
             <div class="acoes"><a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">${icone('sair', 14)} Sair</a></div>
+            ${this.nuvem() ? `<div class="muted small" id="nuvem-status" style="margin-top:6px">${UI.esc(Nuvem.textoEstado())}</div>` : ''}
             <div class="muted small" style="margin-top:6px" title="Se o número não bater com a versão publicada, aperte Ctrl+F5">versão ${UI.esc(App.versao())}</div>
           </div>
         </aside>
@@ -428,10 +500,10 @@ const App = {
         <label>Confirmar nova senha<input type="password" id="s-conf"></label>`,
       botoes: [
         { texto: 'Cancelar' },
-        { texto: 'Salvar', classe: 'btn-primario', acao: (m) => {
+        { texto: 'Salvar', classe: 'btn-primario', acao: async (m) => {
           const atual = m.corpo.querySelector('#s-atual').value, nova = m.corpo.querySelector('#s-nova').value, conf = m.corpo.querySelector('#s-conf').value;
           if (nova !== conf) throw new Error('A confirmação não confere com a nova senha.');
-          Store.alterarSenha(this.usuario, atual, nova);
+          if (this.nuvem()) await Nuvem.alterarSenha(atual, nova); else Store.alterarSenha(this.usuario, atual, nova);
           this.usuario = Store.usuarioAtual();
           this.atualizarBanner();
           UI.toast('Senha alterada com sucesso.', 'sucesso');

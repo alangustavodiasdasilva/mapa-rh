@@ -36,6 +36,9 @@ Paginas.dashboard = {
     const temAno = regs.some(x => x.projeto.ano);
     const pendencias = [];
     if (rec.semDivulgacao) pendencias.push(`<a href="#/vagas">${rec.semDivulgacao} vaga(s) aberta(s) sem divulgação</a>`);
+    if (rec.prazoVencido) pendencias.push(`<a href="#/vagas">${rec.prazoVencido} vaga(s) com prazo vencido</a>`);
+    if (rec.semCandidatos) pendencias.push(`<a href="#/vagas">${rec.semCandidatos} vaga(s) divulgada(s) ainda sem candidato</a>`);
+    if (rec.semCidade) pendencias.push(`<a href="#/candidatos">${rec.semCidade} candidato(s) sem cidade de origem</a> (precisa para admitir)`);
     if (rec.emDocumentos) pendencias.push(`<a href="#/candidatos">${rec.emDocumentos} candidato(s) esperando documentos</a>`);
     if (!Store.temIBGE()) pendencias.push(`<a href="#/cidades">baixar a lista de cidades do IBGE</a> (uma vez só, reconhece qualquer cidade do Brasil)`);
     el.innerHTML = `
