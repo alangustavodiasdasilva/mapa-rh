@@ -281,7 +281,7 @@ Paginas.relatorios = {
       }
       const dados = rel.gerar(regs);
       cont.innerHTML = `
-        <div class="cabecalho-impressao"><h2>Mapa RH — ${UI.esc(rel.nome)}</h2><div class="muted">${UI.esc(App.descricaoFiltro())} · gerado em ${UI.fmtDataHora(new Date().toISOString())}</div></div>
+        <div class="cabecalho-impressao"><h2>Safra RH — ${UI.esc(rel.nome)}</h2><div class="muted">${UI.esc(App.descricaoFiltro())} · gerado em ${UI.fmtDataHora(new Date().toISOString())}</div></div>
         <div class="card-titulo nao-imprimir">
           <div><h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="muted small">${UI.esc(App.descricaoFiltro())} · ${dados.total || UI.fmtNum(regs.length) + ' contratação(ões)'}${dados.nota ? ' · ' + UI.esc(dados.nota) : ''}</div></div>
           <div class="linha"><button class="btn btn-pequeno" id="rel-csv">Exportar CSV</button><button class="btn btn-pequeno" id="rel-imprimir">Imprimir / PDF</button></div>

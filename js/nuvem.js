@@ -610,7 +610,7 @@ const Nuvem = (() => {
       iniciarRelogio(true);
       return Store.usuarioAtual();
     }
-    if (!meu) { await sb.auth.signOut(); Store.fecharSessao(); throw new Error('Seu usuário não tem acesso ao Mapa RH (ou foi desativado). Fale com o administrador.'); }
+    if (!meu) { await sb.auth.signOut(); Store.fecharSessao(); throw new Error('Seu usuário não tem acesso ao Safra RH (ou foi desativado). Fale com o administrador.'); }
     Store.abrirSessao(eu);
     await sincronizarInicial();
     iniciarRelogio(false);
@@ -679,7 +679,7 @@ const Nuvem = (() => {
   function entrarPresenca() {
     const me = minhaPresenca(); if (canalPres || !sb || !me) return;
     try {
-      // canal privado: só usuários do Mapa RH (regra no banco, realtime.messages); se o servidor não aceitar, cai no canal comum
+      // canal privado: só usuários do Safra RH (regra no banco, realtime.messages); se o servidor não aceitar, cai no canal comum
       const abrir = privado => {
         const c = sb.channel('maparh-presenca', { config: { private: privado, presence: { key: me.login }, broadcast: { self: false, ack: false } } });
         c.on('broadcast', { event: 'onde' }, ({ payload }) => { if (payload && payload.login) { ondeRemoto.set(payload.login, payload); aoMudarPres(); } })

@@ -1769,8 +1769,8 @@ const Store = (() => {
   }
   function importar(texto, autor) {
     let obj;
-    try { obj = JSON.parse(texto); } catch (e) { throw new Error('Arquivo inválido (não é um backup do Mapa RH).'); }
-    if (!obj || obj.app !== 'maparh' || !obj.dados) throw new Error('Arquivo inválido (não é um backup do Mapa RH).');
+    try { obj = JSON.parse(texto); } catch (e) { throw new Error('Arquivo inválido (não é um backup do Safra RH).'); }
+    if (!obj || obj.app !== 'maparh' || !obj.dados) throw new Error('Arquivo inválido (não é um backup do Safra RH).');
     const usuariosNuvem = nuvemAtiva() ? dados.usuarios : null; // com o banco central, os usuários não vêm do backup
     dados = obj.dados;
     if (usuariosNuvem) dados.usuarios = usuariosNuvem;

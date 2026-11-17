@@ -1,4 +1,4 @@
-// Banco central do Mapa RH (Supabase). A chave abaixo é a PÚBLICA (publishable): pode ficar no site.
+// Banco central do Safra RH (Supabase). A chave abaixo é a PÚBLICA (publishable): pode ficar no site.
 // Quem protege os dados é o login + as regras de acesso do banco (só usuário cadastrado e ativo lê ou grava).
 // Para voltar ao modo "só neste navegador", apague a url e a chave.
 window.MAPARH_NUVEM = {

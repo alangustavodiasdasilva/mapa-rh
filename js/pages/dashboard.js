@@ -17,7 +17,7 @@ Paginas.dashboard = {
     if (!Store.projetos().length) {
       el.innerHTML = `
         <div class="card boas-vindas">
-          <h2>Bem-vindo ao Mapa RH</h2>
+          <h2>Bem-vindo ao Safra RH</h2>
           <p>O sistema acompanha o RH do começo ao fim: <b>abrir a vaga</b>, <b>divulgar</b>, <b>selecionar os candidatos</b> e, ao admitir, <b>ver no mapa</b> de onde as pessoas vêm e onde trabalham.</p>
           <ol class="passos-inicio">
             <li><b>Crie um projeto</b> — é o estado e o ano das contratações (ex.: "Contratações RS 2026").</li>

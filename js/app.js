@@ -21,6 +21,8 @@ const ICONES = {
   preadmissao: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11l2 2 4-4M9 17h6"/>',
   candidatos: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><path d="m16 11 2 2 4-4"/>'
 };
+// logo do Safra RH: ramo de trigo branco no quadrado verde→azul
+function logo(tam = 28) { return `<svg class="logo-safra" width="${tam}" height="${tam}" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg-safra" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16a34a"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#lg-safra)"/><g fill="#fff"><path d="M15.2 27h1.6V11h-1.6z"/><ellipse cx="16" cy="8.2" rx="1.9" ry="3.4"/><ellipse cx="12.6" cy="12.4" rx="1.8" ry="3.4" transform="rotate(-35 12.6 12.4)"/><ellipse cx="19.4" cy="12.4" rx="1.8" ry="3.4" transform="rotate(35 19.4 12.4)"/><ellipse cx="12.6" cy="17.6" rx="1.8" ry="3.4" transform="rotate(-35 12.6 17.6)"/><ellipse cx="19.4" cy="17.6" rx="1.8" ry="3.4" transform="rotate(35 19.4 17.6)"/><ellipse cx="12.8" cy="22.6" rx="1.7" ry="3.1" transform="rotate(-35 12.8 22.6)"/><ellipse cx="19.2" cy="22.6" rx="1.7" ry="3.1" transform="rotate(35 19.2 22.6)"/></g></svg>`; }
 function icone(nome, tam = 18) {
   return `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[nome] || ''}</svg>`;
 }
@@ -195,7 +197,7 @@ const App = {
     document.getElementById('app').innerHTML = `
       <div class="login-wrap">
         <form class="login card" id="form-login" autocomplete="off">
-          <div class="marca-login">${icone('mapa', 30)}<span>Mapa RH</span></div>
+          <div class="marca-login">${logo(34)}<span>Safra RH</span></div>
           <p class="muted">Controle de contratações por cidade de origem</p>
           <label>Usuário<input id="login-usuario" autocomplete="username" required></label>
           <label>Senha<input type="password" id="login-senha" autocomplete="current-password" required></label>
@@ -217,7 +219,7 @@ const App = {
   async renderLoginNuvem() {
     const app = document.getElementById('app');
     const moldura = miolo => `<div class="login-wrap"><form class="login card" id="form-login" autocomplete="off">
-      <div class="marca-login">${icone('mapa', 30)}<span>Mapa RH</span></div>${miolo}<p class="erro" id="login-erro" hidden></p></form></div>`;
+      <div class="marca-login">${logo(34)}<span>Safra RH</span></div>${miolo}<p class="erro" id="login-erro" hidden></p></form></div>`;
     const erro = msg => { const er = document.getElementById('login-erro'); if (er) { er.textContent = msg; er.hidden = !msg; } };
     app.innerHTML = moldura('<p class="muted">Conectando ao banco de dados…</p>');
     let temAdmin = true, semConexao = false;
@@ -279,7 +281,7 @@ const App = {
     document.getElementById('app').innerHTML = `
       <div class="layout">
         <aside class="sidebar" id="sidebar">
-          <div class="marca">${icone('mapa', 26)}<div><div>Mapa RH</div><small>Vagas, seleção e contratações</small></div></div>
+          <div class="marca">${logo(30)}<div><div>Safra RH</div><small>Vagas, seleção e contratações da safra</small></div></div>
           <nav>${itens}</nav>
           <div class="rodape">
             <div class="rodape-quem">${UI.avatar(u, 34)}<div><div class="usuario-nome">${UI.esc(u.nome)}</div>
@@ -472,7 +474,7 @@ const App = {
     document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.toggle('ativo', a.dataset.pagina === nome));
     const pag = Paginas[nome];
     document.getElementById('titulo-pagina').textContent = pag.titulo;
-    document.title = pag.titulo + ' · Mapa RH';
+    document.title = pag.titulo + ' · Safra RH';
     document.querySelector('.filtros').style.display = pag.semFiltros ? 'none' : '';
     // cada tela diz quais filtros do topo usa; os outros somem para não parecer que "não funcionam"
     const usados = pag.filtrosUsados || ['projeto', 'regiao', 'tipo', 'uf'];
