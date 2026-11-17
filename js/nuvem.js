@@ -109,19 +109,19 @@ const Nuvem = (() => {
       const { data, error } = await sb.from('maparh_itens').select('colecao,id,dados,removido,atualizado_em').gte('atualizado_em', desde).order('atualizado_em').limit(1000);
       if (error) throw error;
       avancarCursor(data);
-      let mudou = 0;
+      let mudou = 0; const mudadas = new Set();
       const d = Store.dados;
       for (const l of data) {
         const chave = l.colecao + '/' + l.id;
         if (fila.has(chave) && !l.removido) continue; // há alteração local ainda não enviada: ela vale (menos sobre item que alguém excluiu)
         if (fila.has(chave)) { fila.delete(chave); salvarFila(); }
-        if (l.removido) { bases.delete(chave); if (espelho.has(chave)) { espelho.delete(chave); tirarDoLugar(d, chave); mudou++; } continue; }
+        if (l.removido) { bases.delete(chave); if (espelho.has(chave)) { espelho.delete(chave); tirarDoLugar(d, chave); mudou++; mudadas.add(l.colecao); } continue; }
         bases.set(chave, versaoDe(l.dados));
         const txt = marca(l.dados);
         if (espelho.get(chave) === txt) continue;
-        espelho.set(chave, txt); porNoLugar(d, chave, l.dados); mudou++;
+        espelho.set(chave, txt); porNoLugar(d, chave, l.dados); mudou++; mudadas.add(l.colecao);
       }
-      if (mudou) { ordenar(d); Store.reindexar(); salvarEspelho(); aoMudarRemoto(mudou); }
+      if (mudou) { ordenar(d); Store.reindexar(mudadas); salvarEspelho(); aoMudarRemoto(mudou, mudadas); }
       if (estado === 'offline' || estado === 'erro') mudarEstado('ok');
       if (fila.size) agendarEnvio(200);
     } catch (e) {
@@ -368,6 +368,18 @@ const Nuvem = (() => {
       // o banco não dá erro quando a regra de acesso esconde a linha: só não muda. Então conferimos quantas mudaram.
       if (feitos < ids.length) throw new Error(`${ids.length - feitos} de ${ids.length} não foram alterados (sem permissão ou direcionados para outro RH). Recarregue a tela.`);
     },
+    // só as linhas que mudaram (aviso do banco): troca, inclui ou tira da lista guardada e devolve a lista inteira
+    async atualizarIds(projetoId, ids) {
+      const atual = cacheCandidatos.get(projetoId || '');
+      if (!atual || !ids || !ids.length || ids.length > 200) return rh.listar(projetoId);
+      const { data, error } = await sb.from('maparh_preadmissoes').select('*, pessoa:maparh_pessoas(*)').in('id', ids);
+      if (error) throw erroRh(error);
+      const novos = new Map((data || []).filter(p => p.pessoa && p.projeto_id === projetoId).map(p => [p.id, p]));
+      const l = atual.filter(p => !ids.includes(p.id) || novos.has(p.id)).map(p => novos.get(p.id) || p);
+      for (const [id, p] of novos) if (!atual.some(x => x.id === id)) l.push(p);
+      cacheCandidatos.set(projetoId || '', l);
+      return l;
+    },
     // a última lista buscada de cada projeto: a tela abre com ela na hora e troca quando chega a nova
     emCache(projetoId) { return cacheCandidatos.get(projetoId || '') || null; },
     async listar(projetoId) {
@@ -394,6 +406,17 @@ const Nuvem = (() => {
       const { data, error } = await sb.rpc('maparh_salvar_candidato', { p_pessoa: pessoa, p_pre: pre });
       if (error) throw erroRh(error);
       return data;
+    },
+    // vaga: marcar onde divulgou e escrever observação (RH responsável, gestor, admin); a versão nova chega pelo puxar
+    async divulgarVaga(vagaId, canal, marcado) {
+      const { error } = await sb.rpc('maparh_vaga_divulgacao', { p_vaga: vagaId, p_canal: canal, p_marcado: !!marcado });
+      if (error) throw erroRh(error);
+      await puxar();
+    },
+    async anotarVaga(vagaId, texto) {
+      const { error } = await sb.rpc('maparh_vaga_anotar', { p_vaga: vagaId, p_texto: texto });
+      if (error) throw erroRh(error);
+      await puxar();
     },
     // LGPD: apagar dados pessoais de uma pessoa (pedido do titular) e limpeza por prazo (só admin; regra no banco)
     async anonimizar(pessoaId, motivo) {
@@ -632,53 +655,68 @@ const Nuvem = (() => {
   function ouvirNaHora() {
     if (canal || !sb) return;
     const puxarLogo = () => { clearTimeout(timerAviso); timerAviso = setTimeout(() => puxar(), 250); };
-    let timerRh = null;
-    const candidatosLogo = () => { clearTimeout(timerRh); timerRh = setTimeout(() => aoMudarCandidatos(), 400); };
+    let timerRh = null; const idsMudados = new Set(); let tudo = false;
+    const candidatosLogo = () => { clearTimeout(timerRh); timerRh = setTimeout(() => { const ids = tudo ? null : [...idsMudados]; idsMudados.clear(); tudo = false; aoMudarCandidatos(ids && ids.length ? { ids } : undefined); }, 250); };
+    const aoItem = ev => {
+      const l = ev && ev.new;
+      // eco do que este computador acabou de gravar: nada a buscar
+      if (l && l.colecao && !(ev.errors && ev.errors.length) && espelho.get(l.colecao + '/' + l.id) === marca(l.dados) && !l.removido) return;
+      puxarLogo();
+    };
+    const aoCandidato = ev => { const id = (ev && ev.new && ev.new.id) || (ev && ev.old && ev.old.id); if (id) idsMudados.add(id); else tudo = true; candidatosLogo(); };
     try {
       canal = sb.channel('maparh-na-hora')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_itens' }, puxarLogo)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_preadmissoes' }, candidatosLogo)
-        .subscribe();
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_itens', filter: 'colecao=neq.auditoria' }, aoItem)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_preadmissoes' }, aoCandidato)
+        .subscribe(st => { if ((st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') && canal) { const c = canal; canal = null; try { sb.removeChannel(c); } catch (e) { /* ok */ } setTimeout(ouvirNaHora, 3000); } });
     } catch (e) { console.warn('Nuvem: sem aviso na hora', e); canal = null; }
   }
   function pararDeOuvir() { if (canal && sb) { try { sb.removeChannel(canal); } catch (e) { /* ok */ } } canal = null; sairPresenca(); }
   // Presença: cada um avisa o que está olhando (uma cidade no mapa, a ficha de um candidato) e todos veem a foto
   let canalPres = null, meuOnde = '', timerOnde = null, aoMudarPres = () => {};
+  const ondeRemoto = new Map();   // login -> { login, nome, onde } recebido por broadcast (mais novo que o track)
   const minhaPresenca = () => { const u = Store.usuarioAtual(); return u ? { login: u.login, nome: u.nome, onde: meuOnde } : null; };
   function entrarPresenca() {
     const me = minhaPresenca(); if (canalPres || !sb || !me) return;
     try {
       // canal privado: só usuários do Mapa RH (regra no banco, realtime.messages); se o servidor não aceitar, cai no canal comum
       const abrir = privado => {
-        const c = sb.channel('maparh-presenca', { config: { private: privado, presence: { key: me.login } } });
-        c.on('presence', { event: 'sync' }, () => aoMudarPres())
+        const c = sb.channel('maparh-presenca', { config: { private: privado, presence: { key: me.login }, broadcast: { self: false, ack: false } } });
+        c.on('broadcast', { event: 'onde' }, ({ payload }) => { if (payload && payload.login) { ondeRemoto.set(payload.login, payload); aoMudarPres(); } })
+          .on('presence', { event: 'leave' }, ({ key }) => { ondeRemoto.delete(key); aoMudarPres(); })
+          .on('presence', { event: 'sync' }, () => aoMudarPres())
           .subscribe(st => {
-            if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) c.track(m).catch(() => {}); }
+            if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) { c.track(m).catch(() => {}); c.send({ type: 'broadcast', event: 'onde', payload: m }).catch(() => {}); } }
             else if (st === 'CHANNEL_ERROR' && privado && canalPres === c) { console.warn('Nuvem: presença privada recusada; usando canal comum'); try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = abrir(false); }
+            else if ((st === 'TIMED_OUT' || st === 'CHANNEL_ERROR') && canalPres === c) { try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = null; setTimeout(entrarPresenca, 3000); }
           });
         return c;
       };
       canalPres = abrir(true);
     } catch (e) { console.warn('Nuvem: sem presença', e); canalPres = null; }
   }
-  function sairPresenca() { if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; }
+  function sairPresenca() { if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; ondeRemoto.clear(); }
+  function avisarOnde() { const m = minhaPresenca(); if (canalPres && m) canalPres.send({ type: 'broadcast', event: 'onde', payload: m }).catch(() => {}); }
   function onde(v) {
     if ((v || '') === meuOnde) return; meuOnde = v || ''; setTimeout(() => aoMudarPres(), 0);
+    avisarOnde();   // na hora, para os outros
     clearTimeout(timerOnde);
-    timerOnde = setTimeout(() => { const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); }, 300);
+    timerOnde = setTimeout(() => { const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); }, 800);   // registro para quem entrar depois
   }
+  // o que cada um está olhando: o broadcast mais recente vale mais que o registro do track
+  const ondeDe = x => (ondeRemoto.get(x.login) || x).onde || '';
   // quem (fora eu) está olhando aquilo: [{ login, nome }]
   function olhando(v) {
     if (!canalPres || !v) return [];
     const me = minhaPresenca(), st = canalPres.presenceState(), out = [];
-    for (const lista of Object.values(st)) for (const x of lista) if (x.onde === v && (!me || x.login !== me.login) && !out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome });
+    for (const lista of Object.values(st)) for (const x of lista) if (ondeDe(x) === v && (!me || x.login !== me.login) && !out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome });
     return out;
   }
   function aoMudarPresenca(fn) { aoMudarPres = fn; }
   // todo mundo conectado e o que cada um está olhando (eu incluído): [{ login, nome, onde }]
   function presentes() {
     const me = minhaPresenca(), out = me ? [me] : [];
-    if (canalPres) for (const lista of Object.values(canalPres.presenceState())) for (const x of lista) if (!out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome, onde: x.onde || '' });
+    if (canalPres) for (const lista of Object.values(canalPres.presenceState())) for (const x of lista) if (!out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome, onde: ondeDe(x) });
     return out;
   }
   function iniciarRelogio(precisaCargaInicial) {
@@ -703,11 +741,11 @@ const Nuvem = (() => {
     ouvindo = true;
     window.addEventListener('online', () => { if (eu) { tiqueAtual(); agendarEnvio(300); } });
     window.addEventListener('offline', () => { if (eu) mudarEstado('offline'); });
-    document.addEventListener('visibilitychange', () => { if (eu && !document.hidden) tiqueAtual(); });
+    document.addEventListener('visibilitychange', () => { if (eu && !document.hidden) { tiqueAtual(); avisarOnde(); const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); } });
   }
   // Ao abrir a página: retoma a sessão guardada, se houver. Devolve o usuário ou null.
   async function iniciar() {
-    sb = window.supabase.createClient(cfg.url, cfg.chave);
+    sb = window.supabase.createClient(cfg.url, cfg.chave, { realtime: { params: { eventsPerSecond: 20 } } });
     const { data } = await sb.auth.getSession();
     if (!data.session) { Store.fecharSessao(); return null; }
     let s = null; try { s = JSON.parse(localStorage.getItem('maparh:sessao') || 'null'); } catch (e) { s = null; }
@@ -715,7 +753,7 @@ const Nuvem = (() => {
     return aposLogin(data.session.user.id);
   }
   async function entrar(login, senha) {
-    if (!sb) sb = window.supabase.createClient(cfg.url, cfg.chave);
+    if (!sb) sb = window.supabase.createClient(cfg.url, cfg.chave, { realtime: { params: { eventsPerSecond: 20 } } });
     const { data, error } = await sb.auth.signInWithPassword({ email: emailDe(login), password: senha });
     if (error) throw new Error(/invalid login/i.test(error.message) ? 'Usuário ou senha inválidos.' : (navigator.onLine ? error.message : 'Sem internet: não foi possível entrar.'));
     const u = await aposLogin(data.user.id);

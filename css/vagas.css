@@ -246,3 +246,9 @@ button.vg-et:hover { border-color: var(--primaria); }
 .vg-prev { font-size: 12px; }
 .vg-prev-risco { color: #92400e; }
 .vg-prev-nao_fecha { color: #b91c1c; font-weight: 600; }
+
+/* última observação da vaga, no cartão */
+.vg-obs { display: flex; align-items: center; gap: 6px; margin-top: 6px; max-width: 100%; font: inherit; font-size: 12px; text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 3px 8px 3px 4px; cursor: pointer; color: #334155; }
+.vg-obs:hover { border-color: var(--primaria); }
+.vg-obs-txt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vg-obs-quem { flex-shrink: 0; color: var(--muted); }

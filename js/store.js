@@ -209,7 +209,16 @@ const Store = (() => {
     migrar();
   }
   // Depois de aplicar mudanças vindas de outro computador direto em Store.dados
-  function reindexar() { normalizarDados(); reconstruirIndice(); cacheSineCidade.clear(); salvar(true); }
+  // mudadas: coleções que mudaram (Set). Só refaz o índice de cidades se mudou cidade; a cópia no navegador grava um pouco depois
+  let timerSalvar = null;
+  function salvarDepois() { clearTimeout(timerSalvar); timerSalvar = setTimeout(() => { timerSalvar = null; try { salvar(true); } catch (e) { /* espaço cheio: avisado em salvar */ } }, 1500); }
+  window.addEventListener('beforeunload', () => { if (timerSalvar) { clearTimeout(timerSalvar); try { salvar(true); } catch (e) { /* ok */ } } });
+  function reindexar(mudadas) {
+    normalizarDados();
+    if (!mudadas || mudadas.has('cidades')) reconstruirIndice();
+    cacheSineCidade.clear();
+    if (mudadas) salvarDepois(); else salvar(true);
+  }
   function definirUsuarios(lista) { dados.usuarios = lista; salvar(true); }
   function abrirSessao(usuarioId) { localStorage.setItem(CHAVE_SESSAO, JSON.stringify({ usuarioId, expira: Date.now() + DURACAO_SESSAO_MS })); }
   function fecharSessao() { localStorage.removeItem(CHAVE_SESSAO); }
@@ -813,6 +822,10 @@ const Store = (() => {
   }
   // cidade que representa o distrito (polo da primeira microrregião com polo)
   function poloDoDistrito(d) {
+    // a microrregião com o mesmo nome do distrito (ex.: distrito Sarandi → micro Sarandi) é a referência; senão, a primeira
+    const nomeD = normalizar((d && d.nome) || '');
+    const mesma = ((d && d.micros) || []).find(m => normalizar(m.nome || '') === nomeD);
+    if (mesma) { const c = cidade(mesma.poloCidadeId) || cidade((mesma.cidadeIds || [])[0]); if (c) return c; }
     for (const m of (d && d.micros) || []) { const c = cidade(m.poloCidadeId) || cidade((m.cidadeIds || [])[0]); if (c) return c; }
     return null;
   }

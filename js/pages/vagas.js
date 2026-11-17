@@ -7,6 +7,8 @@ Paginas.vagas = {
   filtrosUsados: ['projeto', 'regiao', 'tipo'],
   render(el) {
     const podeEditar = App.podeEditar();
+    // divulgar e escrever observação: admin, gestor e o RH responsável pela vaga (regra também no banco)
+    const podeMexer = v => podeEditar || (App.usuario.perfil === 'analista' && (v.responsaveis || []).includes(App.usuario.login));
     const podeAprovar = Store.podeAprovarVaga(App.usuario);
     const ehAdmin = App.usuario.perfil === 'admin';
     const ABAS = [['abertas', 'Em andamento'], ['aguardando', 'Aguardando aprovação'], ['preenchida', 'Preenchidas'], ['fora', 'Recusadas/canceladas'], ['todas', 'Todas']];
@@ -58,9 +60,16 @@ Paginas.vagas = {
     function filtradas(todas) {
       let l = todas;
       if (prioridade) l = l.filter(v => v.prioridade === prioridade);
-      if (recrutador === '(sem)') l = l.filter(v => !v.recrutador);
-      else if (recrutador) l = l.filter(v => Store.normalizar(v.recrutador) === recrutador);
+      if (recrutador === '(sem)') l = l.filter(v => !nomesRh(v).length);
+      else if (recrutador) l = l.filter(v => nomesRh(v).some(n => Store.normalizar(n) === recrutador));
       return l;
+    }
+    // todos os RHs da vaga (o principal e os outros responsáveis), pelo nome
+    function nomesRh(v) {
+      const logins = v.responsaveis && v.responsaveis.length ? v.responsaveis : [];
+      const nomes = logins.map(l => { const u = Store.usuarioPorLogin(l); return u ? u.nome : (l === v.recrutadorLogin && v.recrutador ? v.recrutador : l); });
+      if (!nomes.length && v.recrutador) nomes.push(v.recrutador);
+      return [...new Set(nomes.filter(Boolean))];
     }
     function ordenar(l) {
       return l.slice().sort((a, b) => fechada(a) - fechada(b) || b.atrasada - a.atrasada
@@ -89,7 +98,7 @@ Paginas.vagas = {
       q('#vg-prioridade').innerHTML = '<option value="">Todas</option>' +
         Object.entries(Store.PRIORIDADES).map(([k, r]) => `<option value="${k}" ${k === prioridade ? 'selected' : ''}>${r}</option>`).join('');
       const cont = new Map(); let sem = 0;
-      for (const v of todas) { if (!v.recrutador) { sem++; continue; } const k = Store.normalizar(v.recrutador); const a = cont.get(k) || { nome: v.recrutador, n: 0 }; a.n++; cont.set(k, a); }
+      for (const v of todas) { const ns = nomesRh(v); if (!ns.length) { sem++; continue; } for (const nome of ns) { const k = Store.normalizar(nome); const a = cont.get(k) || { nome, n: 0 }; a.n++; cont.set(k, a); } }
       if (recrutador && recrutador !== '(sem)' && !cont.has(recrutador)) recrutador = '';
       if (recrutador === '(sem)' && !sem) recrutador = '';
       q('#vg-recrutador').innerHTML = '<option value="">Todos</option>' +
@@ -208,11 +217,12 @@ Paginas.vagas = {
       // uma ação principal + menu
       let principal = '';
       if (pendente && podeAprovar) principal = '<button class="btn btn-pequeno btn-primario" data-acao="aprovar">Aprovar</button><button class="btn btn-pequeno" data-acao="recusar">Recusar</button>';
-      else if (emAberto && podeEditar && !canais) principal = '<button class="btn btn-pequeno btn-primario" data-acao="divulgar">Divulgar</button>';
+      else if (emAberto && podeMexer(v) && !canais) principal = '<button class="btn btn-pequeno btn-primario" data-acao="divulgar">Divulgar</button>';
       else if (v.aprovada && podeVerCandidatos) principal = `<button class="btn btn-pequeno" data-acao="candidatos">Ver candidatos${v.candidatos ? ` (${v.candidatos})` : ''}</button>`;
       const menu = [];
       const it = (acao, rot, extra = '') => `<button type="button" class="${extra}" data-acao="${acao}">${rot}</button>`;
-      if (emAberto && podeEditar && canais) menu.push(it('divulgar', 'Divulgar'));
+      if (emAberto && podeMexer(v) && canais) menu.push(it('divulgar', 'Divulgar'));
+      if (v.aprovada || podeMexer(v)) menu.push(it('obs', `Observações${(v.anotacoes || []).length ? ` (${v.anotacoes.length})` : ''}`));
       if (v.aprovada && podeVerCandidatos && !principal.includes('candidatos')) menu.push(it('candidatos', 'Ver candidatos'));
       if (emAberto) menu.push(it('procurar', 'Procurar candidatos na internet'));
       menu.push(it('mapa', 'Ver no mapa'));
@@ -226,6 +236,8 @@ Paginas.vagas = {
         <div class="vg-card-cab">
           <div class="vg-card-tit"><h3>${UI.esc(v.titulo)}</h3>${prio}${selo}<span class="badge ${CLASSE_STATUS[v.status] || 'badge-cinza'}">${UI.esc(Store.STATUS_VAGA[v.status] || v.status)}</span></div>
           <div class="vg-card-sub"><span class="vg-onde">${UI.esc(ondeTexto(v) || 'sem distrito')}</span><span>${UI.esc(v.projeto ? v.projeto.nome : '—')}</span>${v.solicitante ? `<span>pedida por ${UI.esc(v.solicitante)}</span>` : ''}</div>
+          ${(() => { const o = (v.anotacoes || [])[(v.anotacoes || []).length - 1]; if (!o) return ''; const u = Store.usuarioPorLogin(o.por);
+            return `<button type="button" class="vg-obs" data-acao="obs" title="Ver todas as observações">${UI.avatar(u || { nome: o.nome || o.por || '?' }, 18)}<span class="vg-obs-txt">${UI.esc(o.texto)}</span><span class="vg-obs-quem">${UI.esc(String(o.nome || o.por || '').split(' ')[0])} · ${UI.fmtData(o.em)}${v.anotacoes.length > 1 ? ` · +${v.anotacoes.length - 1}` : ''}</span></button>`; })()}
         </div>
         <div class="vg-card-corpo">
           <div class="vg-bloco vg-bloco-prog">${numero}<div class="vg-dls">${dist}</div></div>
@@ -258,6 +270,7 @@ Paginas.vagas = {
       else if (acao === 'candidatos') { try { if (b.dataset.etapa) sessionStorage.setItem('maparh:cand-seg', b.dataset.etapa); } catch (err) { /* ok */ } localStorage.setItem('maparh:cand-vaga', v.id); localStorage.setItem('maparh:cand-projeto', v.projetoId); App.ir('candidatos'); }
       else if (acao === 'procurar') { if (v.cidade) UI.modalBuscaCandidatos(v.cidade.nome, v.cidade.uf, v.titulo); }
       else if (acao === 'editar') formVaga(v);
+      else if (acao === 'obs') observacoes(v);
       else if (acao === 'mapa') { App.filtros.projetoId = v.projetoId; sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ cidadeId: v.cidadeId })); App.aoMudarFiltros(); App.ir('mapa'); }
       else if (acao === 'cancelar') mudarStatus(v, 'cancelada');
       else if (acao === 'reabrir') mudarStatus(v, v.aprovada ? 'aberta' : 'aguardando');
@@ -518,9 +531,32 @@ Paginas.vagas = {
       m.corpo.querySelectorAll('[data-imprimir]').forEach(b => b.addEventListener('click', () => imprimirCartaz(v, ta.value)));
       m.corpo.querySelectorAll('.canal input[type="checkbox"]').forEach(ch => ch.addEventListener('change', () => {
         const canal = ch.closest('.canal');
+        if (App.nuvem() && Nuvem.rh.divulgarVaga) {
+          ch.disabled = true;
+          Nuvem.rh.divulgarVaga(v.id, canal.dataset.canal, ch.checked).then(() => canal.classList.toggle('feito', ch.checked))
+            .catch(e => { UI.toast(e.message, 'erro'); ch.checked = !ch.checked; }).finally(() => { ch.disabled = false; });
+          return;
+        }
         try { Store.marcarDivulgacao(v.id, canal.dataset.canal, ch.checked, App.usuario); canal.classList.toggle('feito', ch.checked); }
         catch (e) { UI.toast(e.message, 'erro'); ch.checked = !ch.checked; }
       }));
+    }
+    // observações da vaga: histórico com quem escreveu e quando; o RH responsável, o gestor e o admin escrevem
+    function observacoes(v) {
+      const pode = podeMexer(v) && App.nuvem() && Nuvem.rh.anotarVaga;
+      const lista = () => { const atual = Store.vagasVisiveis(App.usuario).find(x => x.id === v.id) || v; const l = (atual.anotacoes || []).slice().reverse();
+        return l.length ? l.map(a => { const u = Store.usuarioPorLogin(a.por); return `<div class="fi-nota">${UI.avatar(u || { nome: a.nome || a.por || '?' }, 28)}<div><div class="fi-nota-cab"><b>${UI.esc(a.nome || a.por || '—')}</b> <span class="muted">${UI.fmtDataHora(a.em)}</span></div><div class="fi-nota-txt">${UI.esc(a.texto)}</div></div></div>`; }).join('')
+          : '<div class="muted small">Nenhuma observação ainda.</div>'; };
+      const m = UI.modal({ titulo: `Observações: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '620px',
+        corpo: `${pode ? '<div class="fi-anotar" style="margin-bottom:12px"><textarea id="vo-txt" rows="2" placeholder="Ex.: a rádio de Sarandi só divulga na segunda; o gestor pediu prioridade para quem tem CNH"></textarea><button type="button" class="btn btn-primario" id="vo-add">Anotar</button></div>' : ''}<div id="vo-lista" class="fi-hist">${lista()}</div>`,
+        botoes: [{ texto: 'Fechar' }] });
+      const add = m.corpo.querySelector('#vo-add');
+      if (add) add.addEventListener('click', async () => {
+        const ta = m.corpo.querySelector('#vo-txt'), tx = ta.value.trim(); if (!tx) { ta.focus(); return; }
+        add.disabled = true;
+        try { await Nuvem.rh.anotarVaga(v.id, tx); ta.value = ''; m.corpo.querySelector('#vo-lista').innerHTML = lista(); UI.toast('Observação registrada.', 'sucesso', 2000); }
+        catch (e) { UI.toast(e.message, 'erro', 6000); } finally { add.disabled = false; }
+      });
     }
     function imprimirCartaz(v, texto) {
       const w = window.open('', '_blank');
@@ -538,7 +574,8 @@ Paginas.vagas = {
     };
     desenhar(); contar();
     // mudou algo (aqui ou em outro computador): redesenha a lista e recontam os candidatos, sem apagar a tela
-    App.aoAtualizar(() => { if (!ativo) return; if (!document.querySelector('.modal-overlay')) desenhar(); contar(); });
+    // aviso de vaga/cadastro (semCandidatos): só redesenha; aviso de candidato: conta de novo (busca no banco) e redesenha
+    App.aoAtualizar(info => { if (!ativo) return; if (!document.querySelector('.modal-overlay')) desenhar(); if (!(info && info.semCandidatos)) contar(); });
     return () => { ativo = false; };
   }
 };

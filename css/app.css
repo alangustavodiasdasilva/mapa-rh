@@ -896,3 +896,34 @@ button.dr-gar-n:hover { filter: brightness(.94); box-shadow: inset 0 0 0 2px rgb
 .mp-olho-mais { font-size: 11px; font-weight: 700; color: #334155; margin-left: 4px; padding-right: 4px; }
 
 .ct-quem { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ---------- janelas no celular: tela cheia, rodapé quebra linha, botão principal largo, rolagem visível ---------- */
+@media (max-width: 760px) {
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal { max-width: none !important; width: 100%; height: 100vh; height: 100dvh; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
+  .modal-corpo { flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .modal-corpo::-webkit-scrollbar { display: block; width: 6px; }
+  .modal-corpo::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .modal-rodape { flex-wrap: wrap; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .modal-rodape .btn { min-height: 40px; }
+  .modal-rodape .btn-primario { flex: 1 1 100%; order: 9; }
+  .modal-cabecalho .modal-fechar { min-width: 40px; min-height: 40px; }
+}
+
+/* Contratações: chegada no campo */
+.ct-cheg { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #f1f5f9; color: #475569; margin-left: 4px; white-space: nowrap; }
+.ct-cheg-ok { background: #dcfce7; color: #166534; }
+.ct-cheg-ruim { background: #fee2e2; color: #b91c1c; }
+.ct-cheg-meio { background: #fef3c7; color: #92400e; }
+
+/* Início: resumo do dia do RH */
+.dash-dia { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; }
+.dash-dia-tit { font-weight: 700; margin-right: 6px; }
+.dash-dia-item { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--borda); background: #fff; color: var(--texto); text-decoration: none; font-size: 13px; }
+.dash-dia-item b { font-size: 18px; color: var(--primaria); }
+.dash-dia-item:hover { border-color: var(--primaria); }
+.dash-dia-item.meio b { color: #b45309; }
+.dash-dia-item.ok b { color: #15803d; }
+.dash-dia-item.zero { opacity: .65; }
+.dash-dia-ir { margin-left: auto; }
+.fluxo-passo[aria-disabled="true"] { cursor: default; }

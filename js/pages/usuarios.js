@@ -37,10 +37,50 @@ Paginas.usuarios = {
       el.querySelectorAll('.ed').forEach(b => b.addEventListener('click', () => abrirForm(Store.usuarios().find(u => u.id === b.dataset.id))));
       el.querySelectorAll('.ex').forEach(b => b.addEventListener('click', async () => {
         const u = Store.usuarios().find(x => x.id === b.dataset.id);
+        // responsável por vaga ou com candidatos: não exclui (ficariam sem dono); oferece desativar ou passar os candidatos
+        b.disabled = true;
+        let vagasDele = [], candDele = [];
+        try {
+          vagasDele = Store.vagas().filter(v => !['cancelada', 'recusada'].includes(v.status) && (v.recrutadorLogin === u.login || (v.recrutadores || []).includes(u.login)));
+          if (nuvem && Nuvem.rh && Nuvem.rh.andamento) candDele = (await Nuvem.rh.andamento()).filter(p => p.analista_login === u.login && p.situacao === 'em_andamento');
+        } catch (e) { b.disabled = false; UI.toast('Não consegui conferir os candidatos deste usuário agora. Tente de novo.', 'erro', 6000); return; }
+        b.disabled = false;
+        if (vagasDele.length || candDele.length) return bloqueioExcluir(u, vagasDele, candDele);
         if (await UI.confirmar(`Excluir o usuário ${u.nome} (${u.login})?`, { textoOk: 'Excluir', perigo: true })) {
           try { if (nuvem) await Nuvem.excluirUsuario(u); else Store.excluirUsuario(u.id, App.usuario); UI.toast('Usuário excluído.', 'sucesso'); renderLista(); } catch (e) { UI.toast(e.message, 'erro'); }
         }
       }));
+    }
+
+    // usuário que ainda tem vaga ou candidatos: em vez de excluir, desativar ou passar os candidatos para outro RH
+    function bloqueioExcluir(u, vagasDele, candDele) {
+      const qtd = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+      const outros = Store.equipeRh().filter(x => x.login !== u.login);
+      const desativar = async () => {
+        const obj = { id: u.id, nome: u.nome, login: u.login, senha: '', perfil: u.perfil, ativo: false, projetos: u.projetos == null ? null : u.projetos };
+        if (nuvem) await Nuvem.salvarUsuario(obj); else Store.salvarUsuario(obj, App.usuario);
+        UI.toast(`${u.nome} foi desativado. Não entra mais no sistema, e o histórico continua com o nome dele.`, 'sucesso', 5000); renderLista();
+      };
+      UI.modal({ titulo: `Não dá para excluir ${u.nome}`, largura: '520px',
+        corpo: `<p style="margin-top:0">${UI.esc(u.nome)} ainda tem:</p><ul>
+            ${vagasDele.length ? `<li><b>${qtd(vagasDele.length, 'vaga', 'vagas')}</b> como responsável: ${UI.esc(vagasDele.slice(0, 5).map(v => v.titulo).join(', '))}${vagasDele.length > 5 ? '…' : ''}</li>` : ''}
+            ${candDele.length ? `<li><b>${qtd(candDele.length, 'candidato', 'candidatos')}</b> em andamento</li>` : ''}</ul>
+          <p class="muted small" style="margin-bottom:0">Excluir deixaria isso sem dono. Você pode <b>desativar</b> o usuário (ele não entra mais e o histórico fica) ${candDele.length ? 'ou <b>passar os candidatos</b> para outro RH' : ''}${vagasDele.length ? '. Para tirar das vagas, troque o responsável em Vagas.' : '.'}</p>`,
+        botoes: [{ texto: 'Cancelar' }]
+          .concat(candDele.length && outros.length ? [{ texto: 'Passar os candidatos para…', classe: 'btn-secundario', acao: () => { setTimeout(() => passarCandidatos(u, candDele, outros), 0); } }] : [])
+          .concat(u.ativo !== false ? [{ texto: 'Desativar', classe: 'btn-primario', acao: desativar }] : []) });
+    }
+    function passarCandidatos(u, candDele, outros) {
+      UI.modal({ titulo: `Passar os candidatos de ${u.nome}`, largura: '460px',
+        corpo: `<label>Para qual RH<select id="pc-para"><option value="">Escolha o RH…</option>${outros.map(x => `<option value="${UI.esc(x.login)}">${UI.esc(x.nome)}</option>`).join('')}</select></label>
+          <p class="muted small" style="margin-bottom:0">${candDele.length === 1 ? '1 candidato em andamento passa' : candDele.length + ' candidatos em andamento passam'} para o RH escolhido. Fica anotado no histórico de cada um.</p>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Passar', classe: 'btn-primario', acao: async md => {
+          const sel = md.corpo.querySelector('#pc-para'), para = Store.usuarioPorLogin(sel.value);
+          if (!para) { sel.focus(); throw new Error('Escolha o RH.'); }
+          await Nuvem.rh.atualizarVarios(candDele.map(p => p.id), { analista_login: para.login, analista: para.nome });
+          UI.toast(`${candDele.length === 1 ? '1 candidato passou' : candDele.length + ' candidatos passaram'} para ${para.nome}.`, 'sucesso', 5000);
+          renderLista();
+        } }] });
     }
 
     let fotoNova;   // undefined = não mexeu; null = tirar; texto = foto nova

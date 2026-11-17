@@ -101,6 +101,17 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [x] Canal de presença privado (hoje quem tem a chave pública vê logins e ids abertos).
 - [x] Apagar a simulação "TESTE - …" (pelo desfazer, para a contratação sair junto).
 
+## Auditoria 2 (17/11, v145 — 3 agentes: uso, velocidade, ideias)
+- [x] Contratação gravada na cidade errada (distrito Sarandi → polo da 1ª micro = Frederico Westphalen): corrigida a do Alan Gustavo; polo do distrito = micro com o mesmo nome; ao admitir escolhe "Cidade onde vai trabalhar".
+- [x] Mapa: opção "Totais por distrito (etiquetas azuis)"; a própria foto não aparece; presença por broadcast (instantâneo), aviso antes de montar o painel, reconexão.
+- [x] Sincronização: candidatos buscam só o que mudou; ignora o eco do próprio envio e a auditoria; índice de cidades só quando muda cidade; cópia local gravada depois.
+- [x] Vagas: RH responsável marca a divulgação; observações com histórico (funções maparh_vaga_divulgacao / maparh_vaga_anotar).
+- [x] Uso: atalhos do Hoje/Início abrem já filtrados; janelas no celular em tela cheia; busca pelo telefone; analista abre em Candidatos com "Seu dia" no Início; links só para telas permitidas; projeto igual entre telas; excluir usuário com candidatos → desativar/passar; exportação com Cancelar; Direcionar sem RH pré-escolhido; acessibilidade e toque; filtro de RH com todos os responsáveis.
+- [x] Candidatos rápido com volume (cache de vaga, índice de conflito, 50 por coluna).
+- [x] Chegada no campo (chegou/faltou/remarcou, faixa Hoje, Chamar reserva, Contratações) e "Como soube da vaga"/indicação + relatório "Canais e indicações".
+- [ ] Ideias para depois: inscrição própria do candidato (no lugar do Forms); candidato manda documentos pelo celular; transporte e alojamento dos móveis; planilha para a folha (eSocial); banco de talentos/avaliação de fim de safra (precisa do módulo Colaboradores); avisos por e-mail; custo por contratação; metas por RH.
+- [ ] Velocidade (depois): Início atualizar só números/gráficos sem redesenhar; mapa sem redesenhar tudo no zoom.
+
 ## Lote 5 — design — FEITO em v135: Lista compacta, Planilha ▾, filtros das Vagas, Início (bloco principal), Relatórios sem rolagem, Mapa (zoom livre), barra lateral, celular (Quadro uma etapa por vez, Por RH com rótulos). Ficaram (menores):
 - [ ] Lista de Candidatos em 1366px (colunas espremidas) — medir pelo cartão, não pela janela.
 - [ ] Barra de filtros de Candidatos: "Planilha ▾" (importar/exportar), busca no mesmo padrão da Vagas.

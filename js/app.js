@@ -69,8 +69,8 @@ const App = {
   },
   // Banco central: retoma a sessão guardada (ou pede login) e passa a receber o que os outros alteram
   async iniciarComNuvem() {
-    Nuvem.aoReceber(() => this.aoReceberDaNuvem());
-    if (Nuvem.aoMudarRh) Nuvem.aoMudarRh(() => this.aoReceberDaNuvem(true));
+    Nuvem.aoReceber((n, mudadas) => this.aoReceberDaNuvem(false, { colecoes: mudadas }));
+    if (Nuvem.aoMudarRh) Nuvem.aoMudarRh(info => this.aoReceberDaNuvem(true, info));
     if (Nuvem.aoMudarPresenca) Nuvem.aoMudarPresenca(() => document.dispatchEvent(new CustomEvent('maparh:presenca')));
     try { this.usuario = await Nuvem.iniciar(); }
     catch (e) { console.warn(e); this.usuario = null; this._erroLogin = e.message || String(e); }
@@ -79,7 +79,7 @@ const App = {
   },
   // Chegaram dados de outro computador: atualiza a tela sem atrapalhar quem está digitando ou olhando o mapa
   // soCandidatos: o aviso veio da tabela de candidatos (as telas que não usam candidatos não precisam mudar)
-  aoReceberDaNuvem(soCandidatos = false) {
+  aoReceberDaNuvem(soCandidatos = false, info) {
     if (!this.usuario) return;
     const atual = Store.usuarioAtual();
     if (!atual) return this.sair();
@@ -88,7 +88,7 @@ const App = {
     clearTimeout(this._timerNuvem);
     const tentar = () => {
       // tela com função própria de atualizar: troca só os dados, mesmo com janela aberta (a janela não é mexida)
-      if (this.atualizarAtual) { try { this.atualizarAtual(); } catch (e) { console.warn(e); } this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); return; }
+      if (this.atualizarAtual) { try { this.atualizarAtual(soCandidatos ? (info || {}) : { colecoes: info && info.colecoes, semCandidatos: true }); } catch (e) { console.warn(e); } this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); return; }
       const ocupado = document.querySelector('.modal-overlay') || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '');
       if (ocupado) { this._timerNuvem = setTimeout(tentar, 2000); return; }
       if (this.paginaAtual === 'mapa') { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); return; }
@@ -101,7 +101,7 @@ const App = {
   // fotos de quem (fora eu) está olhando aquilo, com o nome
   olhandoHtml(v, tam = 22, comigo = false) {
     let l = typeof Nuvem !== 'undefined' && Nuvem.olhando ? Nuvem.olhando(v) : [];
-    if (comigo && this.usuario) l = [{ login: this.usuario.login, nome: this.usuario.nome, eu: true }, ...l];
+    if (comigo && this.usuario && l.length) l = [{ login: this.usuario.login, nome: this.usuario.nome, eu: true }, ...l];   // "Você e …" só quando tem mais alguém
     if (!l.length) return '';
     const nomes = l.map(x => x.eu ? 'Você' : String(x.nome || x.login).split(' ')[0]);
     const txt = nomes.length === 1 ? (l[0].eu ? 'Você está olhando' : `${nomes[0]} está olhando`) : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]} estão olhando`;
@@ -454,7 +454,8 @@ const App = {
 
   // ---------- navegação ----------
   rotear(forcar = false) {
-    let nome = (location.hash || '').replace(/^#\/?/, '').split('?')[0] || 'dashboard';
+    // tela inicial: o RH (analista) começa em Candidatos, que é onde ele trabalha; os demais no Início
+    let nome = (location.hash || '').replace(/^#\/?/, '').split('?')[0] || (this.usuario && this.usuario.perfil === 'analista' && Store.pode(this.usuario, 'candidatos') ? 'candidatos' : 'dashboard');
     if (nome === 'preadmissao') nome = 'candidatos'; // as duas telas viraram uma
     if (!Paginas[nome] || !Store.pode(this.usuario, nome)) {
       const primeira = this.MENU.find(m => Paginas[m.id] && Store.pode(this.usuario, m.id));

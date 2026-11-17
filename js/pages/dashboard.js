@@ -91,10 +91,12 @@ Paginas.dashboard = {
       const docParada = ab.filter(p => p.etapa === 'documentos' && !pronto(p) && parado(p) >= 7).length;
       const chegaPend = ab.filter(p => p.chegada_data && p.chegada_data >= segH && p.chegada_data <= fimH && !pronto(p)).length;
       const semRhN = ab.filter(p => !p.analista_login).length;
-      const extra = [prParados && `<a href="#/candidatos">${prParados === 1 ? '1 pessoa pronta' : prParados + ' pessoas prontas'} para admitir há 2+ dias</a>`,
-        docParada && `<a href="#/candidatos">${docParada} na documentação parada${docParada > 1 ? 's' : ''} há 7+ dias</a>`,
-        chegaPend && `<a href="#/candidatos">${chegaPend} chega${chegaPend > 1 ? 'm' : ''} esta semana com pendência</a>`,
-        semRhN && `<a href="#/candidatos">${semRhN} candidato${semRhN > 1 ? 's' : ''} sem RH responsável</a>`].filter(Boolean);
+      // cada pendência abre Candidatos já filtrado (quem não abre Candidatos vê só o texto)
+      const linkCand = (seg, pend, txt) => Store.pode(App.usuario, 'candidatos') ? `<a href="#/candidatos" data-cand-seg="${seg}" data-cand-pend="${pend}">${txt}</a>` : txt;
+      const extra = [prParados && linkCand('documentos', 'prontasparadas', `${prParados === 1 ? '1 pessoa pronta' : prParados + ' pessoas prontas'} para admitir há 2+ dias`),
+        docParada && linkCand('documentos', 'docparada', `${docParada} na documentação parada${docParada > 1 ? 's' : ''} há 7+ dias`),
+        chegaPend && linkCand('documentos', 'chegasemana', `${chegaPend} chega${chegaPend > 1 ? 'm' : ''} esta semana com pendência`),
+        semRhN && linkCand('', 'semrh', `${semRhN} candidato${semRhN > 1 ? 's' : ''} sem RH responsável`)].filter(Boolean);
       const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = textoPendencias({ ...rec2, contagemPronta: true }, extra);
       if (dv) { dv.textContent = UI.fmtNum(rec2.vagasAbertas); document.getElementById('dash-vagas-sub').innerHTML = `${UI.fmtNum(rec2.posicoes)} ${rec2.posicoes === 1 ? 'pessoa' : 'pessoas'} ainda a contratar${rec2.semDivulgacao ? ` · <span class="erro">${rec2.semDivulgacao} sem divulgar</span>` : ''}`; }
       const vagas = Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(x => x.aprovada && x.status !== 'cancelada');
@@ -274,6 +276,7 @@ Paginas.dashboard = {
       });
     });
     el.innerHTML = `
+      <div id="dash-dia"></div>
       <div class="fluxo">
         <a class="fluxo-passo" href="#/vagas">
           <div class="fluxo-num">1</div>
@@ -285,7 +288,7 @@ Paginas.dashboard = {
           <div><div class="fluxo-titulo">Candidatos em processo</div><div class="fluxo-valor" id="dash-cand">…</div><div class="fluxo-sub" id="dash-cand-sub">triagem, entrevista e documentação</div></div>
         </a>
         <div class="fluxo-seta">→</div>
-        <a class="fluxo-passo" href="#/cadastro">
+        <a class="fluxo-passo" ${Store.pode(App.usuario, 'cadastro') ? 'href="#/cadastro"' : 'aria-disabled="true"'}>
           <div class="fluxo-num">3</div>
           <div><div class="fluxo-titulo">Contratações</div><div class="fluxo-valor">${UI.fmtNum(r.total)}</div><div class="fluxo-sub">${UI.fmtNum(r.local)} local · ${UI.fmtNum(r.movel)} móvel</div></div>
         </a>
@@ -319,6 +322,44 @@ Paginas.dashboard = {
         <h2>Resumo por projeto</h2>
         <div id="resumo-projetos"></div>
       </div>`;
+
+    // links que abrem Candidatos já filtrado (pendências e resumo do dia)
+    if (!el._linksCand) el.addEventListener('click', el._linksCand = e => {
+      if (App.paginaAtual !== 'dashboard') return;
+      const a = e.target.closest('[data-cand-seg], [data-cand-pend]'); if (!a) return;
+      e.preventDefault();
+      try {
+        sessionStorage.setItem('maparh:cand-seg', a.dataset.candSeg || '');
+        sessionStorage.setItem('maparh:cand-pend', a.dataset.candPend || '');
+        localStorage.setItem('maparh:cand-vaga', '');
+        if (App.filtros.projetoId) localStorage.setItem('maparh:cand-projeto', App.filtros.projetoId);
+      } catch (er) { /* ok */ }
+      App.ir('candidatos');
+    });
+    // resumo do dia para quem não vê todos os RHs (o RH vê o que é dele): entrevistas hoje, aguardando resposta, prontos
+    if (!Store.rhVeTudo(App.usuario) && Store.pode(App.usuario, 'candidatos') && typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh) {
+      const pid = App.filtros.projetoId || ((App.projetosVisiveis().filter(p => p.ativo !== false)[0] || {}).id);
+      const pintarDia = lista => {
+        const box = el.querySelector('#dash-dia'); if (!box || !lista) return;
+        const hoje = RH.hoje(), ab = lista.filter(p => p.situacao === 'em_andamento');
+        const DIA = 86400000;
+        const contato = p => { const a = (p.anotacoes || []).filter(x => String(x.texto || '').startsWith('Mensagem pelo WhatsApp: primeiro contato')).pop(); return a && a.em ? a.em : null; };
+        const ent = ab.filter(p => p.entrevista && p.entrevista.data === hoje).length;
+        const agu = ab.filter(p => p.etapa === 'triagem' && contato(p) && (Date.now() - new Date(contato(p)).getTime()) / DIA >= 2).length;
+        const pr = ab.filter(p => p.etapa === 'documentos' && p.dinamica === 'ok' && !p.documentos_pendentes && ['ok', 'dispensado'].includes(p.aso) && ['ok', 'dispensado'].includes(p.treinamento)).length;
+        const item = (n, txt, seg, pend, cls) => `<a href="#/candidatos" class="dash-dia-item ${n ? cls : 'zero'}" data-cand-seg="${seg}" data-cand-pend="${pend}"><b>${n}</b><span>${txt}</span></a>`;
+        box.innerHTML = `<div class="card dash-dia mb"><div class="dash-dia-tit">Seu dia <span class="muted small">${RH.fmtDia(hoje)}</span></div>
+          ${item(ent, ent === 1 ? 'entrevista hoje' : 'entrevistas hoje', 'agenda', '', '')}
+          ${item(agu, 'aguardando resposta', 'triagem', 'semresposta', 'meio')}
+          ${item(pr, pr === 1 ? 'pronto para admitir' : 'prontos para admitir', 'documentos', 'prontas', 'ok')}
+          <a href="#/candidatos" class="btn btn-pequeno dash-dia-ir">Abrir Candidatos →</a></div>`;
+      };
+      if (pid) {
+        const c = Nuvem.rh.emCache && Nuvem.rh.emCache(pid);
+        if (c) pintarDia(c);
+        else Nuvem.rh.listar(pid).then(l => { if (document.body.contains(el)) pintarDia(l); }).catch(() => {});
+      }
+    }
 
     if (!regs.length) {
       el.querySelector('#graficos').innerHTML = `<div class="card vazio" style="grid-column:1/-1">Nenhuma contratação cadastrada para o filtro atual. ${Store.pode(App.usuario, 'candidatos') ? 'As contratações nascem da admissão: <a href="#/candidatos">ir para Candidatos</a>.' : ''}</div>`;

@@ -31,6 +31,7 @@ Paginas.mapa = {
             </select></label>
           <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> <span class="ponto-cor" style="background:#16a34a"></span>Microrregiões (malha)</label>
           <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
+          <label class="sub" title="Etiqueta azul com o total de contratados de cada distrito (aparece com o mapa afastado)"><input type="checkbox" id="c-tot-dist" checked> Totais por distrito (etiquetas azuis)</label>
           <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> 🌾 Unidades PDR (<span id="qtd-silos">0</span>)</label>
           <select id="mapa-filtro-silos-mapa" class="sub" style="width:calc(100% - 18px);font-size:11px;padding:2px 4px" hidden>
             <option value="">Todos os mapas</option>
@@ -75,7 +76,14 @@ Paginas.mapa = {
     // os nomes vêm da lista de Candidatos (só quem tem acesso aos candidatos vê); busca por trás para a próxima vez que abrir um quadro
     const temNuvemRh = typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh && Nuvem.rh.emCache && Store.pode(App.usuario, 'candidatos');
     if (temNuvemRh) new Set(regs.filter(r => r.preadmissaoId).map(r => r.projetoId)).forEach(id => { if (!Nuvem.rh.emCache(id)) Nuvem.rh.listar(id).catch(() => {}); });
-    const pessoaDoReg = r => { if (!temNuvemRh || !r.preadmissaoId) return null; const l = Nuvem.rh.emCache(r.projetoId); return l ? l.find(x => x.id === r.preadmissaoId) || null : null; };
+    const indicePessoas = new Map();   // projeto -> { lista, porId }
+    const pessoaDoReg = r => {
+      if (!temNuvemRh || !r.preadmissaoId) return null;
+      const l = Nuvem.rh.emCache(r.projetoId); if (!l) return null;
+      let ix = indicePessoas.get(r.projetoId);
+      if (!ix || ix.lista !== l) { ix = { lista: l, porId: new Map(l.map(x => [x.id, x])) }; indicePessoas.set(r.projetoId, ix); }
+      return ix.porId.get(r.preadmissaoId) || null;
+    };
     const pes = n => n === 1 ? '1 pessoa' : `${n} pessoas`;
     const fluxos = Analise.fluxos(regs);
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
@@ -515,7 +523,8 @@ Paginas.mapa = {
       // zoom afastado: etiqueta do distrito só com o losango e o total, rótulos das micros menores
       mapa.getContainer().classList.toggle('mapa-longe', mapa.getZoom() < 9);
       // com uma cidade selecionada ficam só os rótulos da microrregião dela (os totais de distrito somem)
-      const noFoco = r => !foco || (!r.distrito && (r.cidadeIds || []).some(id => foco.has(id)));
+      const mostraTot = !el.querySelector('#c-tot-dist') || el.querySelector('#c-tot-dist').checked;
+      const noFoco = r => (mostraTot || !r.distrito) && (!foco || (!r.distrito && (r.cidadeIds || []).some(id => foco.has(id))));
       // 1) escreve: mostra os candidatos e esconde os fora do foco
       for (const r of rotulosMapa.filter(r => r.marcador._icon && !noFoco(r))) r.marcador._icon.style.display = 'none';
       const itens = rotulosMapa.filter(r => r.marcador._icon && noFoco(r)).sort((a, b) => b.prioridade - a.prioridade);
@@ -837,7 +846,8 @@ Paginas.mapa = {
       camadaOlhando.clearLayers();
       const todos = typeof Nuvem !== 'undefined' && Nuvem.presentes ? Nuvem.presentes() : [];
       const porCidade = new Map();
-      for (const x of todos) if (String(x.onde || '').startsWith('cidade:')) { const id = x.onde.slice(7); if (!porCidade.has(id)) porCidade.set(id, []); porCidade.get(id).push(x); }
+      const euLogin = App.usuario && App.usuario.login;   // a minha foto não aparece no mapa: só a dos outros
+      for (const x of todos) if (x.login !== euLogin && String(x.onde || '').startsWith('cidade:')) { const id = x.onde.slice(7); if (!porCidade.has(id)) porCidade.set(id, []); porCidade.get(id).push(x); }
       for (const [id, l] of porCidade) {
         const c = Store.cidade(id); if (!c || c.lat == null) continue;
         const eu = App.usuario && App.usuario.login;
@@ -971,6 +981,7 @@ Paginas.mapa = {
     }
     // Losango azul: quem TRABALHA na cidade
     function abrirPainelAtuacao(a) {
+      olharCidade(a.cidade.id);   // avisa os outros antes de montar o painel
       const lista = pessoasDeAtuacao(a.cidade.id);
       const daqui = lista.filter(r => r.cidadeId === a.cidade.id).length;
       const cidades = new Set(lista.map(r => r.cidadeId)).size;
@@ -984,6 +995,7 @@ Paginas.mapa = {
     }
     // Bola laranja: quem É da cidade (e onde cada um trabalha)
     function abrirPainelOrigem(g) {
+      olharCidade(g.cidade.id);
       const lista = pessoasDeOrigem(g.cidade.id);
       const s = saidasDe(g);
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini">${lista.length}</span>São de ${UI.esc(g.cidade.nome)}`,
@@ -1068,6 +1080,7 @@ Paginas.mapa = {
       return `<div class="ficha-dado" ${ind.ajuda ? `title="${UI.esc(ind.ajuda)}"` : ''}><div class="rotulo">${ind.rotulo} <span class="muted">(${v.ano})</span></div><div class="valor">${txt}</div></div>`;
     }
     async function abrirPainelCidade(cid, { feature = null, codigo = null, fluxosOrigem = null, aproximar = false } = {}) {
+      olharCidade(cid.id);
       let meu = ++seqPainel;
       const mudou = () => !ativo || meu !== seqPainel; // outro painel foi aberto (ou a página fechada) no meio do caminho
       const info = corDe(cid.id);
@@ -1529,6 +1542,10 @@ Paginas.mapa = {
     }
     el.querySelector('#c-distritos').addEventListener('change', atualizarCamadaDistritos);
     el.querySelector('#c-rotulos').addEventListener('change', atualizarCamadaDistritos);
+    // totais por distrito: quem não quer as etiquetas azuis desmarca (fica lembrado neste navegador)
+    { const cb = el.querySelector('#c-tot-dist'); try { if (localStorage.getItem('maparh:mapa-tot-dist') === '0') cb.checked = false; } catch (e) { /* ok */ }
+      cb.addEventListener('change', () => { try { localStorage.setItem('maparh:mapa-tot-dist', cb.checked ? '1' : '0'); } catch (e) { /* ok */ } ajustarRotulos(); });
+      if (!cb.checked) setTimeout(ajustarRotulos, 0); }
     el.querySelector('#c-calor').addEventListener('change', e => { el.querySelector('#c-modo-calor').hidden = !e.target.checked; montarCalor(); });
     el.querySelector('#c-modo-calor').addEventListener('change', montarCalor);
     // Lembra o que ficou ligado/desligado em "Mostrar no mapa" (ex.: unidades PDR), para não ter que desmarcar toda vez

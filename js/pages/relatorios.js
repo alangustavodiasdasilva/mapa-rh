@@ -8,6 +8,7 @@ Paginas.relatorios = {
     ];
     const km = v => v == null ? '' : Math.round(v);
     let andamento = null;   // andamento dos candidatos (só para "Situação das vagas"), buscado quando o relatório abre
+    let indicacoes = null;  // candidatos com nome (só para quem abre Candidatos), para a tabela de indicações
     const RELATORIOS = [
       { id: 'origem', nome: 'Contratações por cidade de origem', gerar: (regs) => ({
         colunas: [
@@ -182,6 +183,61 @@ Paginas.relatorios = {
           total: `${vagas.length === 1 ? '1 vaga' : vagas.length + ' vagas'}`
         };
       } },
+      // Canais e indicações: de onde vieram os candidatos e até onde cada fonte chegou (sem dado pessoal);
+      // a tabela de indicações (com nome) só para quem abre Candidatos
+      { id: 'canais', nome: 'Canais e indicações', precisaAndamento: true, precisaIndicacoes: true, gerar: () => {
+        let l = andamento || [];
+        if (App.filtros.distritoId) l = l.filter(p => p.distrito_id === App.filtros.distritoId);
+        if (App.filtros.tipo) l = l.filter(p => p.tipo === App.filtros.tipo);
+        const NOMES = Object.fromEntries(Store.CANAIS.map(c => [c.id, c.nome]).concat([['indicacao', 'Indicação de colaborador'], ['ex_colaborador', 'Ex-colaborador'], ['outro', 'Outro'], ['', 'Não informado']]));
+        const ORD = { triagem: 0, entrevista: 1, documentos: 2 };
+        const grupos = new Map();
+        for (const p of l) {
+          const k = p.fonte || '';
+          const g = grupos.get(k) || { fonte: k, nome: NOMES[k] || k, inscritos: 0, entrevista: 0, admitidos: 0, campo: 0 };
+          g.inscritos++;
+          if (p.situacao === 'admitido' || ORD[p.etapa] >= 1) g.entrevista++;
+          if (p.situacao === 'admitido') g.admitidos++;
+          if (p.chegada_status === 'chegou') g.campo++;
+          grupos.set(k, g);
+        }
+        const linhas = [...grupos.values()].sort((a, b) => (a.fonte === '') - (b.fonte === '') || b.inscritos - a.inscritos || a.nome.localeCompare(b.nome, 'pt-BR'));
+        const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+        const total = linhas.reduce((t, g) => t + g.inscritos, 0);
+        // indicações com nome (Candidatos): quem indicou → quem foi indicado e até onde chegou
+        let extra = '';
+        if (Store.pode(App.usuario, 'candidatos')) {
+          if (!indicacoes) extra = '<div class="vazio">Carregando as indicações…</div>';
+          else {
+            let ind = indicacoes.filter(p => p.fonte === 'indicacao');
+            if (App.filtros.distritoId) ind = ind.filter(p => p.distrito_id === App.filtros.distritoId);
+            if (App.filtros.tipo) ind = ind.filter(p => p.tipo === App.filtros.tipo);
+            ind.sort((a, b) => String(a.indicado_por || '').localeCompare(String(b.indicado_por || ''), 'pt-BR') || a.pessoa.nome.localeCompare(b.pessoa.nome, 'pt-BR'));
+            const ETQ = { triagem: 'Triagem', entrevista: 'Entrevista', documentos: 'Documentação' };
+            const sit = p => p.situacao === 'admitido' ? 'Admitido' : p.situacao === 'em_andamento' ? (ETQ[p.etapa] || p.etapa) : 'Não seguiu';
+            extra = `<h3 style="margin:18px 0 8px">Indicações de colaboradores</h3>` + UI.tabela({ vazio: 'Nenhuma indicação marcada na ficha dos candidatos ("Como soube da vaga" → Indicação de colaborador).',
+              colunas: [{ titulo: 'Indicado por', render: p => UI.esc(p.indicado_por || '—') }, { titulo: 'Candidato', render: p => UI.esc(p.pessoa.nome) },
+                { titulo: 'Cargo', render: p => UI.esc(p.cargo || '—') }, { titulo: 'Situação', render: p => sit(p) },
+                { titulo: 'Chegou ao campo', render: p => p.chegada_status === 'chegou' ? 'Sim' : p.chegada_status === 'faltou' ? 'Faltou' : '—' }],
+              linhas: ind });
+          }
+        }
+        return {
+          colunas: [
+            { titulo: 'Como soube da vaga', render: g => g.fonte ? UI.esc(g.nome) : `<span class="muted">${UI.esc(g.nome)}</span>` },
+            { titulo: 'Inscritos', classe: 'direita', render: g => `<b>${UI.fmtNum(g.inscritos)}</b> <span class="muted small">${pct(g.inscritos, total)}</span>` },
+            { titulo: 'Chegaram à entrevista', classe: 'direita', render: g => `${UI.fmtNum(g.entrevista)} <span class="muted small">${pct(g.entrevista, g.inscritos)}</span>` },
+            { titulo: 'Admitidos', classe: 'direita', render: g => `${UI.fmtNum(g.admitidos)} <span class="muted small">${pct(g.admitidos, g.inscritos)}</span>` },
+            { titulo: 'Chegaram ao campo', classe: 'direita', render: g => `${UI.fmtNum(g.campo)} <span class="muted small">${pct(g.campo, g.admitidos)}</span>` }
+          ],
+          linhas,
+          csv: g => [g.nome, g.inscritos, g.entrevista, g.admitidos, g.campo],
+          cabecalhoCsv: ['COMO SOUBE DA VAGA', 'INSCRITOS', 'CHEGARAM A ENTREVISTA', 'ADMITIDOS', 'CHEGARAM AO CAMPO'],
+          nota: 'Pela resposta "Como soube da vaga" na ficha do candidato. As porcentagens: inscritos sobre o total; entrevista e admitidos sobre os inscritos; campo sobre os admitidos.',
+          total: `${total === 1 ? '1 candidato' : UI.fmtNum(total) + ' candidatos'}`,
+          extra
+        };
+      } },
       { id: 'mes', nome: 'Cadastros por mês', gerar: (regs) => ({
         colunas: [{ titulo: 'Mês', render: r => Analise.rotuloMes(r.mes) }, ...colLM],
         linhas: Analise.porMes(regs),
@@ -216,6 +272,13 @@ Paginas.relatorios = {
           return;
         }
       }
+      // indicações com nome: lista dos candidatos do projeto do filtro (ou de todos os projetos visíveis), uma vez
+      if (rel.precisaIndicacoes && indicacoes === null && Store.pode(App.usuario, 'candidatos') && typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh) {
+        indicacoes = undefined;   // buscando
+        const pids = App.filtros.projetoId ? [App.filtros.projetoId] : App.projetosVisiveis().map(p => p.id);
+        Promise.all(pids.map(id => Nuvem.rh.listar(id).catch(() => []))).then(ls => { indicacoes = ls.flat(); })
+          .then(() => { if (document.body.contains(cont) && atual === rel.id) renderRelatorio(); });
+      }
       const dados = rel.gerar(regs);
       cont.innerHTML = `
         <div class="cabecalho-impressao"><h2>Mapa RH — ${UI.esc(rel.nome)}</h2><div class="muted">${UI.esc(App.descricaoFiltro())} · gerado em ${UI.fmtDataHora(new Date().toISOString())}</div></div>
@@ -223,7 +286,7 @@ Paginas.relatorios = {
           <div><h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="muted small">${UI.esc(App.descricaoFiltro())} · ${dados.total || UI.fmtNum(regs.length) + ' contratação(ões)'}${dados.nota ? ' · ' + UI.esc(dados.nota) : ''}</div></div>
           <div class="linha"><button class="btn btn-pequeno" id="rel-csv">Exportar CSV</button><button class="btn btn-pequeno" id="rel-imprimir">Imprimir / PDF</button></div>
         </div>
-        ${UI.tabela({ colunas: dados.colunas, linhas: dados.linhas, vazio: 'Nenhum dado para o filtro atual.' })}`;
+        ${UI.tabela({ colunas: dados.colunas, linhas: dados.linhas, vazio: 'Nenhum dado para o filtro atual.' })}${dados.extra || ''}`;
       cont.querySelector('#rel-csv').addEventListener('click', () => {
         UI.baixarCSV(`relatorio-${rel.id}.csv`, [dados.cabecalhoCsv].concat(dados.linhas.map(dados.csv)));
         Store.auditar('relatorio.exportar', rel.nome, App.usuario);

@@ -27,21 +27,31 @@ Paginas.candidatos = {
     const podeEditar = ['admin', 'gestor', 'analista'].includes(eu.perfil);
     const guardado = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
     const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento: vale só nesta visita */ } };
-    let projetoId = [guardado('maparh:cand-projeto'), App.filtros.projetoId].find(id => projetos.some(p => p.id === id)) || projetos[0].id;
+    // o projeto do filtro geral (topo) vale primeiro; trocar aqui grava de volta nele (igual a Contratações)
+    let projetoId = [App.filtros.projetoId, guardado('maparh:cand-projeto')].find(id => projetos.some(p => p.id === id)) || projetos[0].id;
     let vista = ['quadro', 'lista', 'rh', 'agenda'].includes(guardado('maparh:cand-vista')) ? guardado('maparh:cand-vista') : 'quadro';
     let semanaAg = null, colMob = '';   // colMob: etapa mostrada no Quadro do celular                // segunda-feira da semana mostrada na Agenda
     if (vista === 'rh' && !veTudo) vista = 'quadro';
     let vagaId = guardado('maparh:cand-vaga'), distritoId = '', analista = '', semana = 'todas', seg = '', pend = '', busca = '';
     // vindo da tela de Vagas pela contagem de uma etapa: abre a Lista já nessa etapa
-    try { const s = sessionStorage.getItem('maparh:cand-seg'); if (s) { seg = s; vista = 'lista'; sessionStorage.removeItem('maparh:cand-seg'); } } catch (e) { /* ok */ }
+    // vindo do Início (pendências, resumo do dia): etapa e filtro de pendência ('agenda' abre a Agenda; pend 'semrh' mostra quem está sem RH)
+    try {
+      const s = sessionStorage.getItem('maparh:cand-seg') || '', pd = sessionStorage.getItem('maparh:cand-pend') || '';
+      sessionStorage.removeItem('maparh:cand-seg'); sessionStorage.removeItem('maparh:cand-pend');
+      if (s === 'agenda') vista = 'agenda';
+      else if (pd === 'semrh') { analista = '(sem)'; vista = 'quadro'; }
+      else if (s) { seg = s; pend = pd; vista = 'lista'; }
+    } catch (e) { /* ok */ }
     let buscaIni = ''; try { buscaIni = sessionStorage.getItem('maparh:cand-busca') || ''; sessionStorage.removeItem('maparh:cand-busca'); } catch (e) { /* ok */ }
     let linhas = [], ativo = true;
-    const verMais = {};                 // quantos cartões cada coluna do quadro mostra (30 por vez)
+    const verMais = {};                 // quantos cartões cada coluna do quadro mostra (50 por vez)
+    const POR_COLUNA = 50;
     const marcados = new Set();         // seleção da Lista para ações em lote
     let limiteKm = Math.max(0, parseInt(guardado('maparh:cand-km'), 10) || 50);   // até quantos km do distrito ainda conta como LOCAL
 
     // ---------- quem é o RH de cada pessoa ----------
-    const chaveAnalista = p => p.analista_login || '';
+    // login de usuário que não existe mais (excluído) conta como "sem RH"
+    const chaveAnalista = p => p.analista_login && Store.usuarioPorLogin(p.analista_login) ? p.analista_login : '';
     // foto (ou iniciais) do RH de uma pessoa / de um login
     const fotoRh = (login, tam = 24) => { const u = Store.usuarioPorLogin(login); return UI.avatar(u || { nome: login || '?' }, tam); };
     // foto de quem fez a última atualização (o banco grava), com nome e quando; sem registro, o RH responsável
@@ -79,7 +89,7 @@ Paginas.candidatos = {
     const vagasProjeto = () => Store.vagasVisiveis(eu, { projetoId }).filter(v => v.aprovada);
     const rotuloVaga = v => v ? `${v.titulo}${v.porDistrito && v.porDistrito.length ? ' · ' + v.porDistrito.map(x => x.distrito.nome).join(', ') : v.cidade ? ' · ' + v.cidade.nome : ''}` : '';
     const distritoUnico = v => v && v.porDistrito && v.porDistrito.length === 1 ? v.porDistrito[0].distrito : null;
-    const vagaDe = id => id ? vagasProjeto().find(v => v.id === id) || null : null;
+    const vagaDe = id => vagaRapida(id);   // pelo cache do desenho (não recalcula as vagas a cada cartão)
     // cidade onde a pessoa vai trabalhar: a informada; no MÓVEL sem cidade, a base; sem nenhuma, a cidade polo do distrito
     const trabalhoId = p => p.cidade_atuacao_id || (p.tipo === 'MOVEL' ? p.base_id : null) || (p.distrito_id && Store.distrito(p.distrito_id) ? (Store.poloDoDistrito(Store.distrito(p.distrito_id)) || {}).id : null) || null;
     const destinoTexto = p => nomeCidade(p.cidade_atuacao_id) || (p.distrito_id && Store.distrito(p.distrito_id) ? Store.distrito(p.distrito_id).nome : '') || nomeCidade(p.tipo === 'MOVEL' ? p.base_id : null);
@@ -253,8 +263,16 @@ Paginas.candidatos = {
     const diasNaEtapa = p => { const ts = p.etapa_em || p.criado_em; return ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)) : 0; };
     const linkWhats = (pe, msg) => { const t = RH.soDigitos(pe.telefone); return t.length >= 10 ? `https://wa.me/55${t}${msg ? '?text=' + encodeURIComponent(msg) : ''}` : ''; };
     // duas entrevistas do mesmo RH no mesmo dia e horário
-    const conflitoDe = p => { const e = p.entrevista; if (!e || !e.data || !e.hora || !emAndamento(p)) return null;
-      return linhas.find(x => x !== p && emAndamento(x) && x.analista_login && x.analista_login === p.analista_login && x.entrevista && x.entrevista.data === e.data && x.entrevista.hora === e.hora) || null; };
+    // índice analista|data|hora → pessoas, montado uma vez por desenho (antes era uma busca na lista inteira por cartão)
+    let indiceConflito = null;
+    const chaveConflito = x => `${x.analista_login}|${x.entrevista.data}|${x.entrevista.hora}`;
+    const conflitoDe = p => { const e = p.entrevista; if (!e || !e.data || !e.hora || !emAndamento(p) || !p.analista_login) return null;
+      if (!indiceConflito) {
+        indiceConflito = new Map();
+        for (const x of linhas) if (emAndamento(x) && x.analista_login && x.entrevista && x.entrevista.data && x.entrevista.hora) { const k = chaveConflito(x); (indiceConflito.get(k) || indiceConflito.set(k, []).get(k)).push(x); }
+        setTimeout(() => { indiceConflito = null; }, 0);
+      }
+      return (indiceConflito.get(chaveConflito(p)) || []).find(x => x !== p) || null; };
     // vaga cancelada ou que já completou o pedido do tipo/distrito da pessoa
     function avisoVaga(p) {
       const vg = p.vaga_id ? Store.vaga(p.vaga_id) : null; if (!vg) return '';
@@ -308,7 +326,7 @@ Paginas.candidatos = {
           <label class="cad-proj" ${veTudo ? '' : 'hidden'}>RH responsável<select id="cd-analista"></select></label>
           <span class="espaco"></span>
           <div class="linha nao-imprimir">
-            <div class="cd-mais"><button type="button" class="btn" id="cd-planilha" aria-haspopup="menu">Planilha ▾</button><div class="cd-menu" id="cd-planilha-menu" hidden>
+            <div class="cd-mais"><button type="button" class="btn" id="cd-planilha" aria-haspopup="menu" aria-expanded="false">Planilha ▾</button><div class="cd-menu" id="cd-planilha-menu" hidden>
               ${podeEditar && veTudo ? '<button type="button" id="cd-importar">Importar planilha do formulário</button>' : ''}
               <button type="button" id="cd-exportar" title="Baixa a lista que está na tela no modelo da planilha SEMANA">Exportar a lista (modelo SEMANA)</button>
             </div></div>
@@ -319,7 +337,7 @@ Paginas.candidatos = {
         <div class="cd-faixa">
           <div class="abas cd-abas" id="cd-abas"></div>
           <span class="espaco"></span>
-          <input class="busca nao-imprimir" id="cd-busca" placeholder="Procurar por nome, CPF, cidade ou cargo…">
+          <input class="busca nao-imprimir" id="cd-busca" placeholder="Procurar por nome, CPF, telefone, cidade ou cargo…" aria-label="Procurar candidatos">
         </div>
         <div id="cd-hoje" class="cd-hoje"></div>
         <div id="cd-aviso"></div>
@@ -327,8 +345,8 @@ Paginas.candidatos = {
       </div>`;
     const q = s => el.querySelector(s);
     if (buscaIni) { busca = buscaIni; q('#cd-busca').value = buscaIni; }
-    q('#cd-planilha').addEventListener('click', e => { e.stopPropagation(); const mn = q('#cd-planilha-menu'); if (mn.hidden) UI.abrirMenu(q('#cd-planilha'), mn); else mn.hidden = true; });
-    q('#cd-planilha-menu').addEventListener('click', () => { q('#cd-planilha-menu').hidden = true; });
+    q('#cd-planilha').addEventListener('click', e => { e.stopPropagation(); const mn = q('#cd-planilha-menu'); if (mn.hidden) { UI.abrirMenu(q('#cd-planilha'), mn); q('#cd-planilha').setAttribute('aria-expanded', 'true'); } else { mn.hidden = true; q('#cd-planilha').setAttribute('aria-expanded', 'false'); } });
+    q('#cd-planilha-menu').addEventListener('click', () => { q('#cd-planilha-menu').hidden = true; q('#cd-planilha').setAttribute('aria-expanded', 'false'); });
     // a Lista usa o layout compacto quando o espaço útil (descontada a barra lateral) é pequeno, e não pela largura da janela
     const medirLargura = () => { const c = q('#cd-corpo'); if (c) c.classList.toggle('cd-compacto', c.clientWidth > 0 && c.clientWidth < 1180); };
     if (window.ResizeObserver) new ResizeObserver(medirLargura).observe(q('#cd-corpo'));
@@ -348,7 +366,7 @@ Paginas.candidatos = {
       if (!semAnalista) { if (analista === '(sem)') l = l.filter(p => !chaveAnalista(p)); else if (analista) l = l.filter(p => chaveAnalista(p) === analista); }
       if (!semBusca && busca) {
         const b = Store.normalizar(busca), bd = RH.soDigitos(busca);
-        l = l.filter(p => Store.normalizar([p.pessoa.nome, nomeCidade(p.pessoa.cidade_origem_id), destinoTexto(p), nomeAnalista(p), p.cargo, p.unidade].join(' ')).includes(b) || (bd.length >= 3 && String(p.pessoa.cpf || '').includes(bd)));
+        l = l.filter(p => Store.normalizar([p.pessoa.nome, nomeCidade(p.pessoa.cidade_origem_id), destinoTexto(p), nomeAnalista(p), p.cargo, p.unidade].join(' ')).includes(b) || (bd.length >= 3 && (String(p.pessoa.cpf || '').includes(bd) || RH.soDigitos(p.pessoa.telefone).includes(bd))));
       }
       return l;
     }
@@ -370,8 +388,29 @@ Paginas.candidatos = {
       barradas: { rotulo: 'Inapto/reprovado', teste: p => !!barradaEm(p) },
       asohoje: { rotulo: 'ASO hoje', teste: p => naEtapa(p, 'documentos') && p.aso === 'agendado' && p.aso_data === RH.hoje() },
       asoatraso: { rotulo: 'ASO passou sem resultado', teste: p => naEtapa(p, 'documentos') && p.aso === 'agendado' && !!p.aso_data && p.aso_data < RH.hoje() },
-      treamanha: { rotulo: 'Treinamento amanhã', teste: p => naEtapa(p, 'documentos') && p.treinamento === 'agendado' && p.treinamento_data === somarDias(RH.hoje(), 1) }
+      treamanha: { rotulo: 'Treinamento amanhã', teste: p => naEtapa(p, 'documentos') && p.treinamento === 'agendado' && p.treinamento_data === somarDias(RH.hoje(), 1) },
+      // vindos do Início
+      prontasparadas: { rotulo: 'Prontos há 2+ dias', teste: p => pronta(p) && diasNaEtapa(p) >= 2, soLink: true },
+      docparada: { rotulo: 'Parados há 7+ dias', teste: p => naEtapa(p, 'documentos') && !pronta(p) && diasNaEtapa(p) >= 7, soLink: true },
+      chegasemana: { rotulo: 'Chegam esta semana com pendência', teste: p => naEtapa(p, 'documentos') && !!p.chegada_data && RH.segundaDaSemana(p.chegada_data) === RH.segundaDaSemana(RH.hoje()) && !pronta(p), soLink: true },
+      // chegada no campo (Documentação e Admitidos)
+      chegahoje: { rotulo: 'Chegam hoje', teste: p => chegaHoje(p), segs: ['documentos', 'admitido'] },
+      chegavencida: { rotulo: 'Chegada sem confirmação', teste: p => chegadaVencida(p), segs: ['documentos', 'admitido'] },
+      faltaram: { rotulo: 'Faltaram na chegada', teste: p => faltouCampo(p), segs: ['documentos', 'admitido'] },
+      // Triagem e Entrevista
+      semresposta: { rotulo: 'Aguardando resposta', teste: p => !!semResposta(p), segs: ['triagem'] },
+      parados3: { rotulo: 'Na etapa há 3+ dias', teste: p => emAndamento(p) && diasNaEtapa(p) >= 3, segs: ['triagem', 'entrevista'] },
+      semdata: { rotulo: 'Sem data marcada', teste: p => naEtapa(p, 'entrevista') && !(p.entrevista && p.entrevista.data), segs: ['entrevista'] },
+      semresultado: { rotulo: 'Passou sem resultado', teste: p => naEtapa(p, 'entrevista') && !!(p.entrevista && p.entrevista.data) && p.entrevista.data < RH.hoje() && (p.entrevista.resultado || 'aguardando') === 'aguardando', segs: ['entrevista'] }
     };
+    const pendDaEtapa = (k, s) => !!PEND[k] && (PEND[k].segs || ['documentos']).includes(s);
+    // ---------- chegada no campo ----------
+    const CHEGADA = { aguardando: 'Aguardando', chegou: 'Chegou', faltou: 'Faltou', remarcou: 'Remarcou' };
+    const stChegada = p => p.chegada_status || 'aguardando';
+    const temChegada = p => !!p.chegada_data && (naEtapa(p, 'documentos') || p.situacao === 'admitido');
+    const chegaHoje = p => temChegada(p) && p.chegada_data === RH.hoje() && !['chegou', 'faltou'].includes(stChegada(p));
+    const chegadaVencida = p => temChegada(p) && p.chegada_data < RH.hoje() && stChegada(p) === 'aguardando';
+    const faltouCampo = p => temChegada(p) && stChegada(p) === 'faltou';
     // entrevistas de amanhã em que a pessoa ainda não confirmou
     const amanhaSemConfirmar = l => l.filter(p => esperaConfirmar(p) && p.entrevista.data === somarDias(RH.hoje(), 1) && confirmou(p) !== 'sim');
     const diasDesde = ts => ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)) : null;
@@ -383,7 +422,7 @@ Paginas.candidatos = {
         if (semana === 'sem') l = l.filter(p => !p.chegada_data);
         else if (semana !== 'todas') l = l.filter(p => p.chegada_data && RH.segundaDaSemana(p.chegada_data) === semana);
       }
-      if (seg === 'documentos' && pend && PEND[pend] && !semPend) l = l.filter(PEND[pend].teste);
+      if (pend && pendDaEtapa(pend, seg) && !semPend) l = l.filter(PEND[pend].teste);
       return l;
     }
     function desenharFiltros() {
@@ -413,6 +452,7 @@ Paginas.candidatos = {
     }
     function desenhar() {
       UI.fecharMenus();
+      cacheVagas = null; indiceConflito = null;   // dados podem ter mudado desde o último desenho
       // a dinâmica está completa quando todos os documentos do cargo foram entregues (recalculado: o cargo pode ter mudado)
       for (const p of linhas) if (emAndamento(p)) p.dinamica = dinamicaDe(p).completa ? 'ok' : 'pendente';
       desenharFiltros();
@@ -434,12 +474,15 @@ Paginas.candidatos = {
       const triVelha = ab.filter(p => p.etapa === 'triagem' && diasNaEtapa(p) >= 3).length;
       const prontos = ab.filter(pronta).length;
       const aguardam = ab.filter(semResposta).length, semConf = amanhaSemConfirmar(ab).length;
+      const comAdm = b.filter(p => emAndamento(p) || p.situacao === 'admitido'), chHoje = comAdm.filter(chegaHoje).length, chVenc = comAdm.filter(chegadaVencida).length;
       const asoHoje = ab.filter(PEND.asohoje.teste).length, asoPassou = ab.filter(PEND.asoatraso.teste).length, treAmanha = ab.filter(PEND.treamanha.teste).length;
       const itens = [entHoje && `<button type="button" data-hoje="agenda"><b>${entHoje}</b> ${entHoje === 1 ? 'entrevista hoje' : 'entrevistas hoje'}</button>`,
         semRes && `<button type="button" data-hoje="agenda" class="ruim"><b>${semRes}</b> sem resultado</button>`,
         semConf && `<button type="button" data-hoje="confirmar" class="meio" title="Abre o lembrete para cada uma, uma por vez"><b>${semConf}</b> ${semConf === 1 ? 'entrevista amanhã sem confirmação' : 'entrevistas amanhã sem confirmação'}</button>`,
-        aguardam && `<button type="button" data-hoje="triagem" class="meio" title="Mandou o 1º contato há 2 dias ou mais e a pessoa não respondeu"><b>${aguardam}</b> aguardando resposta</button>`,
-        triVelha && `<button type="button" data-hoje="triagem" class="meio"><b>${triVelha}</b> na triagem há 3+ dias</button>`,
+        aguardam && `<button type="button" data-hoje="pend:semresposta" class="meio" title="Mandou o 1º contato há 2 dias ou mais e a pessoa não respondeu"><b>${aguardam}</b> aguardando resposta</button>`,
+        triVelha && `<button type="button" data-hoje="pend:parados3:triagem" class="meio"><b>${triVelha}</b> na triagem há 3+ dias</button>`,
+        chHoje && `<button type="button" data-hoje="pend:chegahoje" title="Chegada no campo marcada para hoje"><b>${chHoje}</b> ${chHoje === 1 ? 'chega hoje' : 'chegam hoje'}</button>`,
+        chVenc && `<button type="button" data-hoje="pend:chegavencida" class="ruim" title="A data de chegada passou e ninguém marcou se chegou ou faltou"><b>${chVenc}</b> ${chVenc === 1 ? 'chegada passada sem confirmação' : 'chegadas passadas sem confirmação'}</button>`,
         asoHoje && `<button type="button" data-hoje="pend:asohoje"><b>${asoHoje}</b> ASO hoje</button>`,
         asoPassou && `<button type="button" data-hoje="pend:asoatraso" class="ruim"><b>${asoPassou}</b> ASO já passou sem resultado</button>`,
         treAmanha && `<button type="button" data-hoje="pend:treamanha"><b>${treAmanha}</b> ${treAmanha === 1 ? 'treinamento amanhã' : 'treinamentos amanhã'}</button>`,
@@ -514,11 +557,12 @@ Paginas.candidatos = {
       if (aberto && p.etapa === 'documentos' && !pe.cpf) alertas.push('sem CPF');
       if (aberto && veTudo && !chaveAnalista(p)) alertas.push('sem RH');
       if (aberto && rhInativo(p)) alertas.push('RH inativo: redirecione');
-      if (aberto && avisoVaga(p)) alertas.push(avisoVaga(p));
+      const avV = aberto ? avisoVaga(p) : '', conf = aberto ? conflitoDe(p) : null;
+      if (avV) alertas.push(avV);
       const semMov = diasDesde(ultimoMovimento(p));
       if (aberto && p.etapa === 'documentos' && semMov >= 7) alertas.push(`sem movimento há ${semMov} dias`);
       if (aberto && p.etapa === 'documentos' && chegaDepoisDoPrazo(p)) alertas.push('chegada depois do prazo da vaga');
-      if (aberto && conflitoDe(p)) alertas.push(`mesmo horário que ${conflitoDe(p).pessoa.nome.split(' ')[0]}`);
+      if (conf) alertas.push(`mesmo horário que ${conf.pessoa.nome.split(' ')[0]}`);
       let doc = '';
       const ent = p.entrevista || {};
       // triagem/entrevista: há quanto tempo está na etapa e tentativas de contato sem resposta
@@ -539,8 +583,9 @@ Paginas.candidatos = {
               <button type="button" class="cd-chip cd-chip-${classeEstado('aso', p.aso)}" data-acao="docs">ASO ${ASO[p.aso].toLowerCase()}</button>
               <button type="button" class="cd-chip cd-chip-${classeEstado('treinamento', p.treinamento)}" data-acao="docs">Treinamento ${TRE[p.treinamento].toLowerCase()}</button>
               ${p.chegada_data ? `<span class="cd-chega">Chega ${RH.fmtDia(p.chegada_data)}</span>` : ''}
-            </div></div>`;
+            </div></div>${chegadaHtml(p)}`;
       }
+      if (adm) doc = chegadaHtml(p, true);
       // ação principal (uma só) e o menu
       let principal = '';
       const menu = [];
@@ -570,8 +615,9 @@ Paginas.candidatos = {
       const rh = ultimoAMexer(p);
       const km = p.distancia_km != null && +p.distancia_km > 0 ? `<span class="cd-km">${UI.fmtKm(+p.distancia_km)}</span>` : '';
       const arrasta = podeEditar && !adm;
-      return `<div class="cand-card cd-card ${estado} ${arrasta ? 'cd-arrasta' : ''}" data-id="${p.id}" ${arrasta ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="Abrir a ficha de ${UI.esc(pe.nome)}">
-        <div class="cd-nome-l"><div class="cd-nome" title="${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</div>${seloCnh(pe)}</div>
+      // o cartão não é um botão inteiro (tem botões dentro): o nome é o botão que abre a ficha
+      return `<div class="cand-card cd-card ${estado} ${arrasta ? 'cd-arrasta' : ''}" data-id="${p.id}" ${arrasta ? 'draggable="true"' : ''}>
+        <div class="cd-nome-l"><button type="button" class="cd-nome" data-acao="editar" title="Abrir a ficha de ${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</button>${seloCnh(pe)}${faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim cd-selo-faltou" title="Não chegou ao campo">faltou</span>' : ''}</div>
         <div class="cd-meta">${UI.badgeTipo(p.tipo)}${p.cargo ? `<span class="cd-cargo" title="${UI.esc(p.cargo)}">${UI.esc(p.cargo)}</span>` : ''}${km}</div>
         <div class="cd-rota" title="${UI.esc((origem || 'origem não informada') + ' → ' + (dest || 'destino não definido'))}">${origem ? UI.esc(origem) : '<span class="cd-falta">origem?</span>'} <i>→</i> ${dest ? UI.esc(dest) : '<span class="cd-falta">destino?</span>'}</div>
         ${aberto && seloPrazo(p) ? `<div class="cd-prazo-l">${seloPrazo(p)}</div>` : ''}
@@ -581,7 +627,7 @@ Paginas.candidatos = {
         ${barrada && aberto ? `<div class="cd-sit cd-sit-ruim">${barrada}</div>` : ''}
         ${alertas.length ? `<div class="cd-alertas">${alertas.map(a => `<span>${a}</span>`).join('')}</div>` : ''}
         ${rh || principal || menu.length ? `<div class="cd-pe">${rh}${linkWhats(pe) && podeEditar ? `<button type="button" class="cd-wa" data-acao="mensagem" title="Mandar mensagem pelo WhatsApp" aria-label="Mensagem no WhatsApp"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.5-.3Z"/></svg></button>` : ''}<span class="espaco"></span>${principal}
-          ${menu.length ? `<div class="cd-mais"><button type="button" class="cd-mais-btn" data-acao="menu" aria-label="Mais ações" title="Mais ações">⋯</button><div class="cd-menu" hidden>${menu.join('')}</div></div>` : ''}</div>` : ''}
+          ${menu.length ? `<div class="cd-mais"><button type="button" class="cd-mais-btn" data-acao="menu" aria-label="Mais ações para ${UI.esc(pe.nome)}" aria-haspopup="menu" aria-expanded="false" title="Mais ações">⋯</button><div class="cd-menu" hidden>${menu.join('')}</div></div>` : ''}</div>` : ''}
       </div>`;
     }
     function desenharQuadro(b) {
@@ -601,15 +647,16 @@ Paginas.candidatos = {
       // Não seguiram: os mais recentes primeiro, 30 no Quadro (o resto na Lista)
       const fora = b.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu').sort((x, y) => String(y.etapa_em || '').localeCompare(String(x.etapa_em || '')) || porNome(x, y));
       const rot = { ...ETAPAS, admitido: 'Admitidos' };
-      if (!colMob || !col[colMob]) colMob = ['triagem', 'entrevista', 'documentos', 'admitido'].find(k => col[k].length) || 'triagem';
+      // com busca: se a etapa mostrada no celular ficou vazia, pula para a primeira que achou alguém
+      if (!colMob || !col[colMob] || (busca && !col[colMob].length)) colMob = ['triagem', 'entrevista', 'documentos', 'admitido'].find(k => col[k].length) || colMob || 'triagem';
       q('#cd-corpo').innerHTML = `<div class="cd-col-sel">${['triagem', 'entrevista', 'documentos', 'admitido'].map(k => `<button type="button" data-col="${k}" class="${k === colMob ? 'ativa' : ''}">${rot[k]} <b>${k === 'admitido' ? totalAdm : col[k].length}</b></button>`).join('')}</div>
         <div class="cd-quadro" data-col="${colMob}">${['triagem', 'entrevista', 'documentos', 'admitido'].map((k, i) => `<div class="coluna cd-coluna" data-etapa="${k}">
           <div class="coluna-cab" title="${UI.esc(DICAS[k])}"><span class="passo-num">${i + 1}</span> ${rot[k]}${k === 'documentos' && col.documentos.some(pronta) ? ` <button type="button" class="cd-prontos" data-ver-prontos title="Ver na Lista quem já pode ser admitido">${col.documentos.filter(pronta).length} pronto${col.documentos.filter(pronta).length > 1 ? 's' : ''} para admitir</button>` : ''}${k === 'admitido' ? ` <span class="muted small cd-adm-sub">últimos ${DIAS_ADM} dias</span>` : ''} <span class="aba-num" ${k === 'admitido' ? 'title="Total de admitidos neste filtro"' : ''}>${k === 'admitido' ? totalAdm : col[k].length}</span></div>
           <div class="cd-coluna-lista">${k === 'admitido'
             ? (admNaColuna.map(cartao).join('') || `<div class="coluna-vazia"><b>${totalAdm ? `Ninguém admitido nos últimos ${DIAS_ADM} dias` : busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
-              + (totalAdm ? `<div class="cd-adm-rodape">${col.admitido.length > admNaColuna.length ? `+${col.admitido.length - admNaColuna.length} desta semana · ` : ''}${totalAdm === 1 ? '1 admitido' : totalAdm + ' admitidos'} no total<button type="button" class="btn btn-pequeno" data-ir-contratacoes>Ver todos em Contratações →</button></div>` : '')
-            : (col[k].slice(0, verMais[k] || 30).map(cartao).join('') || `<div class="coluna-vazia"><b>${busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
-              + (col[k].length > (verMais[k] || 30) ? `<button type="button" class="cd-ver-mais" data-ver-mais="${k}">Mostrar mais ${Math.min(30, col[k].length - (verMais[k] || 30))} de ${col[k].length - (verMais[k] || 30)} restantes</button>` : '')}</div>
+              + (totalAdm ? `<div class="cd-adm-rodape">${col.admitido.length > admNaColuna.length ? `+${col.admitido.length - admNaColuna.length} desta semana · ` : ''}${totalAdm === 1 ? '1 admitido' : totalAdm + ' admitidos'} no total${Store.pode(eu, 'cadastro') ? '<button type="button" class="btn btn-pequeno" data-ir-contratacoes>Ver todos em Contratações →</button>' : ''}</div>` : '')
+            : (col[k].slice(0, verMais[k] || POR_COLUNA).map(cartao).join('') || `<div class="coluna-vazia"><b>${busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
+              + (col[k].length > (verMais[k] || POR_COLUNA) ? `<button type="button" class="cd-ver-mais" data-ver-mais="${k}">Mostrar mais ${Math.min(POR_COLUNA, col[k].length - (verMais[k] || POR_COLUNA))} de ${col[k].length - (verMais[k] || POR_COLUNA)} restantes</button>` : '')}</div>
         </div>`).join('')}</div>
         ${podeEditar ? '<div class="cd-solta-fora" data-solta="fora">Solte aqui quem <b>não segue</b> no processo (reprovado ou desistiu)</div>' : ''}
         ${fora.length ? `<details class="cd-fora"><summary>Não seguiram no processo (${fora.length})</summary><div class="kanban kanban-reprovados">${fora.slice(0, 30).map(cartao).join('')}</div>${fora.length > 30 ? `<button type="button" class="cd-ver-mais" data-seg="fora" data-ir-lista>Ver todos os ${fora.length} na Lista</button>` : ''}</details>` : ''}`;
@@ -620,13 +667,17 @@ Paginas.candidatos = {
     function desenharLista() {
       const b = base();
       if (!seg) seg = b.some(p => naEtapa(p, 'documentos')) ? 'documentos' : 'triagem';
+      // com busca: se a etapa da Lista ficou vazia, pula para a primeira que achou alguém
+      if (busca && !b.some(p => noSeg(p, seg))) { const s1 = SEGS.find(([k]) => b.some(p => noSeg(p, k))); if (s1) { seg = s1[0]; pend = ''; } }
       const todos = daLista(true), lista = daLista(false);
       const segs = `<div class="cd-segs">${SEGS.map(([k, r]) => `<button type="button" class="cd-seg ${seg === k ? 'ativa' : ''}" data-seg="${k}">${r} <span class="aba-num">${UI.fmtNum(b.filter(p => noSeg(p, k)).length)}</span></button>`).join('')}</div>`;
       // segunda linha: pendências (Documentação) e semana de chegada (Documentação e Admitidos)
       let sub = '';
-      if (seg === 'documentos') {
-        if (pend && !PEND[pend]) pend = '';
-        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${Object.entries(PEND).map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc', 'asoatraso'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
+      if (pend && !pendDaEtapa(pend, seg)) pend = '';
+      // filtros de pendência da etapa (os "soLink" só aparecem quando vieram do Início)
+      const pendsSeg = Object.entries(PEND).filter(([k, f]) => pendDaEtapa(k, seg) && (!f.soLink || pend === k));
+      if (pendsSeg.some(([k, f]) => pend === k || todos.some(f.teste))) {
+        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${pendsSeg.map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc', 'asoatraso', 'faltaram', 'chegavencida', 'semresultado'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}" aria-pressed="${pend === k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
       }
       if (seg === 'documentos' || seg === 'admitido') {
         const cont = new Map(); let sem = 0;
@@ -656,15 +707,15 @@ Paginas.candidatos = {
       const rhCol = veTudo ? ['RH'] : [];
       const COLS = {
         fila: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Vaga / cargo', seg === 'triagem' ? 'Contato' : 'Entrevista'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1fr) 150px${veTudo ? ' minmax(90px,.7fr)' : ''} 230px` },
-        documentos: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Documentos', 'ASO', 'Treinamento', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) 150px 130px 130px 92px${veTudo ? ' minmax(80px,.6fr)' : ''} 150px` },
-        admitido: { cab: ['Pessoa', 'De onde vem → onde trabalha', 'Vaga / cargo', 'Admitido em', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,1fr) 110px 92px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` },
+        documentos: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Documentos', 'ASO', 'Treinamento', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) 150px 130px 130px 128px${veTudo ? ' minmax(80px,.6fr)' : ''} 150px` },
+        admitido: { cab: ['Pessoa', 'De onde vem → onde trabalha', 'Vaga / cargo', 'Admitido em', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,1fr) 110px 128px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` },
         fora: { cab: ['Pessoa', 'Parou na etapa', 'O que aconteceu', 'Quando'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) 140px minmax(0,1.6fr) 100px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` }
       };
       const modo = seg === 'triagem' || seg === 'entrevista' ? 'fila' : seg;
       const cfg = COLS[modo];
-      const marca = p => loteOk ? `<button type="button" class="cd-marca ${marcados.has(p.id) ? 'on' : ''}" data-marca="${p.id}" aria-label="Selecionar"></button>` : '';
+      const marca = p => loteOk ? `<button type="button" class="cd-marca ${marcados.has(p.id) ? 'on' : ''}" data-marca="${p.id}" aria-label="Selecionar ${UI.esc(p.pessoa.nome)}" aria-pressed="${marcados.has(p.id)}"></button>` : '';
       const vagaTxt = p => { const v = vagaDe(p.vaga_id) || (p.vaga_id && Store.vaga(p.vaga_id)); return `${v ? `<div class="pre-rota">${UI.esc(v.titulo)}</div>` : '<div class="pre-rota muted">sem vaga</div>'}${p.cargo && (!v || p.cargo !== v.titulo) ? `<div class="pre-sub">${UI.esc(p.cargo)}</div>` : ''}${seloPrazo(p) ? `<div class="cd-prazo-l">${seloPrazo(p)}</div>` : ''}`; };
-      const celRh = p => veTudo ? `<div class="pre-cel pre-uma pre-analista" data-rot="RH" title="${UI.esc(nomeAnalista(p))}">${p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 24)}<span>${UI.esc(nomeAnalista(p).split(' ')[0])}</span></span>` : `<span class="pre-falta" title="${UI.esc(p.analista ? 'Na planilha: ' + p.analista : '')}">sem RH</span>`}</div>` : '';
+      const celRh = p => veTudo ? `<div class="pre-cel pre-uma pre-analista" data-rot="RH" title="${UI.esc(nomeAnalista(p))}">${chaveAnalista(p) ? `<span class="com-avatar">${fotoRh(p.analista_login, 24)}<span>${UI.esc(nomeAnalista(p).split(' ')[0])}</span></span>` : `<span class="pre-falta" title="${UI.esc(p.analista ? 'Na planilha: ' + p.analista : '')}">sem RH</span>`}</div>` : '';
       const editar = '<button class="btn-link" data-acao="editar">Abrir</button>';
       function quem(p) {
         const pe = p.pessoa, tel = RH.soDigitos(pe.telefone), noDoc = seg === 'documentos';
@@ -676,6 +727,7 @@ Paginas.candidatos = {
         if (noDoc && emAndamento(p) && diasDesde(ultimoMovimento(p)) >= 7) al.push([`sem movimento há ${diasDesde(ultimoMovimento(p))} dias`, 0]);
         if (barradaEm(p) && emAndamento(p)) al.push([barradaEm(p), 1]);
         if (!pe.cidade_origem_id) al.push(['sem cidade de origem', 0]);
+        if (faltouCampo(p)) al.push(['faltou na chegada', 1]);
         if (pe.ex_colaborador) al.push(['ex-colaborador', 2]);
         if (semCnh(pe)) al.push(['sem CNH', 1]);
         return `<div class="pre-cel pre-quem">
@@ -707,7 +759,7 @@ Paginas.candidatos = {
             : `<span class="pre-st-txt pre-st-${classeEstado(campo, p[campo])}">${OPCOES[campo][p[campo]]}</span>`}${campo === 'aso' && p.aso_data ? `<span class="pre-nota${p.aso === 'agendado' && p.aso_data < RH.hoje() ? ' cd-velho' : ''}" title="${UI.esc(p.aso_local || '')}">${RH.fmtDia(p.aso_data)}</span>` : ''}${campo === 'treinamento' && p.treinamento === 'agendado' && p.treinamento_data ? `<span class="pre-nota" title="${UI.esc(p.treinamento_local || '')}">${RH.fmtDia(p.treinamento_data)}</span>` : ''}</div>`;
           cel = rota(p) + `<div class="pre-cel" data-rot="Documentos">${podeEditar ? `<button type="button" class="pre-st pre-din pre-st-${classeDin}" data-acao="docs">${rotDocs}${din.completa ? '' : ' entregues'}</button>` : `<span class="pre-st-txt pre-st-${classeDin}">${rotDocs}</span>`}</div>`
             + etapaCel('aso', 'ASO') + etapaCel('treinamento', 'Treinamento')
-            + `<div class="pre-cel pre-uma" data-rot="Chegada">${p.chegada_data ? `${RH.fmtDia(p.chegada_data)}${p.chegada_hora ? ` <span class="muted">${p.chegada_hora.slice(0, 5)}</span>` : ''}` : '<span class="muted">—</span>'}</div>`;
+            + `<div class="pre-cel" data-rot="Chegada">${p.chegada_data ? `${RH.fmtDia(p.chegada_data)}${p.chegada_hora ? ` <span class="muted">${p.chegada_hora.slice(0, 5)}</span>` : ''}${chegadaHtml(p)}` : '<span class="muted">—</span>'}</div>`;
           if (podeEditar) acoes = barradaEm(p) ? `<button class="btn btn-pequeno" data-acao="encerrar">Encerrar</button>${editar}`
             : pronta(p) ? `<button class="btn btn-pequeno btn-primario" data-acao="admitir">Admitir</button>${editar}`
             : `<button class="btn btn-pequeno" data-acao="admitir" title="Mostra o que ainda falta">O que falta</button>${editar}`;
@@ -718,7 +770,7 @@ Paginas.candidatos = {
           if (b2.length && !barradaEm(p)) faixa = `<div class="pre-docs-faixa cd-faixa-falta"><b>Falta:</b> ${UI.esc(b2.filter(x => !/documento/.test(x)).concat(faltaDocs).join(' · '))}</div>`;
         } else if (modo === 'admitido') {
           cel = rota(p) + `<div class="pre-cel" data-rot="Vaga">${vagaTxt(p)}</div><div class="pre-cel pre-uma" data-rot="Admitido em">${RH.fmtDataBR(p.admitido_em)}</div>`
-            + `<div class="pre-cel pre-uma" data-rot="Chegada">${p.chegada_data ? RH.fmtDia(p.chegada_data) : '<span class="muted">—</span>'}</div>`;
+            + `<div class="pre-cel" data-rot="Chegada">${p.chegada_data ? RH.fmtDia(p.chegada_data) + chegadaHtml(p) : '<span class="muted">—</span>'}</div>`;
           if (podeEditar) acoes = `<button class="btn-link perigo" data-acao="desfazer">Desfazer</button>${editar}`;
         } else {
           cel = `<div class="pre-cel pre-uma" data-rot="Parou na">${ETAPAS[p.etapa] || '—'}</div><div class="pre-cel" data-rot="O que aconteceu"><b class="${p.situacao === 'desistiu' ? 'cd-desistiu' : 'cd-reprovado'}">${SIT[p.situacao]}</b>${p.motivo_saida ? `<div class="pre-sub">${UI.esc(p.motivo_saida)}</div>` : ''}${p.observacao ? `<div class="pre-sub">${UI.esc(p.observacao)}</div>` : ''}</div>`
@@ -736,7 +788,7 @@ Paginas.candidatos = {
       } else corpo = vis.map(linha).join('');
       q('#cd-corpo').innerHTML = `<div class="cd-lista-top">${segs}${sub ? `<div class="cd-lista-sub">${sub}</div>` : ''}</div>` + barraLote +
         (!lista.length ? `<div class="vazio cd-vazio">${todos.length ? 'Ninguém com esse filtro.' : `Ninguém em ${SEGS.find(x => x[0] === seg)[1]}${busca || vagaId || distritoId || analista ? ' com os filtros de cima' : ''}.`}${busca || vagaId || distritoId || analista || pend ? '<br><button class="btn-link" data-limpar>Limpar filtros e busca</button>' : ''}</div>`
-          : `<div class="pre-lista cd-lista" style="--cols:${cfg.grade}"><div class="pre-grade pre-cab">${cfg.cab.map((c, i) => `<span>${i === 0 && loteOk ? `<button type="button" class="cd-marca ${todosMarcados ? 'on' : ''}" data-marca="*" title="Marcar todos desta tela" aria-label="Marcar todos"></button>` : ''}${c}</span>`).join('')}</div>${corpo}</div>`
+          : `<div class="pre-lista cd-lista" style="--cols:${cfg.grade}"><div class="pre-grade pre-cab">${cfg.cab.map((c, i) => `<span>${i === 0 && loteOk ? `<button type="button" class="cd-marca ${todosMarcados ? 'on' : ''}" data-marca="*" title="Marcar todos desta tela" aria-label="Selecionar todos desta tela" aria-pressed="${!!todosMarcados}"></button>` : ''}${c}</span>`).join('')}</div>${corpo}</div>`
           + (lista.length > limite ? `<button type="button" class="cd-ver-mais cd-ver-mais-lista" data-ver-mais="lista">Mostrar mais ${Math.min(50, lista.length - limite)} de ${lista.length - limite} restantes</button>` : ''));
       const sem = q('#cd-semana'); if (sem) sem.addEventListener('change', e => { semana = e.target.value; desenhar(); });
     }
@@ -1034,6 +1086,50 @@ Paginas.candidatos = {
       ['desistiu', 'Salário ou benefícios'], ['desistiu', 'Distância, alojamento ou viagem'], ['reprovado', 'Documentação'], ['desistiu', 'Desistiu (outro motivo)'], ['reprovado', 'Reprovado (outro motivo)']];
     // anotação automática no histórico (quem e quando ficam gravados pelo banco); falha aqui não desfaz a ação
     async function anotarAuto(p, texto) { try { p.anotacoes = await Nuvem.rh.anotar(p.id, texto); } catch (e) { console.warn('anotação automática', e); } }
+    // ---------- chegada no campo: selo e botões rápidos (cartão e Lista) ----------
+    function chegadaHtml(p) {
+      if (!temChegada(p)) return '';
+      const st = stChegada(p);
+      const selo = st === 'chegou' ? '<span class="cd-chip cd-chip-ok" title="Chegou ao campo">chegou ✓</span>'
+        : st === 'faltou' ? '<span class="cd-chip cd-chip-ruim" title="Não chegou ao campo">faltou na chegada</span>'
+        : st === 'remarcou' ? '<span class="cd-chip cd-chip-meio" title="A chegada foi remarcada">chegada remarcada</span>'
+        : chegadaVencida(p) ? '<span class="cd-chip cd-chip-ruim" title="A data passou e ninguém marcou se chegou">sem confirmação</span>' : '';
+      const botoes = podeEditar && st !== 'chegou' && st !== 'faltou' && p.chegada_data <= RH.hoje()
+        ? `<button type="button" class="btn btn-pequeno cd-cheg-ok" data-acao="chegou" title="Marcar que ${UI.esc(p.pessoa.nome)} chegou ao campo">Chegou</button><button type="button" class="btn btn-pequeno cd-cheg-falta" data-acao="faltou-campo" title="Marcar que ${UI.esc(p.pessoa.nome)} não chegou">Faltou</button>` : '';
+      const reserva = podeEditar && st === 'faltou' ? '<button type="button" class="btn btn-pequeno cd-cheg-reserva" data-acao="reserva" title="Quem pode entrar no lugar">Chamar reserva</button>' : '';
+      return selo || botoes || reserva ? `<div class="cd-chegada">${selo}${botoes}${reserva}</div>` : '';
+    }
+    async function marcarChegada(p, st) {
+      if (st === 'faltou' && !await UI.confirmar(`Marcar que ${p.pessoa.nome} não chegou ao campo (${RH.fmtDia(p.chegada_data)})?`, { titulo: 'Faltou na chegada', textoOk: 'Marcar falta' })) return;
+      const ok = await gravar(p, { chegada_status: st }, st === 'chegou' ? `${p.pessoa.nome}: chegou ao campo.` : st === 'faltou' ? `${p.pessoa.nome}: faltou na chegada.` : 'Chegada atualizada.');
+      if (ok && st === 'faltou') setTimeout(() => chamarReserva(p), 0);
+    }
+    // Quem pode entrar no lugar de quem faltou: aprovado na entrevista ou na Documentação, mesma vaga (ou cargo), mesmo distrito e tipo, sem chegada marcada
+    function chamarReserva(p) {
+      const mesmaVaga = x => p.vaga_id && x.vaga_id ? x.vaga_id === p.vaga_id : Store.normalizar(x.cargo || '') === Store.normalizar(p.cargo || '');
+      const mesmoLugar = x => !p.distrito_id || x.distrito_id === p.distrito_id || (x.etapa === 'entrevista' && !x.distrito_id);
+      const mesmoTipo = x => !p.tipo || x.tipo === p.tipo || (x.etapa === 'entrevista' && !x.distrito_id);
+      const cands = linhas.filter(x => x !== p && emAndamento(x) && !x.chegada_data
+        && ((x.etapa === 'entrevista' && x.entrevista && x.entrevista.resultado === 'aprovado') || x.etapa === 'documentos')
+        && mesmaVaga(x) && mesmoLugar(x) && mesmoTipo(x))
+        .sort((a, b) => pronta(b) - pronta(a) || (b.etapa === 'documentos') - (a.etapa === 'documentos') || a.pessoa.nome.localeCompare(b.pessoa.nome, 'pt-BR'));
+      const d = p.distrito_id && Store.distrito(p.distrito_id);
+      const m = UI.modal({ titulo: `Reserva para o lugar de ${p.pessoa.nome}`, largura: '640px',
+        corpo: `<p class="muted" style="margin-top:0">${UI.esc(p.cargo || 'Mesmo cargo')}${d ? ' · ' + UI.esc(d.nome) : ''}${p.tipo ? ' · ' + (p.tipo === 'MOVEL' ? 'móvel' : 'local') : ''}. Aprovados na entrevista ou na Documentação, ainda sem chegada marcada.</p>
+          ${cands.length ? `<div class="cd-reserva">${cands.map(x => `<div class="cd-reserva-l" data-id="${x.id}">
+              <div><b>${UI.esc(x.pessoa.nome)}</b><div class="muted small">${x.etapa === 'documentos' ? (pronta(x) ? 'Documentação · pronto para admitir' : 'Documentação · ' + UI.esc(textoDinamica(x))) : 'Aprovado na entrevista'}${nomeCidade(x.pessoa.cidade_origem_id) ? ' · mora em ' + UI.esc(nomeCidade(x.pessoa.cidade_origem_id)) : ''}${x.pessoa.telefone ? ' · ' + UI.esc(x.pessoa.telefone) : ''}</div></div>
+              <div class="cd-reserva-acoes">${linkWhats(x.pessoa) ? '<button type="button" class="btn btn-pequeno btn-wa" data-res="msg">Mensagem</button>' : ''}<button type="button" class="btn btn-pequeno btn-primario" data-res="chegada">Marcar chegada</button></div>
+            </div>`).join('')}</div>` : '<div class="vazio">Ninguém disponível agora com a mesma vaga, distrito e tipo. Veja quem está na Entrevista ou na Triagem.</div>'}`,
+        botoes: [{ texto: 'Fechar' }] });
+      m.corpo.addEventListener('click', e => {
+        const b = e.target.closest('[data-res]'), l = b && b.closest('[data-id]'), x = l && linhas.find(y => y.id === l.dataset.id); if (!x) return;
+        if (b.dataset.res === 'msg') mandarMensagem(x, 'chegada');
+        else { m.fechar(); setTimeout(() => formulario(x, 'docs'), 0); }
+      });
+    }
+    // de onde veio o candidato (como soube da vaga)
+    const FONTES = () => Store.CANAIS.map(c => [c.id, c.nome]).concat([['indicacao', 'Indicação de colaborador'], ['ex_colaborador', 'Ex-colaborador'], ['outro', 'Outro']]);
+    const nomeFonte = f => { const x = FONTES().find(y => y[0] === f); return x ? x[1] : (f || ''); };
     // atalho do cartão: a pessoa confirmou (ou não) que vem na entrevista
     async function marcarConfirmou(p, valor) {
       const e = p.entrevista || {}; if (!e.data) return;
@@ -1062,11 +1158,27 @@ Paginas.candidatos = {
           botoes: [{ texto: 'Fechar' }].concat(podeEditar ? [{ texto: 'Abrir a ficha', classe: 'btn-primario', acao: () => { setTimeout(() => formulario(p, /documento|ASO|treinamento/.test(b.join()) && !/CPF|nascimento|idade|cidade|distrito/.test(b.join()) ? 'docs' : 'dados'), 0); } }] : []) });
         return;
       }
-      const origem = cidade(p.pessoa.cidade_origem_id), atu = cidade(trabalhoId(p));
+      const origem = cidade(p.pessoa.cidade_origem_id);
       const vg = vagaDe(p.vaga_id), parte = vg && vg.porDistrito.find(x => x.distrito.id === p.distrito_id);
       const cheio = parte ? (p.tipo === 'MOVEL' ? parte.admMov >= parte.moveis : parte.admLoc >= parte.locais) : vg ? vg.admitidos >= vg.quantidade : false;
       const avisoVaga = !vg ? ' Atenção: esta pessoa não está ligada a nenhuma vaga.' : cheio ? ` Atenção: a vaga "${vg.titulo}" já completou o que pediu${parte ? ` de ${p.tipo === 'MOVEL' ? 'móveis' : 'locais'} em ${parte.distrito.nome}` : ''}; esta admissão passa do pedido.` : '';
-      if (!await UI.confirmar(`Admitir ${p.pessoa.nome}? Documentos, ASO e treinamento estão concluídos.${avisoVaga} A contratação (${origem.nome} → ${atu.nome}, ${UI.rotuloTipo(p.tipo)}) entra no mapa e nos relatórios.`, { titulo: 'Confirmar admissão', textoOk: 'Admitir' })) return;
+      // cidade onde vai trabalhar: escolhida aqui entre as cidades do distrito (antes ia sempre para o polo, às vezes a cidade errada)
+      const dist = p.distrito_id ? Store.distrito(p.distrito_id) : null;
+      const mapaCid = new Map();
+      (dist ? Store.cidadesDoDistrito(dist) : distritosProjeto().flatMap(d => Store.cidadesDoDistrito(d))).forEach(c => mapaCid.set(c.id, c));
+      const cAtual = cidade(p.cidade_atuacao_id), polo = dist ? Store.poloDoDistrito(dist) : null, cTrab = cidade(trabalhoId(p));
+      [cAtual, polo, cTrab].forEach(c => { if (c && !mapaCid.has(c.id)) mapaCid.set(c.id, c); });
+      const cidadesTrab = [...mapaCid.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const selIni = (cAtual || polo || cTrab || cidadesTrab[0] || {}).id || '';
+      const atuId = await new Promise(resolve => {
+        let r = null;
+        UI.modal({ titulo: 'Confirmar admissão', largura: '500px', fecharAoClicarFora: true, aoFechar: () => resolve(r),
+          corpo: `<p style="margin-top:0">Admitir <b>${UI.esc(p.pessoa.nome)}</b>? Documentos, ASO e treinamento estão concluídos.${UI.esc(avisoVaga)}</p>
+            <label>Cidade onde vai trabalhar${dist ? ` <span class="muted small">(cidades do distrito ${UI.esc(dist.nome)})</span>` : ''}<select id="ad-cidade">${cidadesTrab.map(c => `<option value="${c.id}" ${c.id === selIni ? 'selected' : ''}>${UI.esc(c.nome)}/${c.uf}${polo && c.id === polo.id ? ' (polo do distrito)' : ''}</option>`).join('')}</select></label>
+            <p class="muted small" style="margin-bottom:0">A contratação (${UI.esc(origem.nome)} → cidade escolhida, ${UI.esc(UI.rotuloTipo(p.tipo))}) entra no mapa e nos relatórios.</p>`,
+          botoes: [{ texto: 'Cancelar' }, { texto: 'Admitir', classe: 'btn-primario', acao: md => { const v2 = md.corpo.querySelector('#ad-cidade').value; if (!v2) throw new Error('Escolha a cidade onde a pessoa vai trabalhar.'); r = v2; } }] });
+      });
+      const atu = atuId && cidade(atuId); if (!atu) return;
       try {
         // o banco confere tudo de novo e cria a contratação junto (não existe admissão sem contratação, nem o contrário)
         const reg = await Nuvem.rh.admitir(p.id, atu.id, p.tipo === 'MOVEL' ? (p.base_id && cidade(p.base_id) ? p.base_id : atu.id) : atu.id);
@@ -1139,7 +1251,7 @@ Paginas.candidatos = {
       if (e.target.closest('[data-ver-prontos]')) { e.stopPropagation(); seg = 'documentos'; pend = 'prontas'; return mudarVista('lista'); }
       if (e.target.closest('[data-ir-contratacoes]')) { App.filtros.projetoId = projetoId; try { localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros)); } catch (er) { /* ok */ } return App.ir('cadastro'); }
       if (e.target.closest('[data-ir-lista]')) { seg = 'fora'; pend = ''; return mudarVista('lista'); }
-      const vm = e.target.closest('[data-ver-mais]'); if (vm) { const k = vm.dataset.verMais, passo = k === 'lista' ? 50 : 30; verMais[k] = (verMais[k] || passo) + passo; return desenhar(); }
+      const vm = e.target.closest('[data-ver-mais]'); if (vm) { const k = vm.dataset.verMais, passo = k === 'lista' ? 50 : k === 'agenda' ? 40 : POR_COLUNA; verMais[k] = (verMais[k] || passo) + passo; return desenhar(); }
       const sg = e.target.closest('[data-seg]'); if (sg) { seg = sg.dataset.seg; pend = ''; marcados.clear(); verMais.lista = 50; return desenhar(); }
       const pn = e.target.closest('[data-pend]'); if (pn) { pend = pn.dataset.pend; marcados.clear(); return desenhar(); }
       const ir = e.target.closest('[data-ir]'); if (ir) { analista = ir.closest('[data-rh]').dataset.rh; const d = ir.dataset.ir; seg = d === 'pend' ? 'documentos' : d; pend = d === 'pend' ? 'pendentes' : ''; return mudarVista('lista'); }
@@ -1152,8 +1264,8 @@ Paginas.candidatos = {
       if (rh) { analista = rh.closest('[data-rh]').dataset.rh; mudarVista('quadro'); return; }
       const b = e.target.closest('[data-acao]'), p = pessoaDe(e.target);
       const menuAberto = q('#cd-corpo').querySelector('.cd-menu:not([hidden])');
-      if (b && b.dataset.acao === 'menu') { const mn = b.nextElementSibling; if (mn.hidden) UI.abrirMenu(b, mn); else mn.hidden = true; return; }
-      if (menuAberto) { menuAberto.hidden = true; if (!b) return; }
+      if (b && b.dataset.acao === 'menu') { const mn = b.nextElementSibling; q('#cd-corpo').querySelectorAll('[data-acao="menu"][aria-expanded="true"]').forEach(x => { if (x !== b) x.setAttribute('aria-expanded', 'false'); }); if (mn.hidden) { UI.abrirMenu(b, mn); b.setAttribute('aria-expanded', 'true'); } else { mn.hidden = true; b.setAttribute('aria-expanded', 'false'); } return; }
+      if (menuAberto) { menuAberto.hidden = true; const bm = menuAberto.previousElementSibling; if (bm) bm.setAttribute('aria-expanded', 'false'); if (!b) return; }
       if (!p) return;
       if (!b) { if (e.target.closest('.cd-card') && !e.target.closest('a')) formulario(p); return; }
       if (b.closest('.cd-doc') && b.dataset.acao === 'docs') e.stopPropagation();
@@ -1165,6 +1277,7 @@ Paginas.candidatos = {
       else if (a === 'nao-atendeu') { anotarAuto(p, NAO_ATENDEU).then(() => { desenhar(); UI.toast(`${p.pessoa.nome}: ${tentativas(p)}ª tentativa sem resposta anotada.`, 'sucesso', 3000); }); }
       else if (a === 'cobrar') mandarMensagem(p, 'cobrar'); else if (a === 'nao-respondeu') naoSeguiu(p, MOTIVO_SEM_RESPOSTA);
       else if (a === 'confirmou' || a === 'confirmou-desfazer') marcarConfirmou(p, a === 'confirmou' ? 'sim' : '');
+      else if (a === 'chegou') marcarChegada(p, 'chegou'); else if (a === 'faltou-campo') marcarChegada(p, 'faltou'); else if (a === 'reserva') chamarReserva(p);
       else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${p.pessoa.nome} voltou para o processo.`);
       else if (a === 'admitir') admitir(p); else if (a === 'encerrar') encerrar(p, false); else if (a === 'desfazer') desfazerAdmissao(p);
     });
@@ -1217,7 +1330,9 @@ Paginas.candidatos = {
       let docsMexeu = false;
       const tel = RH.soDigitos(pe.telefone);
       const resumo = p ? [pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="cd-falta">sem CPF</span>', pe.telefone ? (tel.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${tel}">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)) : '',
-        p.cargo ? UI.esc(p.cargo) : '', p.distrito_id && Store.distrito(p.distrito_id) ? UI.esc(Store.distrito(p.distrito_id).nome) : '', p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 20)}<span>RH ${UI.esc(nomeAnalista(p))}</span></span>` : ''].filter(Boolean).join(' · ') : 'Preencha quem é a pessoa. Os documentos são conferidos depois, na etapa de Documentação.';
+        p.cargo ? UI.esc(p.cargo) : '', p.distrito_id && Store.distrito(p.distrito_id) ? UI.esc(Store.distrito(p.distrito_id).nome) : '', p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 20)}<span>RH ${UI.esc(nomeAnalista(p))}</span></span>` : '',
+        p.fonte ? `<span class="cd-fonte" title="Como soube da vaga${p.indicado_por ? ' · indicado por ' + UI.esc(p.indicado_por) : ''}">${UI.esc(nomeFonte(p.fonte))}${p.fonte === 'indicacao' && p.indicado_por ? ': ' + UI.esc(p.indicado_por) : ''}</span>` : '',
+        faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim">faltou na chegada</span>' : ''].filter(Boolean).join(' · ') : 'Preencha quem é a pessoa. Os documentos são conferidos depois, na etapa de Documentação.';
       // As etapas no topo são também a navegação da ficha: Triagem → dados da pessoa, Entrevista → entrevista, Documentação → documentos.
       // Azul cheio = etapa em que a pessoa está; contorno = o que está aberto na tela. Mudar de etapa é um botão à parte ("Mover para…").
       const trilha = (et, sit) => {
@@ -1247,6 +1362,8 @@ Paginas.candidatos = {
             <label>E-mail<input id="f-email" type="email" value="${v(pe.email)}"></label>
             <label>CNH<input id="f-cnh" value="${v(pe.cnh)}" placeholder="Não tem, B, C, D…"></label>
             <label class="cd-check"><input type="checkbox" id="f-ex" ${pe.ex_colaborador ? 'checked' : ''}> Já trabalhou na empresa (ex-colaborador)</label>
+            <label>Como soube da vaga<select id="f-fonte"><option value="">Não informado</option>${FONTES().map(([k, r]) => `<option value="${UI.esc(k)}" ${p && p.fonte === k ? 'selected' : ''}>${UI.esc(r)}</option>`).join('')}${p && p.fonte && !FONTES().some(x => x[0] === p.fonte) ? `<option value="${UI.esc(p.fonte)}" selected>${UI.esc(p.fonte)}</option>` : ''}</select></label>
+            <label id="f-indicado-w" ${p && p.fonte === 'indicacao' ? '' : 'hidden'}>Indicado por<input id="f-indicado" value="${v(p && p.indicado_por)}" placeholder="Nome de quem indicou"></label>
           </div>
           <div class="pre-form-titulo" id="f-dest-tit">Vaga e destino</div>
           <div class="form-linha">
@@ -1295,6 +1412,7 @@ Paginas.candidatos = {
             <label>Data de chegada<input id="f-chegada" type="date" value="${v(p && p.chegada_data)}"></label>
             <label>Horário previsto<input id="f-hora" type="time" value="${p && p.chegada_hora ? p.chegada_hora.slice(0, 5) : ''}"></label>
             <label>Grupo do WhatsApp<input id="f-grupo" value="${v(p && p.grupo_whatsapp)}"></label>
+            <label>Chegada no campo<select id="f-cheg-st">${opcoes(CHEGADA, (p && p.chegada_status) || 'aguardando')}</select></label>
           </div>
         </section>
         ${p ? `<section class="fi-historico">
@@ -1304,12 +1422,16 @@ Paginas.candidatos = {
         </section>` : ''}`;
 
       const botoes = [];
-      if (p && eu.perfil === 'admin' && !adm) botoes.push({ texto: 'Excluir', classe: 'btn-perigo fi-esq', acao: async () => {
+      // chegada no campo da ficha: "aguardando" sem nada gravado antes continua vazio
+      const stDaFicha = gg => { const val = gg('#f-cheg-st') ? gg('#f-cheg-st').value : ''; return !val || (val === 'aguardando' && !(p && p.chegada_status)) ? (p && p.chegada_status && !val ? p.chegada_status : null) : val; };
+      // ações raras e perigosas ficam no menu "Mais ⋯" do rodapé (fecha a ficha só quando dão certo)
+      const maisAcoes = [];
+      if (p && eu.perfil === 'admin' && !adm) maisAcoes.push({ texto: 'Excluir do processo', perigo: true, acao: async () => {
         if (!await UI.confirmar(`Excluir ${pe.nome} deste processo? O cadastro da pessoa continua guardado.`, { perigo: true, textoOk: 'Excluir' })) return false;
         await Nuvem.rh.excluir(p.id); await carregar();
       } });
       // LGPD: a pessoa pediu para apagar os dados dela (só admin; quem está admitido não)
-      if (p && eu.perfil === 'admin' && !adm && pe.nome !== 'Dados apagados (LGPD)' && Nuvem.rh.anonimizar) botoes.push({ texto: 'Apagar dados pessoais (LGPD)', classe: 'btn-secundario fi-esq', acao: async () => {
+      if (p && eu.perfil === 'admin' && !adm && pe.nome !== 'Dados apagados (LGPD)' && Nuvem.rh.anonimizar) maisAcoes.push({ texto: 'Apagar dados pessoais (LGPD)', perigo: true, acao: async () => {
         if (!await UI.confirmar(`Apagar nome, CPF, telefone, e-mail e nascimento de ${pe.nome}? Use quando a pessoa pedir (LGPD). O histórico do processo fica, sem identificar a pessoa. Não dá para desfazer.`, { perigo: true, textoOk: 'Apagar os dados', titulo: 'Dados pessoais (LGPD)' })) return false;
         await Nuvem.rh.anonimizar(pe.id, 'pedido do titular'); UI.toast('Dados pessoais apagados.', 'sucesso'); await carregar();
       } });
@@ -1322,7 +1444,9 @@ Paginas.candidatos = {
         || await UI.confirmar('Você mexeu na ficha e não salvou. Sair e perder as alterações?', { textoOk: 'Sair sem salvar' }) });
       if (adm && podeEditar) botoes.push({ texto: 'Salvar chegada e observação', classe: 'btn-primario', acao: async md => {
         const g = s => md.corpo.querySelector(s);
-        const ok = await gravar(p, { chegada_data: g('#f-chegada').value || null, chegada_hora: g('#f-hora').value || null, grupo_whatsapp: g('#f-grupo').value.trim() || null, observacao: g('#f-obs').value.trim() || null }, 'Salvo.');
+        const campos = { chegada_data: g('#f-chegada').value || null, chegada_hora: g('#f-hora').value || null, grupo_whatsapp: g('#f-grupo').value.trim() || null, observacao: g('#f-obs').value.trim() || null };
+        if (stDaFicha(g) !== (p.chegada_status || null)) campos.chegada_status = stDaFicha(g);
+        const ok = await gravar(p, campos, 'Salvo.');
         if (!ok) return false;
       } });
       if (!somenteLeitura) botoes.push({ texto: p ? 'Salvar' : 'Cadastrar', classe: 'btn-primario', acao: async md => {
@@ -1353,7 +1477,8 @@ Paginas.candidatos = {
           analista: rh === 'n:' ? nomeSolto : (uRh ? uRh.nome : null), analista_login: uRh ? uRh.login : null,
           aso: g('#f-aso').value, aso_data: g('#f-aso-data').value || null, aso_local: g('#f-aso-local').value.trim() || null,
           treinamento: g('#f-tre').value, treinamento_data: g('#f-tre-data').value || null, treinamento_local: g('#f-tre-local').value.trim() || null,
-          chegada_data: g('#f-chegada').value || null, chegada_hora: g('#f-hora').value || null, grupo_whatsapp: g('#f-grupo').value.trim() || null, observacao: g('#f-obs').value.trim() || null };
+          chegada_data: g('#f-chegada').value || null, chegada_hora: g('#f-hora').value || null, grupo_whatsapp: g('#f-grupo').value.trim() || null, observacao: g('#f-obs').value.trim() || null,
+          chegada_status: stDaFicha(g), fonte: g('#f-fonte').value || null, indicado_por: g('#f-fonte').value === 'indicacao' ? (g('#f-indicado').value.trim() || null) : null };
         const entAntes = (p && p.entrevista) || {};
         if (p) {
           const ent = { ...(p.entrevista || {}), data: g('#e-data').value || null, hora: g('#e-hora').value || null, formato: g('#e-formato').value || null, local: g('#e-local').value.trim() || null, entrevistador: g('#e-quem').value.trim() || null,
@@ -1410,6 +1535,19 @@ Paginas.candidatos = {
       const pintarFicha = () => { const box = m.corpo.querySelector('#fi-olhando'); if (box && p) box.innerHTML = App.olhandoHtml('candidato:' + p.id); };
       if (p) { App.olhar('candidato:' + p.id); pintarFicha(); document.addEventListener('maparh:presenca', pintarFicha); }
       m.el.querySelector('.modal').classList.add('fi-modal');
+      if (maisAcoes.length) {
+        const rod = m.el.querySelector('.modal-rodape'), caixa = document.createElement('div');
+        caixa.className = 'cd-mais fi-mais fi-esq';
+        caixa.innerHTML = `<button type="button" class="btn btn-secundario" data-menu aria-haspopup="menu" aria-expanded="false" title="Mais ações">Mais ⋯</button><div class="cd-menu" hidden>${maisAcoes.map((a, i) => `<button type="button" data-mais="${i}" class="${a.perigo ? 'perigo' : ''}">${UI.esc(a.texto)}</button>`).join('')}</div>`;
+        rod.prepend(caixa);
+        const bt = caixa.firstElementChild, mn = caixa.lastElementChild;
+        bt.addEventListener('click', ev => { ev.stopPropagation(); if (mn.hidden) { UI.abrirMenu(bt, mn); bt.setAttribute('aria-expanded', 'true'); } else { mn.hidden = true; bt.setAttribute('aria-expanded', 'false'); } });
+        mn.addEventListener('click', async ev => {
+          const b = ev.target.closest('[data-mais]'); if (!b) return;
+          mn.hidden = true; bt.setAttribute('aria-expanded', 'false');
+          try { if (await maisAcoes[+b.dataset.mais].acao() !== false) m.fechar(); } catch (err) { UI.toast(err.message || String(err), 'erro', 6000); }
+        });
+      }
       const g = s => m.corpo.querySelector(s);
       // outra pessoa salvou esta ficha depois que você abriu: avisa, não fecha e oferece buscar de novo
       function mostrarConflito(txt) {
@@ -1593,7 +1731,9 @@ Paginas.candidatos = {
       });
       // só leitura de verdade: nenhum campo editável
       if (somenteLeitura) m.corpo.querySelectorAll('section input, section select, section textarea').forEach(x => { x.disabled = true; });
-      if (adm && podeEditar) ['#f-chegada', '#f-hora', '#f-grupo', '#f-obs'].forEach(s => { if (g(s)) g(s).disabled = false; });
+      if (adm && podeEditar) ['#f-chegada', '#f-hora', '#f-grupo', '#f-obs', '#f-cheg-st'].forEach(s => { if (g(s)) g(s).disabled = false; });
+      // "Como soube da vaga": Indicação pede o nome de quem indicou
+      g('#f-fonte').addEventListener('change', () => { g('#f-indicado-w').hidden = g('#f-fonte').value !== 'indicacao'; if (!g('#f-indicado-w').hidden) g('#f-indicado').focus(); });
       // ----- entrevista: estrelas e histórico de anotações -----
       let notaEntrevista = p && p.entrevista ? +p.entrevista.avaliacao || 0 : 0;
       const quadroNotas = () => g('#e-aval').querySelectorAll('[data-nota]').forEach(b => b.classList.toggle('on', +b.dataset.nota <= notaEntrevista));
@@ -1623,9 +1763,10 @@ Paginas.candidatos = {
     function direcionarIds(ids) {
       const time = equipe();
       UI.modal({ titulo: `Direcionar ${qtd(ids.length, 'candidato', 'candidatos')}`, largura: '460px',
-        corpo: `<label>Para qual RH<select id="d-para">${time.map(u => `<option value="${UI.esc(u.login)}">${UI.esc(u.nome)} · ${UI.esc(Store.PERFIS[u.perfil])}</option>`).join('')}</select></label>`,
+        corpo: `<label>Para qual RH<select id="d-para"><option value="">Escolha o RH…</option>${time.map(u => `<option value="${UI.esc(u.login)}">${UI.esc(u.nome)} · ${UI.esc(Store.PERFIS[u.perfil])}</option>`).join('')}</select></label>`,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Direcionar', classe: 'btn-primario', acao: async md => {
-          const u = Store.usuarioPorLogin(md.corpo.querySelector('#d-para').value);
+          const sel = md.corpo.querySelector('#d-para'), u = sel.value && Store.usuarioPorLogin(sel.value);
+          if (!u) { sel.focus(); throw new Error('Escolha para qual RH.'); }
           await Nuvem.rh.atualizarVarios(ids, { analista_login: u.login, analista: u.nome });
           marcados.clear(); UI.toast(`${qtd(ids.length, 'candidato direcionado', 'candidatos direcionados')} para ${u.nome}.`, 'sucesso'); await carregar();
         } }] });
@@ -1643,12 +1784,16 @@ Paginas.candidatos = {
             <label class="cd-opcao"><input type="radio" name="d-quem" value="sem" ${semRh.length ? 'checked' : 'disabled'}> <span><b>Só quem está sem RH</b><small>${qtd(semRh.length, 'candidato', 'candidatos')}</small></span></label>
             <label class="cd-opcao"><input type="radio" name="d-quem" value="todos" ${semRh.length ? '' : 'checked'}> <span><b>Todos do filtro</b><small>${qtd(noFiltro.length, 'candidato', 'candidatos')}, inclusive quem já tem RH</small></span></label>
           </div>
-          <label style="margin-top:14px">Direcionar para<select id="d-para">${time.map(u => `<option value="${UI.esc(u.login)}">${UI.esc(u.nome)} · ${UI.esc(Store.PERFIS[u.perfil])}</option>`).join('')}
+          <label style="margin-top:14px">Direcionar para<select id="d-para"><option value="">Escolha o RH…</option>${time.map(u => `<option value="${UI.esc(u.login)}">${UI.esc(u.nome)} · ${UI.esc(Store.PERFIS[u.perfil])}</option>`).join('')}
             ${analistas.length > 1 ? `<option value="(dividir)">Dividir igualmente entre os RHs (${UI.esc(analistas.map(u => u.nome).join(', '))})</option>` : ''}</select></label>`,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Direcionar', classe: 'btn-primario', acao: async md => {
-          const alvo = md.corpo.querySelector('input[name="d-quem"]:checked').value === 'sem' ? semRh : noFiltro;
+          const todosFiltro = md.corpo.querySelector('input[name="d-quem"]:checked').value !== 'sem';
+          const alvo = todosFiltro ? noFiltro : semRh;
           if (!alvo.length) throw new Error('Não há candidatos para direcionar neste filtro.');
-          const para = md.corpo.querySelector('#d-para').value;
+          const sel = md.corpo.querySelector('#d-para'), para = sel.value;
+          if (!para) { sel.focus(); throw new Error('Escolha para qual RH.'); }
+          const jaTem = alvo.filter(p => chaveAnalista(p)).length;
+          if (todosFiltro && !await UI.confirmar(`Direcionar ${qtd(alvo.length, 'candidato', 'candidatos')}${jaTem ? `, inclusive ${qtd(jaTem, 'que já tem RH', 'que já têm RH')}` : ''}? Quem já tinha RH passa para o novo.`, { titulo: 'Todos do filtro', textoOk: `Direcionar ${alvo.length}` })) return false;
           const destinos = para === '(dividir)' ? analistas : [Store.usuarioPorLogin(para)];
           // divisão igual: um para cada, em rodízio, na ordem alfabética
           const lotes = destinos.map(() => []);
@@ -1831,12 +1976,19 @@ Paginas.candidatos = {
       if (b.dataset.hoje === 'agenda') { semanaAg = null; return mudarVista('agenda'); }
       if (b.dataset.hoje === 'triagem') { seg = 'triagem'; pend = ''; return mudarVista('lista'); }
       if (b.dataset.hoje === 'confirmar') return mensagemEmLote(amanhaSemConfirmar(base().filter(emAndamento)), 'lembrete');
-      if (b.dataset.hoje.startsWith('pend:')) { seg = 'documentos'; pend = b.dataset.hoje.slice(5); semana = 'todas'; return mudarVista('lista'); }
+      if (b.dataset.hoje.startsWith('pend:')) {
+        // pend:<filtro>[:<etapa>]; sem etapa, vai para a primeira etapa do filtro que tem alguém
+        const [, k, s] = b.dataset.hoje.split(':'), segs = (PEND[k] && PEND[k].segs) || ['documentos'], bb = base();
+        pend = k; seg = s || segs.find(x => bb.some(p => noSeg(p, x) && PEND[k].teste(p))) || segs[0]; semana = 'todas'; marcados.clear(); return mudarVista('lista');
+      }
       seg = 'documentos'; pend = 'prontas'; mudarVista('lista');
     });
     function mudarVista(v) { vista = v; guardar('maparh:cand-vista', v); desenhar(); }
     q('#cd-abas').addEventListener('click', e => { const b = e.target.closest('[data-vista]'); if (b) mudarVista(b.dataset.vista); });
-    q('#cd-projeto').addEventListener('change', e => { projetoId = e.target.value; guardar('maparh:cand-projeto', projetoId); vagaId = distritoId = analista = ''; guardar('maparh:cand-vaga', ''); const c = Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId); linhas = c || []; if (c) desenhar(); else q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; carregar(); });
+    q('#cd-projeto').addEventListener('change', e => { projetoId = e.target.value; guardar('maparh:cand-projeto', projetoId);
+      App.filtros.projetoId = projetoId; guardar('maparh:filtros', JSON.stringify(App.filtros));
+      try { App.atualizarFiltroProjetos(); App.atualizarFiltroDistrito(); if (App.atualizarFiltroUF) App.atualizarFiltroUF(); } catch (er) { /* ok */ }
+      vagaId = distritoId = analista = ''; guardar('maparh:cand-vaga', ''); const c = Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId); linhas = c || []; if (c) desenhar(); else q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; carregar(); });
     q('#cd-vaga').addEventListener('change', e => { vagaId = e.target.value; guardar('maparh:cand-vaga', vagaId); desenhar(); });
     q('#cd-distrito').addEventListener('change', e => { distritoId = e.target.value; desenhar(); });
     q('#cd-analista').addEventListener('change', e => { analista = e.target.value; desenhar(); });
@@ -1867,9 +2019,17 @@ Paginas.candidatos = {
     const aoRedesenhar = new MutationObserver(agendarOlhando);
     aoRedesenhar.observe(q('#cd-corpo'), { childList: true });
     let pendenteRedesenho = false;
-    App.aoAtualizar(async () => {
+    // info: { ids } = candidatos que mudaram (busca só esses); { semCandidatos } = mudou vaga/cadastro (não busca candidatos, só redesenha)
+    App.aoAtualizar(async info => {
       if (!ativo) return;
-      try { const novas = await Nuvem.rh.listar(projetoId); if (!ativo) return; linhas = novas; contarVagas(); } catch (e) { return; }
+      info = info || {};
+      if (!info.semCandidatos) {
+        const pid = projetoId;
+        try {
+          const novas = info.ids && info.ids.length && Nuvem.rh.atualizarIds ? await Nuvem.rh.atualizarIds(pid, info.ids) : await Nuvem.rh.listar(pid);
+          if (!ativo || pid !== projetoId) return; linhas = novas; contarVagas();
+        } catch (e) { return; }
+      }
       if (document.querySelector('.modal-overlay')) { pendenteRedesenho = true; return; }
       desenhar();
     });
