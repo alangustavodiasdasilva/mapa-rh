@@ -22,7 +22,7 @@ Paginas.cadastro = {
           <button class="btn nao-imprimir" id="btn-exportar">Exportar planilha</button>
         </div>
         <div class="ct-resumo" id="ct-resumo"></div>
-        <div id="ct-corpo"><div class="vazio">Carregando…</div></div>
+        <div id="ct-corpo"></div>
       </div>`;
 
     const q = s => el.querySelector(s);
@@ -42,6 +42,8 @@ Paginas.cadastro = {
     const dia = d => d ? RH.fmtDataBR(String(d).slice(0, 10)) : '';
 
     async function carregar(suave) {
+      const c = !suave && typeof Nuvem !== 'undefined' && Nuvem.rh && Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId);
+      if (c) { pessoas = c.filter(p => p.situacao === 'admitido'); erro = ''; desenhar(); suave = true; }
       if (!suave) { pessoas = null; erro = ''; desenhar(); }
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { erro = 'As contratações vêm do banco central. Entre com seu usuário para ver.'; return desenhar(); }
       try { pessoas = (await Nuvem.rh.listar(projetoId)).filter(p => p.situacao === 'admitido'); }

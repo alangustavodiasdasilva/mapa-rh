@@ -317,6 +317,7 @@ const Nuvem = (() => {
     }
     return tudo;
   }
+  const cacheCandidatos = new Map();
   const rh = {
     // Só os campos de andamento de todos os candidatos que o usuário enxerga (sem dado pessoal): alimenta a contagem das vagas e o Início
     async andamento(projetoId) {
@@ -346,6 +347,8 @@ const Nuvem = (() => {
       // o banco não dá erro quando a regra de acesso esconde a linha: só não muda. Então conferimos quantas mudaram.
       if (feitos < ids.length) throw new Error(`${ids.length - feitos} de ${ids.length} não foram alterados (sem permissão ou direcionados para outro RH). Recarregue a tela.`);
     },
+    // a última lista buscada de cada projeto: a tela abre com ela na hora e troca quando chega a nova
+    emCache(projetoId) { return cacheCandidatos.get(projetoId || '') || null; },
     async listar(projetoId) {
       const tudo = [];
       for (let de = 0; ; de += 1000) {
@@ -355,7 +358,9 @@ const Nuvem = (() => {
         tudo.push(...data);
         if (data.length < 1000) break;
       }
-      return tudo.filter(p => p.pessoa);
+      const l = tudo.filter(p => p.pessoa);
+      cacheCandidatos.set(projetoId || '', l);
+      return l;
     },
     async pessoaPorCPF(cpf) {
       // pela função do banco: o RH (analista) não lê a tabela inteira, mas precisa reaproveitar o cadastro de quem já passou pela empresa
@@ -563,7 +568,32 @@ const Nuvem = (() => {
         .subscribe();
     } catch (e) { console.warn('Nuvem: sem aviso na hora', e); canal = null; }
   }
-  function pararDeOuvir() { if (canal && sb) { try { sb.removeChannel(canal); } catch (e) { /* ok */ } } canal = null; }
+  function pararDeOuvir() { if (canal && sb) { try { sb.removeChannel(canal); } catch (e) { /* ok */ } } canal = null; sairPresenca(); }
+  // Presença: cada um avisa o que está olhando (uma cidade no mapa, a ficha de um candidato) e todos veem a foto
+  let canalPres = null, meuOnde = '', timerOnde = null, aoMudarPres = () => {};
+  const minhaPresenca = () => { const u = Store.usuarioAtual(); return u ? { login: u.login, nome: u.nome, onde: meuOnde } : null; };
+  function entrarPresenca() {
+    const me = minhaPresenca(); if (canalPres || !sb || !me) return;
+    try {
+      canalPres = sb.channel('maparh-presenca', { config: { presence: { key: me.login } } });
+      canalPres.on('presence', { event: 'sync' }, () => aoMudarPres())
+        .subscribe(st => { if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) canalPres.track(m).catch(() => {}); } });
+    } catch (e) { console.warn('Nuvem: sem presença', e); canalPres = null; }
+  }
+  function sairPresenca() { if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; }
+  function onde(v) {
+    if ((v || '') === meuOnde) return; meuOnde = v || '';
+    clearTimeout(timerOnde);
+    timerOnde = setTimeout(() => { const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); }, 300);
+  }
+  // quem (fora eu) está olhando aquilo: [{ login, nome }]
+  function olhando(v) {
+    if (!canalPres || !v) return [];
+    const me = minhaPresenca(), st = canalPres.presenceState(), out = [];
+    for (const lista of Object.values(st)) for (const x of lista) if (x.onde === v && (!me || x.login !== me.login) && !out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome });
+    return out;
+  }
+  function aoMudarPresenca(fn) { aoMudarPres = fn; }
   function iniciarRelogio(precisaCargaInicial) {
     clearInterval(timerPoll);
     let pendenteInicial = precisaCargaInicial, voltas = 0;
@@ -580,7 +610,7 @@ const Nuvem = (() => {
     };
     tiqueAtual = tique;
     timerPoll = setInterval(tique, INTERVALO_MS);
-    if (!precisaCargaInicial) ouvirNaHora();
+    if (!precisaCargaInicial) { ouvirNaHora(); entrarPresenca(); }
     if (ouvindo) return;
     ouvindo = true;
     window.addEventListener('online', () => { if (eu) { tiqueAtual(); agendarEnvio(300); } });
@@ -605,6 +635,7 @@ const Nuvem = (() => {
     return u;
   }
   async function sair() {
+    cacheCandidatos.clear();
     try { await enviarAgora(); } catch (e) { /* segue saindo */ }
     pararDeOuvir();
     if (fila.size) {
@@ -624,5 +655,5 @@ const Nuvem = (() => {
   if (ativa) Store.definirGanchoSalvar(mudou);
 
   return { ativa, iniciar, entrar, sair, temAdmin, criarPrimeiroAdmin, salvarUsuario, excluirUsuario, alterarSenha, incluirProjeto, limparAuditoria,
-    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
+    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, onde, olhando, aoMudarPresenca, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
 })();

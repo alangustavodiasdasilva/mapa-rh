@@ -71,6 +71,11 @@ Paginas.mapa = {
     }
 
     const regs = App.regs();
+    // os nomes vêm da lista de Candidatos (só quem tem acesso aos candidatos vê); busca por trás para a próxima vez que abrir um quadro
+    const temNuvemRh = typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh && Nuvem.rh.emCache && Store.pode(App.usuario, 'candidatos');
+    if (temNuvemRh) new Set(regs.filter(r => r.preadmissaoId).map(r => r.projetoId)).forEach(id => { if (!Nuvem.rh.emCache(id)) Nuvem.rh.listar(id).catch(() => {}); });
+    const pessoaDoReg = r => { if (!temNuvemRh || !r.preadmissaoId) return null; const l = Nuvem.rh.emCache(r.projetoId); return l ? l.find(x => x.id === r.preadmissaoId) || null : null; };
+    const pes = n => n === 1 ? '1 pessoa' : `${n} pessoas`;
     const fluxos = Analise.fluxos(regs);
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
     const COR_ATUACAO = '#1d4ed8', COR_ORIGEM = '#ea580c', COR_HUB = '#7c3aed';
@@ -387,7 +392,7 @@ Paginas.mapa = {
     }
     function resumoDestinos(g) {
       const s = saidasDe(g);
-      return `${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' · ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''}`;
+      return `${s.proprias ? `${s.proprias} ${s.proprias === 1 ? 'trabalha' : 'trabalham'} aqui mesmo` : ''}${s.proprias && s.foram ? ' · ' : ''}${s.foram ? `${s.foram} ${s.foram === 1 ? 'trabalha' : 'trabalham'} em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''}`;
     }
     // Bolha laranja de uma cidade: quantas pessoas SÃO daqui (as linhas partem dela). Fica à direita do losango quando a cidade também é de trabalho
     function desenharBolhasCidade(g) {
@@ -770,8 +775,15 @@ Paginas.mapa = {
     // seqPainel muda a cada painel aberto/fechado: tarefas assíncronas de um painel antigo veem que mudou e não escrevem mais nada
     let seqPainel = 0;
     const wrapMapa = el.querySelector('.mapa-wrap');
+    // presença: a cidade aberta no painel; os outros veem a minha foto e eu vejo a deles
+    let cidadeOlhada = '';
+    function olharCidade(id) { cidadeOlhada = id || ''; App.olhar(id ? 'cidade:' + id : 'pagina:mapa'); pintarOlhando(); }
+    function pintarOlhando() { const box = painel.querySelector('#painel-olhando'); if (box) box.innerHTML = cidadeOlhada ? App.olhandoHtml('cidade:' + cidadeOlhada) : ''; }
+    const aoPresenca = () => pintarOlhando();
+    document.addEventListener('maparh:presenca', aoPresenca);
     function fecharPainel() {
       seqPainel++;
+      olharCidade('');
       const estavaAberto = !painel.hidden;
       painel.hidden = true; painel.innerHTML = ''; camadaDestaque.clearLayers();
       wrapMapa.classList.remove('painel-aberto');
@@ -783,7 +795,7 @@ Paginas.mapa = {
     }
     let focoAntesPainel = null;
     function cabecalhoPainel(titulo, sub) {
-      return `<h3><span>${titulo}</span><button class="btn-icone" id="painel-fechar" title="Fechar e mostrar tudo de novo (Esc)" aria-label="Fechar painel">&times;</button></h3><div class="muted small mb">${sub}</div>` +
+      return `<h3><span>${titulo}</span><button class="btn-icone" id="painel-fechar" title="Fechar e mostrar tudo de novo (Esc)" aria-label="Fechar painel">&times;</button></h3><div id="painel-olhando"></div><div class="muted small mb">${sub}</div>` +
         `<div class="painel-foco-aviso small">Mostrando no mapa só o que se liga a esta seleção · <a href="#" id="painel-mostrar-tudo">mostrar tudo</a></div>`;
     }
     // liga os botões do painel, mostra o painel e passa o foco do teclado para ele; devolve o número desta abertura
@@ -826,9 +838,16 @@ Paginas.mapa = {
       const colCidades = origem && destino
         ? [{ titulo: 'De onde ➜ onde trabalha', render: r => `${txtOrigem(r)} <span class="muted">➜</span> ${txtDestino(r)}` }]
         : [...(origem ? [{ titulo: 'De onde vem', render: txtOrigem }] : []), ...(destino ? [{ titulo: 'Onde trabalha', render: txtDestino }] : [])];
+      const colPessoa = { titulo: 'Pessoa', render: r => {
+        const p = pessoaDoReg(r), rh = r.rhLogin ? Store.usuarioPorLogin(r.rhLogin) : null;
+        const nome = p ? `<a href="#" class="p-pessoa" data-nome="${UI.esc(p.pessoa.nome)}" data-proj="${UI.esc(r.projetoId)}" title="Abrir em Candidatos">${UI.esc(p.pessoa.nome)}</a>` : r.cargo ? UI.esc(r.cargo) : '<span class="muted">sem nome (lançamento antigo)</span>';
+        const sub = [p && r.cargo ? UI.esc(r.cargo) : '', r.admitidoEm ? 'entrou ' + RH.fmtDia(String(r.admitidoEm).slice(0, 10)) : '', p && p.chegada_data ? 'chega ' + RH.fmtDia(p.chegada_data) : ''].filter(Boolean).join(' · ');
+        return `<div class="mp-pessoa">${rh ? `<span title="RH: ${UI.esc(rh.nome)}">${UI.avatar(rh, 24)}</span>` : ''}<div><div class="mp-pessoa-nome">${nome}</div>${sub ? `<div class="muted small">${sub}</div>` : ''}</div></div>`;
+      } };
       return UI.tabela({
         vazio: 'Ninguém no filtro atual.',
         colunas: [
+          colPessoa,
           ...colCidades,
           { titulo: 'Tipo', render: badgeTipo },
           ...(varios ? [colProjeto] : []),
@@ -842,6 +861,9 @@ Paginas.mapa = {
     function ligarListas() {
       painel.querySelectorAll('.p-origem').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const g = porOrigem.get(a.dataset.id); if (g) selecionarOrigem(g); }));
       painel.querySelectorAll('.p-destino').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const at = porAtuacao.get(a.dataset.id); if (at) selecionarAtuacao(at); }));
+      painel.querySelectorAll('.p-pessoa').forEach(a => a.addEventListener('click', e => { e.preventDefault();
+        try { sessionStorage.setItem('maparh:cand-seg', 'admitido'); sessionStorage.setItem('maparh:cand-busca', a.dataset.nome); localStorage.setItem('maparh:cand-projeto', a.dataset.proj); } catch (er) { /* ok */ }
+        App.ir('candidatos'); }));
     }
     const botaoFicha = cid => `<button class="btn btn-pequeno" id="painel-ficha">Ficha de ${UI.esc(cid.nome)} (IBGE, SINE, anotações)</button>`;
     const ligarFicha = cid => { const b = painel.querySelector('#painel-ficha'); if (b) b.addEventListener('click', () => abrirPainelCidade(cid, {})); };
@@ -881,11 +903,11 @@ Paginas.mapa = {
       const daqui = lista.filter(r => r.cidadeId === a.cidade.id).length;
       const cidades = new Set(lista.map(r => r.cidadeId)).size;
       painel.innerHTML = cabecalhoPainel(`<span class="marc-atuacao mini"><span>${lista.length}</span></span>Trabalham em ${UI.esc(a.cidade.nome)}`,
-        `<b>${lista.length}</b> pessoa(s) trabalham em ${UI.esc(a.cidade.nome)}/${a.cidade.uf}: ${daqui ? `${daqui} são daqui mesmo` : ''}${daqui && lista.length - daqui ? ' e ' : ''}${lista.length - daqui ? `${lista.length - daqui} vieram de ${cidades - (daqui ? 1 : 0)} outra(s) cidade(s)` : ''} · ${a.local} local · ${a.movel} móvel`) +
+        `<b>${pes(lista.length)}</b> ${lista.length === 1 ? 'trabalha' : 'trabalham'} em ${UI.esc(a.cidade.nome)}/${a.cidade.uf}: ${daqui ? `${daqui} ${daqui === 1 ? 'é' : 'são'} daqui mesmo` : ''}${daqui && lista.length - daqui ? ' e ' : ''}${lista.length - daqui ? `${lista.length - daqui} ${lista.length - daqui === 1 ? 'veio' : 'vieram'} de ${cidades - (daqui ? 1 : 0) === 1 ? 'outra cidade' : (cidades - (daqui ? 1 : 0)) + ' outras cidades'}` : ''} · ${a.local} local · ${a.movel} móvel`) +
         `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(a.cidade)}</div>` +
         listaPessoas(lista, { destino: false, referencia: a.cidade.id }) +
         resumo('Resumo por cidade de origem', tabelaOrigens(a.fluxos, a.total, a.cidade));
-      ligarFechar(); ligarListas(); ligarFicha(a.cidade);
+      ligarFechar(); ligarListas(); ligarFicha(a.cidade); olharCidade(a.cidade.id);
       aplicarFoco([a.cidade.id, ...a.fluxos.map(f => f.cidadeOrigem.id)]);
     }
     // Bola laranja: quem É da cidade (e onde cada um trabalha)
@@ -893,18 +915,18 @@ Paginas.mapa = {
       const lista = pessoasDeOrigem(g.cidade.id);
       const s = saidasDe(g);
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini">${lista.length}</span>São de ${UI.esc(g.cidade.nome)}`,
-        `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(g.cidade.nome)}/${g.cidade.uf}: ${s.proprias ? `${s.proprias} trabalham aqui mesmo` : ''}${s.proprias && s.foram ? ' e ' : ''}${s.foram ? `${s.foram} trabalham em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''} · ${g.local} local · ${g.movel} móvel`) +
+        `<b>${pes(lista.length)}</b> ${lista.length === 1 ? 'é' : 'são'} de ${UI.esc(g.cidade.nome)}/${g.cidade.uf}: ${s.proprias ? `${s.proprias} ${s.proprias === 1 ? 'trabalha' : 'trabalham'} aqui mesmo` : ''}${s.proprias && s.foram ? ' e ' : ''}${s.foram ? `${s.foram} ${s.foram === 1 ? 'trabalha' : 'trabalham'} em outra cidade (${s.destinos} destino${s.destinos === 1 ? '' : 's'})` : ''} · ${g.local} local · ${g.movel} móvel`) +
         `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(g.cidade)}</div>` +
         listaPessoas(lista, { origem: false, referencia: g.cidade.id }) +
         resumo('Resumo por cidade de trabalho', tabelaDestinos(g.fluxos));
-      ligarFechar(); ligarListas(); ligarFicha(g.cidade);
+      ligarFechar(); ligarListas(); ligarFicha(g.cidade); olharCidade(g.cidade.id);
       aplicarFoco([g.cidade.id, ...destinosDe(g.fluxos)]);
     }
     // Ponto roxo: atuação móvel em todo o estado
     function abrirPainelHub(h) {
       const lista = pessoasDoHub(h.uf);
       painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>Sem cidade definida — ${UI.esc(nomeUFs(h.uf))}`,
-        `<b>${lista.length}</b> pessoa(s) com cadastro antigo (MÓVEL), sem cidade de trabalho: podem atuar em qualquer lugar de ${UI.esc(h.uf)} · vêm de ${new Set(h.fluxos.map(f => f.cidadeOrigem.id)).size} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
+        `<b>${pes(lista.length)}</b> com cadastro antigo (MÓVEL), sem cidade de trabalho: podem atuar em qualquer lugar de ${UI.esc(h.uf)} · vêm de ${new Set(h.fluxos.map(f => f.cidadeOrigem.id)).size} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
         listaPessoas(lista, { destino: false }) + resumo('Resumo por cidade de origem', tabelaOrigens(h.fluxos, h.total));
       ligarFechar(); ligarListas();
       aplicarFoco(['H:' + h.uf, ...h.fluxos.map(f => f.cidadeOrigem.id)]);
@@ -913,7 +935,7 @@ Paginas.mapa = {
     function abrirPainelGrupoOrigem(gr) {
       const lista = gr.itens.flatMap(g => pessoasDeOrigem(g.cidade.id));
       painel.innerHTML = cabecalhoPainel(`<span class="bolha-origem mini varias">${lista.length}</span>${gr.itens.length} cidades próximas`,
-        `<b>${lista.length}</b> pessoa(s) são de ${gr.itens.length} cidades vizinhas, juntas numa bola só neste zoom · aproxime para separar, ou clique no nome de uma cidade`) +
+        `<b>${pes(lista.length)}</b> ${lista.length === 1 ? 'é' : 'são'} de ${gr.itens.length} cidades vizinhas, juntas numa bola só neste zoom · aproxime para separar, ou clique no nome de uma cidade`) +
         listaPessoas(lista);
       ligarFechar(); ligarListas();
       aplicarFoco([...gr.itens.map(g => g.cidade.id), ...gr.itens.flatMap(g => destinosDe(g.fluxos))]);
@@ -926,7 +948,7 @@ Paginas.mapa = {
       const regiao = i => i ? `${UI.esc(i.micro.nome)} · distrito ${UI.esc(i.distrito.nome)}` : 'fora das microrregiões cadastradas';
       const lista = pessoasDoFluxo(f);
       painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>De ${UI.esc(o.nome)} para ${destNome}`,
-        `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
+        `<b>${pes(lista.length)}</b> ${lista.length === 1 ? 'é' : 'são'} de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
         `<div class="ficha-grade" style="margin-bottom:10px">
           <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
           <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'cadastro antigo (MÓVEL)' : regiao(infoA)}</div></div>
@@ -1539,6 +1561,7 @@ Paginas.mapa = {
 
     return () => {
       ativo = false;
+      document.removeEventListener('maparh:presenca', aoPresenca);
       if (rafZoom) cancelAnimationFrame(rafZoom);
       document.removeEventListener('fullscreenchange', aoMudarTelaCheia);
       document.removeEventListener('keydown', aoTeclar);

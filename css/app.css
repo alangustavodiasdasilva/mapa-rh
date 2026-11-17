@@ -831,3 +831,14 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; cu
   .ct-pessoa, .ct-linha > [data-rot="Onde"] { grid-column: 1 / -1; }
   .ct-linha > [data-rot]::before { content: attr(data-rot); display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
 }
+
+/* Mapa: quadro da cidade com as pessoas; selo de tipo sem quebrar */
+.mapa-painel .badge, .mapa-painel .tabela td .badge { white-space: nowrap; }
+.mp-pessoa { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+.mp-pessoa-nome { font-weight: 600; line-height: 1.25; }
+
+/* presença: quem está olhando */
+.olhando { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 999px; padding: 2px 10px 2px 3px; margin: 2px 0 8px; }
+.olhando-foto { display: inline-flex; border-radius: 50%; box-shadow: 0 0 0 2px #10b981; }
+.olhando-foto + .olhando-foto { margin-left: -6px; }
+.olhando-txt { font-weight: 600; }

@@ -1298,7 +1298,7 @@ const Store = (() => {
     // dias em aberto: contados da aprovação (vaga antiga: da criação); só para vaga ainda em aberto
     const inicio = (v.aprovacao && v.aprovacao.em) || v.criadoEm;
     const diasAberta = emAberto && inicio ? Math.max(0, Math.floor((Date.now() - new Date(inicio).getTime()) / DIA_MS)) : null;
-    return { ...v, status: statusVisto, projeto: projeto(v.projetoId), cidade: cidade(v.cidadeId), candidatos: cont ? cont.candidatos : cands.length, admitidos,
+    return { ...v, responsaveis: responsaveisDe(v), status: statusVisto, projeto: projeto(v.projetoId), cidade: cidade(v.cidadeId), candidatos: cont ? cont.candidatos : cands.length, admitidos,
       emProcesso: cont ? cont.emProcesso : cands.filter(c => !['admitido', 'reprovado'].includes(c.etapa)).length,
       porDistrito, locais: porDistrito.reduce((n, x) => n + x.locais, 0), moveis: porDistrito.reduce((n, x) => n + x.moveis, 0),
       contagemCarregada: !!contagemVagas, etapas: cont && cont.etapas ? cont.etapas : { triagem: 0, entrevista: 0, documentos: 0 },
@@ -1307,13 +1307,15 @@ const Store = (() => {
       prioridade: PRIORIDADES[v.prioridade] ? v.prioridade : 'normal', situacaoAprovacao: situacaoAprovacao(v), aprovada, atrasada,
       diasAtraso: atrasada ? Math.round((new Date(hoje + 'T12:00:00') - new Date(v.dataNecessidade + 'T12:00:00')) / DIA_MS) : 0, diasAberta };
   }
+  // RHs responsáveis pela vaga: o principal (recrutadorLogin) e os outros (recrutadores), sem repetir
+  function responsaveisDe(v) { return [...new Set([v && v.recrutadorLogin, ...((v && v.recrutadores) || [])].filter(Boolean))]; }
   function vagasVisiveis(usuario, { projetoId = '', status = '' } = {}) {
     const visiveis = new Set(projetosVisiveis(usuario).map(p => p.id));
     const fechada = v => v.status === 'preenchida' || v.status === 'cancelada' || v.status === 'recusada';
     // RH (analista) só enxerga as vagas em que é o responsável pelo recrutamento (o banco aplica a mesma regra)
     const soMinhas = usuario && usuario.perfil === 'analista' ? usuario.login : null;
     return vagas().filter(v => visiveis.has(v.projetoId)).filter(v => !projetoId || v.projetoId === projetoId)
-      .filter(v => !soMinhas || v.recrutadorLogin === soMinhas)
+      .filter(v => !soMinhas || responsaveisDe(v).includes(soMinhas))
       .filter(v => !status || v.status === status).map(enriquecerVaga)
       .sort((a, b) => fechada(a) - fechada(b) || (b.criadoEm || '').localeCompare(a.criadoEm || ''));
   }
@@ -1352,10 +1354,18 @@ const Store = (() => {
     const solicitante = texto('solicitante', novo && autor ? (autor.nome || autor.login || '') : '');
     // responsável pelo recrutamento: um usuário do sistema (é pelo login que ele enxerga só as vagas dele)
     let recrutador = texto('recrutador'), recrutadorLogin = veio('recrutadorLogin') ? (obj.recrutadorLogin || null) : (v && v.recrutadorLogin) || null;
-    if (veio('recrutadorLogin')) {
+    let recrutadores = (v && v.recrutadores) || (recrutadorLogin ? [recrutadorLogin] : []);
+    if (veio('recrutadores')) {   // lista completa vinda da tela: o primeiro é o principal
+      recrutadores = [...new Set((obj.recrutadores || []).filter(Boolean))];
+      for (const l of recrutadores) if (!usuarioPorLogin(l)) throw new Error('Os responsáveis pelo recrutamento precisam ser usuários do sistema.');
+      recrutadorLogin = recrutadores[0] || null;
+      recrutador = recrutadorLogin ? usuarioPorLogin(recrutadorLogin).nome : '';
+    } else if (veio('recrutadorLogin')) {
       const u = usuarioPorLogin(recrutadorLogin);
       if (recrutadorLogin && !u) throw new Error('O responsável pelo recrutamento precisa ser um usuário do sistema.');
       recrutador = u ? u.nome : '';
+      const antigo = v && v.recrutadorLogin;
+      recrutadores = recrutadorLogin ? [recrutadorLogin, ...recrutadores.filter(l => l !== recrutadorLogin && l !== antigo)] : [];
     }
     const prioridade = veio('prioridade') && obj.prioridade ? obj.prioridade : (v && v.prioridade) || 'normal';
     if (!PRIORIDADES[prioridade]) throw new Error('Prioridade inválida (use baixa, normal, alta ou urgente).');
@@ -1385,7 +1395,7 @@ const Store = (() => {
       unidade: (obj.unidade || '').trim(), descricao: (obj.descricao || '').trim(), requisitos: (obj.requisitos || '').trim(),
       salario: (obj.salario || '').trim(), beneficios: (obj.beneficios || '').trim(), jornada: (obj.jornada || '').trim(),
       contato: (obj.contato || '').trim(), prazo: obj.prazo || null, status,
-      solicitante, recrutador, recrutadorLogin, prioridade, dataNecessidade, justificativa, atualizadoEm: agora() });
+      solicitante, recrutador, recrutadorLogin, recrutadores, prioridade, dataNecessidade, justificativa, atualizadoEm: agora() });
     if (porDistrito) v.distritos = porDistrito;
     if (reaprovar) { v.status = 'aguardando'; v.aprovacao = { situacao: 'pendente', por: null, em: null, motivo: '', pedidoEm: agora(), aumento: { de: antesQtd, para: qtd } }; }
     salvar();
@@ -1397,7 +1407,12 @@ const Store = (() => {
     const v = vaga(id); if (!v) throw new Error('Vaga não encontrada.');
     if (!podeAprovarVaga(autor)) throw new Error('Só um administrador pode aprovar vagas.');
     if (vagaAprovada(v)) throw new Error('Esta vaga já está aprovada.');
-    if (recrutadorLogin) { const u = usuarioPorLogin(recrutadorLogin); if (!u) throw new Error('O responsável pelo recrutamento precisa ser um usuário do sistema.'); v.recrutadorLogin = u.login; v.recrutador = u.nome; }
+    // um login ou uma lista (o primeiro é o principal)
+    const lista = [...new Set((Array.isArray(recrutadorLogin) ? recrutadorLogin : [recrutadorLogin]).filter(Boolean))];
+    if (lista.length) {
+      for (const l of lista) if (!usuarioPorLogin(l)) throw new Error('O responsável pelo recrutamento precisa ser um usuário do sistema.');
+      const u = usuarioPorLogin(lista[0]); v.recrutadorLogin = u.login; v.recrutador = u.nome; v.recrutadores = lista;
+    }
     v.aprovacao = { situacao: 'aprovada', por: autor.login, em: agora(), motivo: '' };
     v.status = 'aberta'; v.atualizadoEm = agora(); salvar();
     auditar('vaga.aprovar', `Vaga ${v.titulo} aprovada`, autor);
@@ -1708,7 +1723,7 @@ const Store = (() => {
     infoCidade, salvarInfoCidade, agenciasSine, agenciasSineImportadas, coberturaSine, portalSine, BASES_SINE, carregarBaseSine, carregarBasesSineEmUso, fonteBaseSine, importarAgenciasSine, removerAgenciasSine, sineDaCidade, sineMaisProximo, config, salvarConfig, adicionarAgenciasOnline, buscaSineRecente, marcarBuscaEstado, buscaEstadoRecente, ufsSemBaseSine,
     mapasPdr, mapaPdr, adicionarMapaPdr, excluirMapaPdr, todosSilosPdr, parseKML, camposDoPonto, corSugeridaMapaPdr, cidadeMaisProxima, estruturaDoKML, aplicarEstruturaKML,
     STATUS_VAGA, CANAIS, vagas, vaga, vagasVisiveis, definirContagemVagas, distritosDaVaga, salvarVaga, mudarStatusVaga, marcarDivulgacao, excluirVaga, textoAnuncio,
-    PRIORIDADES, JUSTIFICATIVAS, podeAprovarVaga, vagaAprovada, aprovarVaga, recusarVaga, taxaPreenchimento, tempoMedioContratacao, indicadoresVagas,
+    PRIORIDADES, JUSTIFICATIVAS, responsaveisDe, podeAprovarVaga, vagaAprovada, aprovarVaga, recusarVaga, taxaPreenchimento, tempoMedioContratacao, indicadoresVagas,
     DOCUMENTOS_NOMES, cargos, cargoPorNome, documentosDoCargo, salvarCargo, excluirCargo,
     ETAPAS, ORDEM_ETAPAS, DOCUMENTOS, candidatos, candidato, candidatosVisiveis, salvarCandidato, moverCandidato, marcarDocumento, excluirCandidato, resumoRecrutamento,
     definirGanchoSalvar, adotarDados, reindexar, limparCacheLocal, definirUsuarios, abrirSessao, fecharSessao,

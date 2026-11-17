@@ -223,3 +223,13 @@ button.vg-et:hover { border-color: var(--primaria); }
 
 /* aba com pedido esperando aprovação do administrador */
 .vg-aba-alerta .aba-num { background: #f59e0b; color: #fff; }
+
+/* vários RHs por vaga */
+.vg-rhs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.vg-rh-op { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 13px; background: #fff; border: 1px solid var(--borda); border-radius: 999px; padding: 3px 10px 3px 4px; cursor: pointer; }
+.vg-rh-op.on { border-color: var(--primaria); background: #eff6ff; color: #1e3a8a; font-weight: 600; }
+.vg-rh-op .vg-rh-principal { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--primaria); }
+.vg-rh-op .vg-rh-principal:empty { display: none; }
+.vg-rh-fotos { display: inline-flex; }
+.vg-rh-fotos > span + span { margin-left: -8px; }
+.vg-rh-fotos > span { border-radius: 50%; box-shadow: 0 0 0 2px #fff; display: inline-flex; }

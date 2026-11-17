@@ -468,3 +468,16 @@ button.cd-wa { border: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; c
 .cd-pe > * { flex-shrink: 0; }
 .cd-pe > .btn { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-left: 9px; padding-right: 9px; }
 .cd-pe .espaco { flex: 1 1 0; min-width: 0; }
+
+/* cor do cartão: novo (sem contato) / contatado ou entrevista marcada / tentou sem resposta ou faltou */
+.cd-card.cd-st-novo { border-left-color: #94a3b8; }
+.cd-card.cd-st-contato { border-left-color: #3b82f6; background: #f0f7ff; }
+.cd-card.cd-st-tentou { border-left-color: #f59e0b; background: #fffaeb; }
+.cd-quem { display: inline-flex; }
+/* histórico embaixo da ficha */
+.fi-historico { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--borda); }
+.fi-historico .fi-anotar { margin-bottom: 12px; }
+.fi-nota-auto .fi-nota-txt { color: #475569; font-style: italic; }
+
+.cd-olhando .olhando { margin: 0 0 6px; font-size: 11px; padding: 1px 8px 1px 2px; }
+.pre-pessoa > .cd-olhando { padding: 6px 14px 0; }

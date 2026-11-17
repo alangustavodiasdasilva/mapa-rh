@@ -62,6 +62,8 @@ const App = {
   entrarNoApp() {
     this.renderShell();
     window.onhashchange = () => this.rotear();
+    // já busca os candidatos do projeto por trás: Candidatos, Contratações e Início abrem sem "Carregando…"
+    try { const pid = this.filtros.projetoId || ((this.projetosVisiveis()[0] || {}).id); if (pid && this.nuvem && this.nuvem() && Nuvem.rh && !Nuvem.rh.emCache(pid) && !/candidatos/.test(location.hash)) Nuvem.rh.listar(pid).catch(() => {}); } catch (e) { /* segue */ }
     this.rotear();
     this.prepararBases();
   },
@@ -69,6 +71,7 @@ const App = {
   async iniciarComNuvem() {
     Nuvem.aoReceber(() => this.aoReceberDaNuvem());
     if (Nuvem.aoMudarRh) Nuvem.aoMudarRh(() => this.aoReceberDaNuvem(true));
+    if (Nuvem.aoMudarPresenca) Nuvem.aoMudarPresenca(() => document.dispatchEvent(new CustomEvent('maparh:presenca')));
     try { this.usuario = await Nuvem.iniciar(); }
     catch (e) { console.warn(e); this.usuario = null; this._erroLogin = e.message || String(e); }
     if (!this.usuario) return this.renderLogin();
@@ -92,6 +95,16 @@ const App = {
       this.recarregar();
     };
     tentar();
+  },
+  // presença: o que estou olhando agora (cidade:<id>, candidato:<id>, ou a tela)
+  olhar(v) { if (typeof Nuvem !== 'undefined' && Nuvem.onde) Nuvem.onde(v); },
+  // fotos de quem (fora eu) está olhando aquilo, com o nome
+  olhandoHtml(v, tam = 22) {
+    const l = typeof Nuvem !== 'undefined' && Nuvem.olhando ? Nuvem.olhando(v) : [];
+    if (!l.length) return '';
+    const nomes = l.map(x => String(x.nome || x.login).split(' ')[0]);
+    const txt = nomes.length === 1 ? `${nomes[0]} está olhando` : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]} estão olhando`;
+    return `<span class="olhando" title="${UI.esc(l.map(x => x.nome || x.login).join(', '))}">${l.map(x => `<span class="olhando-foto">${UI.avatar(Store.usuarioPorLogin(x.login) || { nome: x.nome || x.login }, tam)}</span>`).join('')}<span class="olhando-txt">${UI.esc(txt)}</span></span>`;
   },
   // a tela aberta registra como se atualiza sem ser apagada (some ao trocar de tela)
   aoAtualizar(fn) { this.atualizarAtual = fn; },
@@ -453,6 +466,7 @@ const App = {
     const mesmaTela = forcar && this.paginaAtual === nome, rolagem = mesmaTela ? window.scrollY : 0;
     this.atualizarAtual = null;
     this.paginaAtual = nome;
+    this.olhar('pagina:' + nome);
     document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.toggle('ativo', a.dataset.pagina === nome));
     const pag = Paginas[nome];
     document.getElementById('titulo-pagina').textContent = pag.titulo;

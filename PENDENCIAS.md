@@ -50,7 +50,17 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [x] O banco avisa na hora (Supabase Realtime) quando muda vaga/cadastro ou candidato; busca de reserva a cada 15 s.
 - [x] Telas atualizam só os dados (sem "Carregando…", sem voltar ao topo): Candidatos, Vagas, Contratações; Início mostra o último resultado e confere em segundo plano.
 - [x] Vagas: saíram os cartões que repetiam as abas (em andamento / aguardando aprovação); aba "Aguardando aprovação" fica laranja para o admin quando há pedido.
-- [ ] Vaga de TESTE no banco (teste-vaga-1, "TESTE - AUXILIAR DE CLASSIFICAÇÃO") para o Alan aprovar/recusar; apagar depois do teste.
+- [x] (v139) Sem "Carregando…" ao trocar de tela: Candidatos, Contratações e Início abrem com a última lista guardada e trocam os dados por trás; os candidatos são buscados já no login; gráficos sem animação ao redesenhar.
+- [x] Vaga de TESTE (teste-vaga-1) já foi excluída no sistema.
+
+## Quem fez o quê (v140, migração responsaveis-e-historico.sql)
+- [x] Banco grava quem fez a última atualização do candidato (atualizado_por) e anota sozinho: cadastro, mudança de etapa, direcionamento, admissão, desfazer, retomada.
+- [x] Cartão: cor por situação (cinza sem contato, azul contatado/entrevista marcada, amarelo tentou sem resposta/faltou, verde aprovado/pronto) e foto de quem mexeu por último.
+- [x] Ficha: histórico embaixo, em todas as abas, com foto, nome e hora.
+- [x] Vaga com vários RHs responsáveis (o primeiro é o principal); todos veem a vaga e todos os candidatos dela (regra no banco).
+- [x] Mapa: quadro da cidade mostra a pessoa (nome, cargo, entrou, chegada, foto do RH), clique abre em Candidatos; sem "pessoa(s)" e selo MÓVEL sem quebrar.
+- [x] Presença: foto de quem está olhando a mesma cidade no mapa ou a mesma ficha de candidato (no cartão também).
+- [ ] Simulação de 17/11 no banco: 3 candidatos "TESTE - …" na vaga AUDITOR de Sarandi (JAO); o Pedro foi admitido (contratação adm-a1aa83b7-…, CPF de exemplo 529.982.247-25). Apagar depois que o Alan olhar.
 
 ## Lote 5 — design — FEITO em v135: Lista compacta, Planilha ▾, filtros das Vagas, Início (bloco principal), Relatórios sem rolagem, Mapa (zoom livre), barra lateral, celular (Quadro uma etapa por vez, Por RH com rótulos). Ficaram (menores):
 - [ ] Lista de Candidatos em 1366px (colunas espremidas) — medir pelo cartão, não pela janela.

@@ -1,6 +1,12 @@
 // Início: o fluxo do RH em quatro passos com os números de hoje, e abaixo os indicadores das contratações.
 Paginas.dashboard = {
   titulo: 'Início',
+  // último andamento guardado (ou a lista de Candidatos, que tem os mesmos campos): o Início abre já com números
+  cacheDe(pid) {
+    const c = this._cache; if (c && c.pid === pid) return c;
+    const l = typeof Nuvem !== 'undefined' && Nuvem.rh && Nuvem.rh.emCache && pid ? Nuvem.rh.emCache(pid) : null;
+    return l ? { pid, l, j: '' } : null;
+  },
   render(el) {
     const regs = App.regs();
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
@@ -47,12 +53,12 @@ Paginas.dashboard = {
     };
     // Recrutamento (para a diretoria): sai do andamento dos candidatos (sem dado pessoal) e das vagas.
     // Vale para todos que veem o Início; o RH (analista) vê só o que é dele. Respeita os filtros de distrito e tipo do topo.
-    setTimeout(async () => {
+    Promise.resolve().then(async () => {   // logo depois de montar a tela, antes de ela aparecer: com o último resultado guardado não pisca
       const v = document.getElementById('dash-cand'), s = document.getElementById('dash-cand-sub'), alvo = document.getElementById('dash-rec'); if (!v) return;
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { v.textContent = '—'; s.textContent = 'precisa do banco central'; alvo.innerHTML = ''; return; }
       let l;
-      const pid = App.filtros.projetoId || '', cache = Paginas.dashboard._cache;
-      if (cache && cache.pid === pid) {
+      const pid = App.filtros.projetoId || '', cache = Paginas.dashboard.cacheDe(pid);
+      if (cache) {
         l = cache.l;   // o que já tinha: aparece na hora; a conferência abaixo só redesenha se mudou
         Nuvem.rh.andamento(App.filtros.projetoId).then(n => { const j = JSON.stringify(n); if (j === cache.j) return; Paginas.dashboard._cache = { pid, l: n, j }; if (App.paginaAtual === 'dashboard') App.rotear(true); }).catch(() => {});
       } else try { l = await Nuvem.rh.andamento(App.filtros.projetoId); Paginas.dashboard._cache = { pid, l, j: JSON.stringify(l) }; } catch (e) {
@@ -187,7 +193,7 @@ Paginas.dashboard = {
           </div>
         </div>`;
       document.getElementById('dr-imprimir').addEventListener('click', () => window.print());
-    }, 0);
+    });
     el.innerHTML = `
       <div class="fluxo">
         <a class="fluxo-passo" href="#/vagas">
@@ -211,7 +217,7 @@ Paginas.dashboard = {
         </a>
       </div>
       <div id="dash-pend">${textoPendencias({ ...rec, contagemPronta: false })}</div>
-      <div id="dash-rec">${Paginas.dashboard._cache && Paginas.dashboard._cache.pid === (App.filtros.projetoId || '') ? '' : '<div class="card dr-esqueleto mb"></div>'}</div>
+      <div id="dash-rec">${Paginas.dashboard.cacheDe(App.filtros.projetoId || '') ? '' : '<div class="card dr-esqueleto mb"></div>'}</div>
       <div class="secao-titulo">Perfil de quem já foi contratado <span class="muted small">${UI.esc(App.descricaoFiltro())}</span></div>
       <div class="grade kpis mb">
         <div class="card kpi"><div class="rotulo">Contratações</div><div class="valor">${UI.fmtNum(r.total)}</div><div class="sub">${UI.fmtNum(r.projetos)} projeto(s)</div></div>
@@ -242,6 +248,7 @@ Paginas.dashboard = {
     } else {
       Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
       Chart.defaults.color = '#475569';
+      Chart.defaults.animation = false;   // redesenhar com dado novo não pode "piscar" os gráficos
       const empilhado = (horizontal) => ({ indexAxis: horizontal ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
         scales: { x: { stacked: true, ticks: { precision: 0 } }, y: { stacked: true, ticks: { precision: 0 } } }, plugins: { legend: { position: 'bottom' } } });
       const dsLM = (lista) => [

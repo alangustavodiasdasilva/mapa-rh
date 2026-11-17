@@ -44,6 +44,13 @@ Paginas.candidatos = {
     const chaveAnalista = p => p.analista_login || '';
     // foto (ou iniciais) do RH de uma pessoa / de um login
     const fotoRh = (login, tam = 24) => { const u = Store.usuarioPorLogin(login); return UI.avatar(u || { nome: login || '?' }, tam); };
+    // foto de quem fez a última atualização (o banco grava), com nome e quando; sem registro, o RH responsável
+    function ultimoAMexer(p, tam = 26) {
+      const login = p.atualizado_por || p.analista_login; if (!login) return '';
+      const u = Store.usuarioPorLogin(login), nome = u ? u.nome : login;
+      const quando = p.atualizado_por && p.atualizado_em ? ` · ${UI.fmtDataHora(p.atualizado_em)}` : '';
+      return `<span class="cd-quem" title="${UI.esc((p.atualizado_por ? 'Última atualização: ' : 'RH: ') + nome + quando)}">${fotoRh(login, tam)}</span>`;
+    }
     const nomeAnalista = p => { const u = Store.usuarioPorLogin(p.analista_login); return u ? u.nome : (p.analista_login ? (p.analista || p.analista_login) : ''); };
     const equipe = () => Store.equipeRh().slice().sort((a, b) => (a.perfil !== 'analista') - (b.perfil !== 'analista') || a.nome.localeCompare(b.nome, 'pt-BR'));
     const loginPeloNome = nome => { const n = Store.normalizar(nome); const u = n && equipe().find(x => Store.normalizar(x.nome) === n); return u ? u.login : null; };
@@ -253,7 +260,7 @@ Paginas.candidatos = {
         </div>
         <div id="cd-hoje" class="cd-hoje"></div>
         <div id="cd-aviso"></div>
-        <div id="cd-corpo"><div class="vazio">Carregando…</div></div>
+        <div id="cd-corpo"></div>
       </div>`;
     const q = s => el.querySelector(s);
     if (buscaIni) { busca = buscaIni; q('#cd-busca').value = buscaIni; }
@@ -422,7 +429,10 @@ Paginas.candidatos = {
     function cartao(p) {
       const pe = p.pessoa, origem = nomeCidade(pe.cidade_origem_id), dest = destinoTexto(p), barrada = barradaEm(p);
       const i = ORDEM.indexOf(p.etapa), aberto = emAndamento(p), adm = p.situacao === 'admitido';
-      const estado = aberto && barrada ? 'cd-st-barrada' : pronta(p) ? 'cd-st-pronta' : adm ? 'cd-st-adm' : !aberto ? 'cd-st-fora' : '';
+      const ent0 = p.entrevista || {};
+      const estado = aberto && barrada ? 'cd-st-barrada' : pronta(p) ? 'cd-st-pronta' : adm ? 'cd-st-adm' : !aberto ? 'cd-st-fora'
+        : p.etapa === 'triagem' ? (contatoEm(p) ? 'cd-st-contato' : tentativas(p) ? 'cd-st-tentou' : 'cd-st-novo')
+        : p.etapa === 'entrevista' ? (ent0.resultado === 'aprovado' ? 'cd-st-pronta' : ent0.resultado === 'faltou' ? 'cd-st-tentou' : ent0.data ? 'cd-st-contato' : '') : '';
       const alertas = [];
       if (aberto && !origem) alertas.push('sem cidade de origem');
       if (aberto && p.etapa === 'documentos' && !pe.cpf) alertas.push('sem CPF');
@@ -477,7 +487,7 @@ Paginas.candidatos = {
         } else if (!adm) { principal = '<button class="btn btn-pequeno" data-acao="retomar">Retomar</button>'; menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>'); }
         else menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>');
       }
-      const rh = veTudo && p.analista_login ? `<span title="RH: ${UI.esc(nomeAnalista(p))}">${fotoRh(p.analista_login, 26)}</span>` : '';
+      const rh = ultimoAMexer(p);
       const km = p.distancia_km != null && +p.distancia_km > 0 ? `<span class="cd-km">${UI.fmtKm(+p.distancia_km)}</span>` : '';
       const arrasta = podeEditar && !adm;
       return `<div class="cand-card cd-card ${estado} ${arrasta ? 'cd-arrasta' : ''}" data-id="${p.id}" ${arrasta ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="Abrir a ficha de ${UI.esc(pe.nome)}">
@@ -1017,6 +1027,7 @@ Paginas.candidatos = {
       };
       const corpo = `
         <div class="fi-cab">
+          ${p ? '<div id="fi-olhando"></div>' : ''}
           <div class="fi-resumo">${resumo}${p && podeEditar && tel.length >= 10 ? ' <button type="button" class="btn btn-pequeno fi-msg" id="f-msg">Mensagem no WhatsApp</button>' : ''}</div>
           ${trilha(etapaIni, p ? p.situacao : null)}
         </div>
@@ -1063,9 +1074,6 @@ Paginas.candidatos = {
             <div><span class="vg-rot">Avaliação</span><div class="fi-estrelas" id="e-aval">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-nota="${n}" class="${p && p.entrevista && +p.entrevista.avaliacao >= n ? 'on' : ''}" aria-label="${n} de 5">★</button>`).join('')}</div></div>
             <label style="grid-column:1/-1">Observações da entrevista<textarea id="e-notas" rows="4" placeholder="Experiência, disponibilidade (horário, viagem, alojamento), pontos fortes, pontos de atenção…">${v(p && p.entrevista && p.entrevista.notas)}</textarea></label>
           </div>
-          <div class="pre-form-titulo" style="margin-top:18px">Histórico de anotações <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— fica registrado quem escreveu e quando</span></div>
-          <div id="e-hist" class="fi-hist"></div>
-          ${somenteLeitura ? '' : '<div class="fi-anotar"><textarea id="e-nova" rows="2" placeholder="Nova anotação (ex.: liguei e não atendeu; pediu para chegar na segunda)"></textarea><button type="button" class="btn" id="e-add">Anotar</button></div>'}
         </section>
         <section data-painel="docs" hidden>
           <div class="doc-cab"><div class="doc-progresso"><div class="doc-barra"><i id="doc-barra"></i></div><span id="doc-resumo"></span>${somenteLeitura || eu.perfil !== 'admin' ? '' : '<button type="button" class="btn-link" id="doc-todos">Marcar todos como entregues</button>'}</div>
@@ -1081,7 +1089,12 @@ Paginas.candidatos = {
             <label>Horário previsto<input id="f-hora" type="time" value="${p && p.chegada_hora ? p.chegada_hora.slice(0, 5) : ''}"></label>
             <label>Grupo do WhatsApp<input id="f-grupo" value="${v(p && p.grupo_whatsapp)}"></label>
           </div>
-        </section>`;
+        </section>
+        ${p ? `<section class="fi-historico">
+          <div class="pre-form-titulo">Histórico <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— cada mudança e anotação, com quem fez e quando</span></div>
+          ${somenteLeitura ? '' : '<div class="fi-anotar"><textarea id="e-nova" rows="2" placeholder="Nova anotação (ex.: liguei e não atendeu; pediu para chegar na segunda)"></textarea><button type="button" class="btn" id="e-add">Anotar</button></div>'}
+          <div id="e-hist" class="fi-hist"></div>
+        </section>` : ''}`;
 
       const botoes = [];
       if (p && eu.perfil === 'admin' && !adm) botoes.push({ texto: 'Excluir', classe: 'btn-perigo fi-esq', acao: async () => {
@@ -1168,7 +1181,11 @@ Paginas.candidatos = {
           else if (nova && entNova.resultado === 'faltou') UI.toast(`${nova.pessoa.nome} não compareceu. Marque uma nova data na Entrevista ou use "Não segue no processo".`, 'aviso', 7000);
         }
       } });
-      const m = UI.modal({ titulo: p ? pe.nome : 'Novo candidato', largura: '860px', corpo, botoes, fecharAoClicarFora: false });
+      const m = UI.modal({ titulo: p ? pe.nome : 'Novo candidato', largura: '860px', corpo, botoes, fecharAoClicarFora: false,
+        aoFechar: () => { App.olhar('pagina:candidatos'); document.removeEventListener('maparh:presenca', pintarFicha); } });
+      // presença: estou com esta ficha aberta; mostra quem mais está nela
+      const pintarFicha = () => { const box = m.corpo.querySelector('#fi-olhando'); if (box && p) box.innerHTML = App.olhandoHtml('candidato:' + p.id); };
+      if (p) { App.olhar('candidato:' + p.id); pintarFicha(); document.addEventListener('maparh:presenca', pintarFicha); }
       m.el.querySelector('.modal').classList.add('fi-modal');
       const g = s => m.corpo.querySelector(s);
       let cpfDeOutro = false;
@@ -1338,7 +1355,7 @@ Paginas.candidatos = {
         g('#e-aval').addEventListener('click', e => { const b = e.target.closest('[data-nota]'); if (!b || somenteLeitura) return; notaEntrevista = notaEntrevista === +b.dataset.nota ? 0 : +b.dataset.nota; quadroNotas(); });
         const hist = () => {
           const l = (p.anotacoes || []).slice().reverse();
-          g('#e-hist').innerHTML = l.length ? l.map(a => { const u = Store.usuarioPorLogin(a.por); return `<div class="fi-nota">${UI.avatar(u || { nome: a.nome || a.por || '?' }, 28)}<div><div class="fi-nota-cab"><b>${UI.esc(a.nome || a.por || '—')}</b> <span class="muted">${UI.fmtDataHora(a.em)}${a.etapa ? ' · ' + (ETAPAS[a.etapa] || a.etapa) : ''}</span></div><div class="fi-nota-txt">${UI.esc(a.texto)}</div></div></div>`; }).join('')
+          g('#e-hist').innerHTML = l.length ? l.map(a => { const u = Store.usuarioPorLogin(a.por); return `<div class="fi-nota ${a.auto ? 'fi-nota-auto' : ''}">${UI.avatar(u || { nome: a.nome || a.por || '?' }, 28)}<div><div class="fi-nota-cab"><b>${UI.esc(a.nome || a.por || '—')}</b> <span class="muted">${UI.fmtDataHora(a.em)}${a.etapa ? ' · ' + (ETAPAS[a.etapa] || a.etapa) : ''}</span></div><div class="fi-nota-txt">${UI.esc(a.texto)}</div></div></div>`; }).join('')
             : '<div class="muted small">Nenhuma anotação ainda.</div>';
         };
         hist();
@@ -1571,7 +1588,7 @@ Paginas.candidatos = {
     });
     function mudarVista(v) { vista = v; guardar('maparh:cand-vista', v); desenhar(); }
     q('#cd-abas').addEventListener('click', e => { const b = e.target.closest('[data-vista]'); if (b) mudarVista(b.dataset.vista); });
-    q('#cd-projeto').addEventListener('change', e => { projetoId = e.target.value; guardar('maparh:cand-projeto', projetoId); vagaId = distritoId = analista = ''; guardar('maparh:cand-vaga', ''); linhas = []; q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; carregar(); });
+    q('#cd-projeto').addEventListener('change', e => { projetoId = e.target.value; guardar('maparh:cand-projeto', projetoId); vagaId = distritoId = analista = ''; guardar('maparh:cand-vaga', ''); const c = Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId); linhas = c || []; if (c) desenhar(); else q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; carregar(); });
     q('#cd-vaga').addEventListener('change', e => { vagaId = e.target.value; guardar('maparh:cand-vaga', vagaId); desenhar(); });
     q('#cd-distrito').addEventListener('change', e => { distritoId = e.target.value; desenhar(); });
     q('#cd-analista').addEventListener('change', e => { analista = e.target.value; desenhar(); });
@@ -1580,8 +1597,27 @@ Paginas.candidatos = {
     if (q('#cd-novo')) q('#cd-novo').addEventListener('click', () => formulario(null));
     if (q('#cd-importar')) q('#cd-importar').addEventListener('click', importar);
     if (q('#cd-mensagens')) q('#cd-mensagens').addEventListener('click', editarMensagens);
+    // abre com o que já tinha (se tiver) e atualiza por trás; "Carregando…" só na primeira vez
+    { const c = typeof Nuvem !== 'undefined' && Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId);
+      if (c) { linhas = c; contarVagas(); desenhar(); } else q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; }
     carregar();
     // mudou algo (aqui ou em outro computador): busca as pessoas de novo e redesenha no lugar; com janela aberta, só guarda e redesenha depois
+    // presença: foto de quem está com a ficha aberta, no cartão / linha (sem redesenhar a tela)
+    function marcarOlhando() {
+      const corpo = q('#cd-corpo'); if (!corpo) return;
+      corpo.querySelectorAll('.cd-card[data-id], .pre-pessoa[data-id]').forEach(el => {
+        const html = App.olhandoHtml('candidato:' + el.dataset.id, 18);
+        let b = el.querySelector('.cd-olhando');
+        if (!html) { if (b) b.remove(); return; }
+        if (!b) { b = document.createElement('div'); b.className = 'cd-olhando'; el.prepend(b); }
+        if (b.innerHTML !== html) b.innerHTML = html;
+      });
+    }
+    let timerOlhando = 0;
+    const agendarOlhando = () => { clearTimeout(timerOlhando); timerOlhando = setTimeout(marcarOlhando, 30); };
+    document.addEventListener('maparh:presenca', agendarOlhando);
+    const aoRedesenhar = new MutationObserver(agendarOlhando);
+    aoRedesenhar.observe(q('#cd-corpo'), { childList: true });
     let pendenteRedesenho = false;
     App.aoAtualizar(async () => {
       if (!ativo) return;
@@ -1591,6 +1627,6 @@ Paginas.candidatos = {
     });
     const aoFecharJanela = new MutationObserver(() => { if (pendenteRedesenho && ativo && !document.querySelector('.modal-overlay')) { pendenteRedesenho = false; desenhar(); } });
     aoFecharJanela.observe(document.body, { childList: true });
-    return () => { ativo = false; aoFecharJanela.disconnect(); };
+    return () => { ativo = false; aoFecharJanela.disconnect(); aoRedesenhar.disconnect(); document.removeEventListener('maparh:presenca', agendarOlhando); };
   }
 };

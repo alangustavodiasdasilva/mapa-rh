@@ -204,8 +204,8 @@ Paginas.vagas = {
         <div class="vg-card-corpo">
           <div class="vg-bloco vg-bloco-prog">${numero}<div class="vg-dls">${dist}</div></div>
           <div class="vg-bloco vg-bloco-prazo">${prazo}</div>
-          <div class="vg-bloco vg-bloco-rh"><div class="vg-k-rot">RH responsável</div>
-            <div class="vg-rh">${v.recrutador ? `${UI.avatar(Store.usuarioPorLogin(v.recrutadorLogin) || { nome: v.recrutador }, 26)}<span class="vg-rh-nome">${UI.esc(v.recrutador)}</span>${(Store.usuarioPorLogin(v.recrutadorLogin) || {}).ativo === false ? ' <span class="vg-alerta">inativo: troque</span>' : ''}` : '<span class="vg-alerta">sem RH responsável</span>'}</div>
+          <div class="vg-bloco vg-bloco-rh"><div class="vg-k-rot">${(v.responsaveis || []).length > 1 ? 'RHs responsáveis' : 'RH responsável'}</div>
+            <div class="vg-rh">${(v.responsaveis || []).length ? `<span class="vg-rh-fotos">${v.responsaveis.map(l => { const u = Store.usuarioPorLogin(l); return `<span title="${UI.esc(u ? u.nome : l)}">${UI.avatar(u || { nome: l }, 26)}</span>`; }).join('')}</span><span class="vg-rh-nome">${UI.esc(v.responsaveis.map(l => { const u = Store.usuarioPorLogin(l); return (u ? u.nome : l).split(' ')[0]; }).join(', '))}</span>${v.responsaveis.some(l => (Store.usuarioPorLogin(l) || {}).ativo === false) ? ' <span class="vg-alerta">RH inativo: troque</span>' : ''}` : '<span class="vg-alerta">sem RH responsável</span>'}</div>
             ${detalhe ? `<div class="vg-k-sub">${detalhe}</div>` : ''}</div>
         </div>
         <div class="vg-card-pe">
@@ -247,6 +247,20 @@ Paginas.vagas = {
     q('#vg-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value.trim(); desenhar(); }, 200));
     if (podeEditar) q('#vg-nova').addEventListener('click', () => formVaga(null));
 
+    // escolha de vários RHs: clica para marcar/desmarcar; o primeiro marcado é o principal
+    function seletorRhs(sel) {
+      const equipe = Store.equipeRh();
+      return `<div class="vg-rhs" data-rhs>${equipe.map(u => `<button type="button" class="vg-rh-op ${sel.includes(u.login) ? 'on' : ''}" data-rh="${UI.esc(u.login)}">${UI.avatar(u, 22)}<span>${UI.esc(u.nome)}</span><i class="vg-rh-principal">${sel[0] === u.login ? 'principal' : ''}</i></button>`).join('')}</div>`;
+    }
+    function ligarSeletorRhs(box, sel, aoMudar) {
+      box.addEventListener('click', e => {
+        const b = e.target.closest('[data-rh]'); if (!b) return;
+        const l = b.dataset.rh, i = sel.indexOf(l);
+        if (i >= 0) sel.splice(i, 1); else sel.push(l);
+        box.querySelectorAll('[data-rh]').forEach(x => { x.classList.toggle('on', sel.includes(x.dataset.rh)); x.querySelector('.vg-rh-principal').textContent = sel[0] === x.dataset.rh ? 'principal' : ''; });
+        if (aoMudar) aoMudar();
+      });
+    }
     async function passarCandidatos(v, de, para) {
       let l; try { l = (await Nuvem.rh.listar(v.projetoId)).filter(p => p.vaga_id === v.id && p.situacao === 'em_andamento' && p.analista_login === de); } catch (e) { return; }
       if (!l.length) return;
@@ -256,17 +270,19 @@ Paginas.vagas = {
       catch (e) { UI.toast(e.message, 'erro', 7000); }
     }
     function aprovar(v) {
+      const selAp = (v.responsaveis || []).slice();
       const onde = ondeTexto(v) ? ` em ${ondeTexto(v)}` : '';
       const au = v.aprovacao && v.aprovacao.aumento;
-      UI.modal({ titulo: 'Aprovar vaga', largura: '480px',
+      const mAp = UI.modal({ titulo: 'Aprovar vaga', largura: '520px',
         corpo: `<p style="margin-top:0">Aprovar <b>${UI.esc(v.titulo)}</b>${UI.esc(onde)}, com ${qtd(v.quantidade, 'pessoa', 'pessoas')}?${au ? ` <span class="vg-alerta">Aumento pedido: de ${au.de} para ${au.para}.</span>` : ''} Ela fica aberta para divulgação e candidatos.</p>
-          <label>RH responsável pelo recrutamento<select id="ap-rh"><option value="">Escolha…</option>${Store.equipeRh().map(u => `<option value="${UI.esc(u.login)}" ${u.login === v.recrutadorLogin ? 'selected' : ''}>${UI.esc(u.nome)}</option>`).join('')}</select></label>
-          <p class="muted small" style="margin-bottom:0">O RH escolhido passa a ver esta vaga e os candidatos dela.</p>`,
+          <span class="vg-rot">RHs responsáveis pelo recrutamento <span class="muted" style="font-weight:400">(pode marcar mais de um)</span></span>${seletorRhs(selAp)}
+          <p class="muted small" style="margin-bottom:0">Todos os marcados veem esta vaga e todos os candidatos dela; no cartão aparece a foto de quem mexeu por último.</p>`,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Aprovar', classe: 'btn-primario', acao: md => {
-          const rh = md.corpo.querySelector('#ap-rh').value;
-          if (!rh) throw new Error('Escolha o RH responsável: sem ele nenhum RH enxerga a vaga.');
+          const rh = selAp.slice();
+          if (!rh.length) throw new Error('Escolha pelo menos um RH responsável: sem ele nenhum RH enxerga a vaga.');
           Store.aprovarVaga(v.id, App.usuario, rh); UI.toast('Vaga aprovada. Já pode ser divulgada.', 'sucesso'); App.recarregar();
         } }] });
+      ligarSeletorRhs(mAp.corpo.querySelector('[data-rhs]'), selAp);
     }
     function recusar(v) {
       UI.modal({ titulo: `Recusar: ${v.titulo}`, largura: '480px',
@@ -310,6 +326,7 @@ Paginas.vagas = {
       // responsável pelo recrutamento: tem que ser um usuário (é pelo login que o RH enxerga só as vagas dele)
       const equipe = Store.equipeRh();
       const recIni = v ? (v.recrutadorLogin || '') : '';
+      const selRh = v ? (v.responsaveis || []).slice() : [];
       // distritos do pedido: [{ distritoId, locais, moveis }]. Vaga antiga (por cidade) começa com o distrito daquela cidade.
       let linhasDist = v && v.porDistrito.length ? v.porDistrito.map(x => ({ distritoId: x.distrito.id, locais: x.locais, moveis: x.moveis })) : [];
       if (v && !linhasDist.length) { const reg = Store.distritoDaCidade(v.cidadeId); if (reg) linhasDist = [{ distritoId: reg.distrito.id, locais: v.tipo === 'MOVEL' ? 0 : v.quantidade, moveis: v.tipo === 'MOVEL' ? v.quantidade : 0 }]; }
@@ -322,8 +339,8 @@ Paginas.vagas = {
           <label>Quem está pedindo<input id="v-solicitante" value="${val(v ? v.solicitante : App.usuario.nome)}"></label>
           <div><span class="vg-rot">Prioridade</span><div class="vg-prio" id="v-prioridade">${Object.entries(Store.PRIORIDADES).map(([k, r]) => `<label class="vg-prio-${k}"><input type="radio" name="v-prio" value="${k}" ${(v ? v.prioridade : 'normal') === k ? 'checked' : ''}><span>${r}</span></label>`).join('')}</div></div>
           <label>Precisa estar trabalhando até<input id="v-necessidade" type="date" value="${val(v && v.dataNecessidade)}"><span class="muted small" id="v-necessidade-dica"></span></label>
-          <label style="grid-column:1/-1">Responsável pelo recrutamento (RH)<select id="v-recrutador"><option value="">Ainda não definido</option>${equipe.map(u => `<option value="${UI.esc(u.login)}" ${u.login === recIni ? 'selected' : ''}>${UI.esc(u.nome)} · ${UI.esc(Store.PERFIS[u.perfil])}</option>`).join('')}</select>
-            <span class="muted small">${equipe.length ? 'Quem tem perfil RH (analista) só enxerga as vagas em que é o responsável e os candidatos direcionados para ele.' : 'Nenhum usuário com acesso aos candidatos ainda. Cadastre o RH em Sistema → Usuários e acesso.'}</span></label>
+          <div style="grid-column:1/-1"><span class="vg-rot">RHs responsáveis pelo recrutamento <span class="muted" style="font-weight:400">(pode marcar mais de um; o primeiro é o principal)</span></span>${equipe.length ? seletorRhs(selRh) : ''}
+            <span class="muted small">${equipe.length ? 'Todos os marcados veem esta vaga e todos os candidatos dela, e cada cartão mostra a foto de quem mexeu por último.' : 'Nenhum usuário com acesso aos candidatos ainda. Cadastre o RH em Sistema → Usuários e acesso.'}</span></div>
         </div>
         <div class="pre-form-titulo">Onde e quantas pessoas</div>
         <div class="vg-dist-add"><select id="v-dist-novo"></select></div>
@@ -359,15 +376,16 @@ Paginas.vagas = {
             descricao: g('#v-descricao').value, requisitos: g('#v-requisitos').value, salario: g('#v-salario').value, jornada: g('#v-jornada').value,
             beneficios: g('#v-beneficios').value, contato: g('#v-contato').value, prazo: v ? v.prazo : null, status: g('#v-status') ? g('#v-status').value : undefined,
             solicitante: g('#v-solicitante').value, prioridade: (md.corpo.querySelector('input[name="v-prio"]:checked') || {}).value || 'normal', dataNecessidade: g('#v-necessidade').value,
-            recrutadorLogin: g('#v-recrutador').value, jaAprovada }, App.usuario);
+            recrutadores: selRh.slice(), jaAprovada }, App.usuario);
           if (!v) { aba = jaAprovada ? 'abertas' : 'aguardando'; localStorage.setItem('maparh:vagas-status', aba); }
-          const rhNovo = g('#v-recrutador').value;
+          const rhNovo = selRh[0] || '';
           if (v && v.recrutadorLogin && rhNovo && rhNovo !== v.recrutadorLogin && typeof Nuvem !== 'undefined' && Nuvem.ativa && Store.pode(App.usuario, 'candidatos')) setTimeout(() => passarCandidatos(v, v.recrutadorLogin, rhNovo), 0);
           UI.toast(v ? 'Vaga salva.' : jaAprovada ? 'Vaga criada e aprovada. Agora clique em Divulgar.' : podeAprovar ? 'Pedido criado. Aprove na lista para liberar a vaga.' : 'Pedido enviado. Aguardando aprovação de um administrador.', 'sucesso', 5000);
           App.recarregar();
         } }]
       });
       const g = s => m.corpo.querySelector(s);
+      if (g('[data-rhs]')) ligarSeletorRhs(g('[data-rhs]'), selRh);
       const ufAtual = () => Store.ufsProjeto(Store.projeto(g('#v-projeto').value));
       // distritos que cabem no projeto escolhido (pelo estado) e ainda não estão no pedido
       const disponiveis = () => Store.distritos().filter(d => (!d.uf || ufAtual().includes(d.uf)) && !linhasDist.some(x => x.distritoId === d.id)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }));
