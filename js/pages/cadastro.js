@@ -41,8 +41,8 @@ Paginas.cadastro = {
     const ondeTrabalha = p => { const d = p.distrito_id && Store.distrito(p.distrito_id); const c = nomeCidade(p.cidade_atuacao_id); return [d ? d.nome : '', c].filter(Boolean).join(' · '); };
     const dia = d => d ? RH.fmtDataBR(String(d).slice(0, 10)) : '';
 
-    async function carregar() {
-      pessoas = null; erro = ''; desenhar();
+    async function carregar(suave) {
+      if (!suave) { pessoas = null; erro = ''; desenhar(); }
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { erro = 'As contratações vêm do banco central. Entre com seu usuário para ver.'; return desenhar(); }
       try { pessoas = (await Nuvem.rh.listar(projetoId)).filter(p => p.situacao === 'admitido'); }
       catch (e) { erro = e.message || 'Não foi possível carregar.'; }
@@ -114,5 +114,6 @@ Paginas.cadastro = {
     }
 
     carregar();
+    App.aoAtualizar(() => { if (document.body.contains(q('#ct-corpo'))) carregar(true); });
   }
 };

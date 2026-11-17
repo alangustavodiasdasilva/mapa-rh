@@ -220,3 +220,6 @@ button.vg-et:hover { border-color: var(--primaria); }
 
 .vg-kpi-on { outline: 2px solid var(--primaria); outline-offset: 1px; }
 .vg-foco { margin: 14px 20px 0; }
+
+/* aba com pedido esperando aprovação do administrador */
+.vg-aba-alerta .aba-num { background: #f59e0b; color: #fff; }

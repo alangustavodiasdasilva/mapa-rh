@@ -51,7 +51,11 @@ Paginas.dashboard = {
       const v = document.getElementById('dash-cand'), s = document.getElementById('dash-cand-sub'), alvo = document.getElementById('dash-rec'); if (!v) return;
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { v.textContent = '—'; s.textContent = 'precisa do banco central'; alvo.innerHTML = ''; return; }
       let l;
-      try { l = await Nuvem.rh.andamento(App.filtros.projetoId); } catch (e) {
+      const pid = App.filtros.projetoId || '', cache = Paginas.dashboard._cache;
+      if (cache && cache.pid === pid) {
+        l = cache.l;   // o que já tinha: aparece na hora; a conferência abaixo só redesenha se mudou
+        Nuvem.rh.andamento(App.filtros.projetoId).then(n => { const j = JSON.stringify(n); if (j === cache.j) return; Paginas.dashboard._cache = { pid, l: n, j }; if (App.paginaAtual === 'dashboard') App.rotear(true); }).catch(() => {});
+      } else try { l = await Nuvem.rh.andamento(App.filtros.projetoId); Paginas.dashboard._cache = { pid, l, j: JSON.stringify(l) }; } catch (e) {
         v.textContent = '—'; s.textContent = 'não foi possível carregar';
         alvo.innerHTML = '<div class="card vazio mb">Não foi possível carregar o recrutamento. <button class="btn btn-pequeno" id="dr-tentar">Tentar de novo</button></div>';
         document.getElementById('dr-tentar').addEventListener('click', () => App.recarregar()); return;
@@ -207,7 +211,7 @@ Paginas.dashboard = {
         </a>
       </div>
       <div id="dash-pend">${textoPendencias({ ...rec, contagemPronta: false })}</div>
-      <div id="dash-rec"><div class="card dr-esqueleto mb"></div></div>
+      <div id="dash-rec">${Paginas.dashboard._cache && Paginas.dashboard._cache.pid === (App.filtros.projetoId || '') ? '' : '<div class="card dr-esqueleto mb"></div>'}</div>
       <div class="secao-titulo">Perfil de quem já foi contratado <span class="muted small">${UI.esc(App.descricaoFiltro())}</span></div>
       <div class="grade kpis mb">
         <div class="card kpi"><div class="rotulo">Contratações</div><div class="valor">${UI.fmtNum(r.total)}</div><div class="sub">${UI.fmtNum(r.projetos)} projeto(s)</div></div>

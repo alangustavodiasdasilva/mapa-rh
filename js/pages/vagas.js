@@ -102,14 +102,14 @@ Paginas.vagas = {
       const pedidas = base.filter(v => v.aprovada && v.status !== 'cancelada' && v.status !== 'recusada').reduce((a, v) => a + v.quantidade, 0);
       const admitidas = base.filter(v => v.aprovada && v.status !== 'cancelada').reduce((a, v) => a + Math.min(v.admitidos || 0, v.quantidade), 0);
       q('#vg-resumo').innerHTML = !todas.length ? '' :
-        cartao(UI.fmtNum(ind.abertas), ind.abertas === 1 ? 'vaga em andamento' : 'vagas em andamento', `${UI.fmtNum(Math.max(0, pedidas - admitidas))} pessoas ainda a contratar`, '', 'abertas') +
-        cartao(UI.fmtNum(ind.aguardandoAprovacao), 'aguardando aprovação', ind.aguardandoAprovacao && podeAprovar ? 'esperam a sua decisão' : '', ind.aguardandoAprovacao ? 'vg-kpi-alerta' : '', ind.aguardandoAprovacao ? 'aguardando' : '') +
+        // em andamento e aguardando aprovação já são as abas logo abaixo: aqui só o que não aparece nelas
+        cartao(UI.fmtNum(Math.max(0, pedidas - admitidas)), Math.max(0, pedidas - admitidas) === 1 ? 'pessoa a contratar' : 'pessoas a contratar', `nas vagas aprovadas`, '') +
         cartao(UI.fmtNum(ind.atrasadas), ind.atrasadas === 1 ? 'atrasada' : 'atrasadas', 'passou da data e falta gente', ind.atrasadas ? 'vg-kpi-ruim' : '', ind.atrasadas ? 'abertas' : '', 'atrasadas') +
         cartao(UI.fmtNum(ind.semDivulgacao), 'sem divulgação', ind.semDivulgacao ? 'clique em Divulgar na vaga' : 'todas divulgadas', ind.semDivulgacao ? 'vg-kpi-alerta' : '', ind.semDivulgacao ? 'abertas' : '', 'semdiv') +
         cartao(ind.taxaPreenchimento == null ? '—' : UI.fmtPct(ind.taxaPreenchimento, 0), 'do pedido preenchido', `${UI.fmtNum(admitidas)} de ${UI.fmtNum(pedidas)} pessoas`, '') +
         (ind.tempoMedioContratacao == null ? '' : cartao(ind.tempoMedioContratacao.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' d', 'da aprovação à admissão', 'em média', ''));
 
-      q('#vg-abas').innerHTML = ABAS.map(([id, rot]) => `<button class="aba ${aba === id ? 'ativa' : ''}" data-aba="${id}">${rot} <span class="aba-num">${UI.fmtNum(base.filter(naAba[id]).length)}</span></button>`).join('');
+      q('#vg-abas').innerHTML = ABAS.map(([id, rot]) => `<button class="aba ${aba === id ? 'ativa' : ''} ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'vg-aba-alerta' : ''}" data-aba="${id}" ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'title="Pedidos esperando a sua decisão"' : ''}>${rot} <span class="aba-num">${UI.fmtNum(base.filter(naAba[id]).length)}</span></button>`).join('');
 
       let lista = base.filter(naAba[aba]);
       if (foco === 'atrasadas') lista = lista.filter(v => v.atrasada);
@@ -487,8 +487,10 @@ Paginas.vagas = {
       w.document.close();
     }
 
-    desenhar();
-    if (typeof Nuvem !== 'undefined' && Nuvem.ativa) Nuvem.rh.contagemVagas().then(m => { Store.definirContagemVagas(m); if (ativo) desenhar(); }).catch(() => {});
+    const contar = () => { if (typeof Nuvem !== 'undefined' && Nuvem.ativa) Nuvem.rh.contagemVagas().then(m => { Store.definirContagemVagas(m); if (ativo) desenhar(); }).catch(() => {}); };
+    desenhar(); contar();
+    // mudou algo (aqui ou em outro computador): redesenha a lista e recontam os candidatos, sem apagar a tela
+    App.aoAtualizar(() => { if (!ativo) return; if (!document.querySelector('.modal-overlay')) desenhar(); contar(); });
     return () => { ativo = false; };
   }
 };

@@ -1581,6 +1581,16 @@ Paginas.candidatos = {
     if (q('#cd-importar')) q('#cd-importar').addEventListener('click', importar);
     if (q('#cd-mensagens')) q('#cd-mensagens').addEventListener('click', editarMensagens);
     carregar();
-    return () => { ativo = false; };
+    // mudou algo (aqui ou em outro computador): busca as pessoas de novo e redesenha no lugar; com janela aberta, só guarda e redesenha depois
+    let pendenteRedesenho = false;
+    App.aoAtualizar(async () => {
+      if (!ativo) return;
+      try { const novas = await Nuvem.rh.listar(projetoId); if (!ativo) return; linhas = novas; contarVagas(); } catch (e) { return; }
+      if (document.querySelector('.modal-overlay')) { pendenteRedesenho = true; return; }
+      desenhar();
+    });
+    const aoFecharJanela = new MutationObserver(() => { if (pendenteRedesenho && ativo && !document.querySelector('.modal-overlay')) { pendenteRedesenho = false; desenhar(); } });
+    aoFecharJanela.observe(document.body, { childList: true });
+    return () => { ativo = false; aoFecharJanela.disconnect(); };
   }
 };

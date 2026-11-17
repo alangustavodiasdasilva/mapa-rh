@@ -46,6 +46,12 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [x] (v137) Contratações virou a lista das pessoas admitidas (nome, cargo, origem → onde trabalha, admitido em, chegada, RH; "Abrir" leva à pessoa em Candidatos; exportar planilha). Saiu o lançamento manual só com números.
 - [x] 55 contratações antigas só com números (sem pessoa) foram retiradas do banco em 17/11 (marcadas como removidas; cópia em maparh_priv.backup_registros_20261117).
 
+## Atualização na hora (v138, migração tempo-real.sql)
+- [x] O banco avisa na hora (Supabase Realtime) quando muda vaga/cadastro ou candidato; busca de reserva a cada 15 s.
+- [x] Telas atualizam só os dados (sem "Carregando…", sem voltar ao topo): Candidatos, Vagas, Contratações; Início mostra o último resultado e confere em segundo plano.
+- [x] Vagas: saíram os cartões que repetiam as abas (em andamento / aguardando aprovação); aba "Aguardando aprovação" fica laranja para o admin quando há pedido.
+- [ ] Vaga de TESTE no banco (teste-vaga-1, "TESTE - AUXILIAR DE CLASSIFICAÇÃO") para o Alan aprovar/recusar; apagar depois do teste.
+
 ## Lote 5 — design — FEITO em v135: Lista compacta, Planilha ▾, filtros das Vagas, Início (bloco principal), Relatórios sem rolagem, Mapa (zoom livre), barra lateral, celular (Quadro uma etapa por vez, Por RH com rótulos). Ficaram (menores):
 - [ ] Lista de Candidatos em 1366px (colunas espremidas) — medir pelo cartão, não pela janela.
 - [ ] Barra de filtros de Candidatos: "Planilha ▾" (importar/exportar), busca no mesmo padrão da Vagas.

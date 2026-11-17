@@ -68,26 +68,33 @@ const App = {
   // Banco central: retoma a sessão guardada (ou pede login) e passa a receber o que os outros alteram
   async iniciarComNuvem() {
     Nuvem.aoReceber(() => this.aoReceberDaNuvem());
+    if (Nuvem.aoMudarRh) Nuvem.aoMudarRh(() => this.aoReceberDaNuvem(true));
     try { this.usuario = await Nuvem.iniciar(); }
     catch (e) { console.warn(e); this.usuario = null; this._erroLogin = e.message || String(e); }
     if (!this.usuario) return this.renderLogin();
     this.entrarNoApp();
   },
   // Chegaram dados de outro computador: atualiza a tela sem atrapalhar quem está digitando ou olhando o mapa
-  aoReceberDaNuvem() {
+  // soCandidatos: o aviso veio da tabela de candidatos (as telas que não usam candidatos não precisam mudar)
+  aoReceberDaNuvem(soCandidatos = false) {
     if (!this.usuario) return;
     const atual = Store.usuarioAtual();
     if (!atual) return this.sair();
     this.usuario = atual;
+    if (soCandidatos && !['candidatos', 'cadastro', 'dashboard', 'vagas'].includes(this.paginaAtual)) return;
     clearTimeout(this._timerNuvem);
     const tentar = () => {
+      // tela com função própria de atualizar: troca só os dados, mesmo com janela aberta (a janela não é mexida)
+      if (this.atualizarAtual) { try { this.atualizarAtual(); } catch (e) { console.warn(e); } this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); return; }
       const ocupado = document.querySelector('.modal-overlay') || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '');
-      if (ocupado) { this._timerNuvem = setTimeout(tentar, 4000); return; }
-      if (this.paginaAtual === 'mapa') { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); UI.toast('Outro usuário alterou dados. Troque de tela ou recarregue o mapa para ver.', 'info', 5000); return; }
+      if (ocupado) { this._timerNuvem = setTimeout(tentar, 2000); return; }
+      if (this.paginaAtual === 'mapa') { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); return; }
       this.recarregar();
     };
     tentar();
   },
+  // a tela aberta registra como se atualiza sem ser apagada (some ao trocar de tela)
+  aoAtualizar(fn) { this.atualizarAtual = fn; },
   // ---------- busca de agências em segundo plano (continua mesmo trocando de tela) ----------
   loteSine: null,
   buscarSineLote(cidades) {
@@ -443,6 +450,8 @@ const App = {
       return;
     }
     if (this.destruirAtual) { try { this.destruirAtual(); } catch (e) { console.warn(e); } this.destruirAtual = null; }
+    const mesmaTela = forcar && this.paginaAtual === nome, rolagem = mesmaTela ? window.scrollY : 0;
+    this.atualizarAtual = null;
     this.paginaAtual = nome;
     document.querySelectorAll('#sidebar nav a').forEach(a => a.classList.toggle('ativo', a.dataset.pagina === nome));
     const pag = Paginas[nome];
@@ -471,9 +480,15 @@ const App = {
       console.error(e);
       el.innerHTML = `<div class="card erro">Erro ao abrir a página: ${UI.esc(e.message)}</div>`;
     }
+    if (rolagem) window.scrollTo(0, rolagem);   // redesenho da mesma tela: continua onde estava
   },
   ir(pagina) { if (location.hash === '#/' + pagina) this.rotear(true); else location.hash = '#/' + pagina; },
-  recarregar() { this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); this.atualizarFiltroUF(); this.rotear(true); },
+  // depois de salvar algo: a tela mostra na hora, sem apagar e sem voltar para o topo
+  recarregar() {
+    this.atualizarFiltroProjetos(); this.atualizarFiltroDistrito(); this.atualizarFiltroUF();
+    if (this.atualizarAtual) { try { this.atualizarAtual(); return; } catch (e) { console.warn(e); } }
+    this.rotear(true);
+  },
 
   // ---------- atalhos de dados ----------
   regs(extra = {}) { return Store.registrosFiltrados({ ...this.filtros, usuario: this.usuario, ...extra }); },

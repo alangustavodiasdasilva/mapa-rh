@@ -11,7 +11,7 @@ const Nuvem = (() => {
   const COLECOES = ['projetos', 'registros', 'vagas', 'candidatos', 'distritos', 'mapasPdr', 'cidades', 'cargos', 'auditoria'];
   const META = ['config', 'sineExtra', 'sineBusca', 'sineBuscaUF'];
   const SEEDS = ['seedPdrCarregado', 'seedDistritosAplicados', 'seedDistritosCarregado', 'versao'];
-  const INTERVALO_MS = 30000;
+  const INTERVALO_MS = 15000;   // reserva: o normal é o aviso na hora do banco (Realtime)
 
   let sb = null, eu = null, perfil = null, pronta = false;
   let espelho = new Map();   // chave -> marca (hash do conteúdo) do que está na nuvem; guardado no navegador para funcionar sem internet
@@ -549,6 +549,21 @@ const Nuvem = (() => {
     return Store.usuarioAtual();
   }
   let ouvindo = false, tiqueAtual = () => {};
+  // Aviso na hora: o banco avisa quando algo muda (vagas, cadastros, candidatos); cada um só recebe o que pode ler.
+  let canal = null, timerAviso = null, aoMudarCandidatos = () => {};
+  function ouvirNaHora() {
+    if (canal || !sb) return;
+    const puxarLogo = () => { clearTimeout(timerAviso); timerAviso = setTimeout(() => puxar(), 250); };
+    let timerRh = null;
+    const candidatosLogo = () => { clearTimeout(timerRh); timerRh = setTimeout(() => aoMudarCandidatos(), 400); };
+    try {
+      canal = sb.channel('maparh-na-hora')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_itens' }, puxarLogo)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'maparh_preadmissoes' }, candidatosLogo)
+        .subscribe();
+    } catch (e) { console.warn('Nuvem: sem aviso na hora', e); canal = null; }
+  }
+  function pararDeOuvir() { if (canal && sb) { try { sb.removeChannel(canal); } catch (e) { /* ok */ } } canal = null; }
   function iniciarRelogio(precisaCargaInicial) {
     clearInterval(timerPoll);
     let pendenteInicial = precisaCargaInicial, voltas = 0;
@@ -565,6 +580,7 @@ const Nuvem = (() => {
     };
     tiqueAtual = tique;
     timerPoll = setInterval(tique, INTERVALO_MS);
+    if (!precisaCargaInicial) ouvirNaHora();
     if (ouvindo) return;
     ouvindo = true;
     window.addEventListener('online', () => { if (eu) { tiqueAtual(); agendarEnvio(300); } });
@@ -590,6 +606,7 @@ const Nuvem = (() => {
   }
   async function sair() {
     try { await enviarAgora(); } catch (e) { /* segue saindo */ }
+    pararDeOuvir();
     if (fila.size) {
       try { UI.baixarArquivo(`alteracoes-nao-enviadas-${RH.hoje()}.json`, Store.exportar(), 'application/json'); } catch (e) { /* sem como baixar */ }
       UI.toast(`${fila.size} alteração(ões) não chegaram ao banco (sem internet?). Um backup foi baixado.`, 'aviso', 10000);
@@ -602,9 +619,10 @@ const Nuvem = (() => {
     try { await sb.auth.signOut(); } catch (e) { /* sem internet */ }
   }
   function aoReceber(fn) { aoMudarRemoto = fn; }
+  function aoMudarRh(fn) { aoMudarCandidatos = fn; }
 
   if (ativa) Store.definirGanchoSalvar(mudou);
 
   return { ativa, iniciar, entrar, sair, temAdmin, criarPrimeiroAdmin, salvarUsuario, excluirUsuario, alterarSenha, incluirProjeto, limparAuditoria,
-    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
+    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
 })();
