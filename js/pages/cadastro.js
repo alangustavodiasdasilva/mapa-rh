@@ -1,6 +1,6 @@
 Paginas.cadastro = {
   titulo: 'Cadastro de contratações',
-  filtrosUsados: ['projeto', 'regiao', 'tipo', 'uf'],
+  filtrosUsados: ['regiao', 'tipo', 'uf'],
   render(el) {
     const projetos = App.projetosVisiveis();
     if (!projetos.length) {
@@ -21,26 +21,29 @@ Paginas.cadastro = {
 
     el.innerHTML = `
       <div class="card sem-padding">
-        <div class="linha entre" style="padding:14px 16px;border-bottom:1px solid var(--borda)">
-          <div class="linha">
-            <label style="margin:0">Projeto <select id="cad-projeto" style="min-width:220px"></select></label>
-            <span class="obra-info" id="obra-info"></span>
-          </div>
+        <div class="cad-barra">
+          <label class="cad-proj">Projeto<select id="cad-projeto"></select></label>
+          <span class="cad-ufs" id="obra-info"></span>
+          <span class="espaco"></span>
           <div class="linha nao-imprimir">
-            <input class="busca" id="cad-busca" placeholder="Buscar cidade, UF ou tipo…">
-            <button class="btn btn-primario" id="btn-importar">Colar / importar planilha</button>
+            <button class="btn btn-primario" id="btn-importar" title="Cole as linhas copiadas do Excel ou escolha um arquivo">Importar planilha</button>
             <button class="btn" id="btn-exportar">Exportar CSV</button>
-            <button class="btn" id="btn-modelo" title="Baixa uma planilha modelo para preencher">Modelo</button>
+            <button class="btn" id="btn-modelo" title="Baixa uma planilha modelo para preencher">Baixar modelo</button>
           </div>
+        </div>
+        <div class="cad-novo nao-imprimir" id="cad-novo"></div>
+        <div class="cad-lista-cab">
+          <b id="cad-titulo-lista">Contratações</b>
+          <input class="busca nao-imprimir" id="cad-busca" placeholder="Procurar por cidade, estado ou tipo…">
         </div>
         <div class="tabela-wrap">
           <table class="tabela" id="cad-tabela">
             <thead><tr>
               <th style="width:30px"><input type="checkbox" id="sel-todos" title="Selecionar todos da página"></th>
-              <th>MÓVEL/LOCAL</th><th>CIDADE DE ORIGEM</th><th>ESTADO</th>
-              <th>CIDADE DE ATUAÇÃO</th>
-              <th>BASE DE CONTRATAÇÃO</th>
-              <th class="direita">Distância</th><th>Cadastrado</th><th class="acoes-col"></th>
+              <th>Tipo</th><th>De onde vem</th><th>UF</th>
+              <th>Onde trabalha</th>
+              <th>Base de contratação</th>
+              <th class="direita">Distância</th><th>Cadastrado em</th><th class="acoes-col"></th>
             </tr></thead>
             <tbody id="cad-corpo"></tbody>
           </table>
@@ -55,7 +58,7 @@ Paginas.cadastro = {
       App.filtros.projetoId = projetoId; localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros));
       App.atualizarFiltroProjetos(); App.atualizarFiltroDistrito(); App.atualizarFiltroUF();
       selecionados.clear(); pagina = 0; editandoId = null; ufPadrao = projeto().uf;
-      atualizarInfo(); renderLinhas();
+      atualizarInfo(); renderEntrada(); renderLinhas();
     });
     el.querySelector('#cad-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; pagina = 0; renderLinhas(); }, 150));
     el.querySelector('#btn-exportar').addEventListener('click', exportar);
@@ -74,7 +77,9 @@ Paginas.cadastro = {
     function atualizarInfo() {
       const p = projeto();
       const ufsP = Store.ufsProjeto(p);
-      el.querySelector('#obra-info').innerHTML = `${icone('mapa', 16)} ${ufsP.length > 1 ? 'Estados' : 'Estado'} de atuação: ${ufsP.map(x => `${x} — ${UI.esc(Store.UFS[x] || '')}`).join(' · ')}${p.ano ? ' · ' + p.ano : ''}`;
+      const nomes = ufsP.map(x => UI.esc(Store.UFS[x] || x));
+      const lista = nomes.length > 1 ? nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1] : nomes[0] || '';
+      el.querySelector('#obra-info').innerHTML = `As pessoas trabalham em <b>${lista}</b>${p.ano ? ' · ' + p.ano : ''}`;
       if (!ufPadrao) ufPadrao = p.uf;
     }
     function salvarPref() { localStorage.setItem('maparh:cadastro-pref', JSON.stringify({ tipo: tipoPadrao, uf: ufPadrao })); }
@@ -127,17 +132,28 @@ Paginas.cadastro = {
       return `<input class="${prefixo}-${sufixo}" placeholder="${placeholder}" value="${valor ? UI.esc(valor) : ''}" data-cidade-id="${cidadeId || ''}" style="min-width:130px">`;
     }
 
-    function linhaEntradaHTML() {
-      return `<tr class="linha-entrada nao-imprimir">
-        <td class="muted">+</td>
-        <td><select id="novo-tipo"><option value="LOCAL" ${tipoPadrao === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${tipoPadrao === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
-        <td><input id="novo-cidade" placeholder="Cidade de origem…"></td>
-        <td><select id="novo-uf" style="min-width:70px">${UI.opcoesUF(ufPadrao)}</select></td>
-        <td>${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${Store.ufsProjeto(projeto()).join('/')}…`)}</td>
-        <td>${campoCidadeHTML('novo', 'base', '', '', `Base em ${Store.ufsProjeto(projeto()).join('/')}…`)}</td>
-        <td class="muted small" colspan="2">Enter adiciona</td>
-        <td class="acoes-col"><button class="btn btn-primario btn-pequeno" id="novo-add">Adicionar</button></td>
-      </tr>`;
+    // Formulário de inclusão: fica fora da tabela, com rótulos, e só é refeito ao trocar de projeto ou depois de adicionar
+    // (assim buscar na lista não apaga o que estava sendo digitado). A base só aparece para MÓVEL: no LOCAL é a própria cidade.
+    function entradaHTML() {
+      const ufs = Store.ufsProjeto(projeto()).join('/');
+      return `
+        <div class="cad-novo-titulo">Nova contratação</div>
+        <div class="cad-novo-grade">
+          <label class="c-tipo">Tipo<select id="novo-tipo"><option value="LOCAL" ${tipoPadrao === 'LOCAL' ? 'selected' : ''}>Local</option><option value="MOVEL" ${tipoPadrao === 'MOVEL' ? 'selected' : ''}>Móvel</option></select></label>
+          <label class="c-cidade">De onde a pessoa vem<input id="novo-cidade" placeholder="Cidade de origem"></label>
+          <label class="c-uf">UF<select id="novo-uf">${UI.opcoesUF(ufPadrao)}</select></label>
+          <span class="cad-seta" aria-hidden="true">&rarr;</span>
+          <label class="c-cidade">Onde vai trabalhar${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${ufs}`)}</label>
+          <label class="c-cidade" id="novo-base-wrap" ${tipoPadrao === 'MOVEL' ? '' : 'hidden'}>Base de contratação${campoCidadeHTML('novo', 'base', '', '', 'Vazio = a cidade de trabalho')}</label>
+          <button class="btn btn-primario" id="novo-add">Adicionar</button>
+        </div>
+        <div class="cad-novo-dica">Enter também adiciona. A cidade de trabalho continua preenchida para lançar várias pessoas seguidas. Muitas de uma vez? Use <b>Importar planilha</b>.</div>`;
+    }
+    function renderEntrada() {
+      const box = el.querySelector('#cad-novo');
+      box.hidden = !App.podeEditar();
+      box.innerHTML = App.podeEditar() ? entradaHTML() : '';
+      ligarEntrada();
     }
     function ligarEntrada() {
       const tipoEl = el.querySelector('#novo-tipo'), cidEl = el.querySelector('#novo-cidade'), ufEl = el.querySelector('#novo-uf');
@@ -146,6 +162,11 @@ Paginas.cadastro = {
       const atEl = el.querySelector('.novo-atuacao'), baseEl = el.querySelector('.novo-base');
       ligarAutocomplete(atEl, () => Store.ufsProjeto(projeto()), () => {});
       ligarAutocomplete(baseEl, () => Store.ufsProjeto(projeto()), c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
+      tipoEl.addEventListener('change', () => {
+        const movel = tipoEl.value === 'MOVEL';
+        el.querySelector('#novo-base-wrap').hidden = !movel;
+        if (!movel) { baseEl.value = ''; baseEl.dataset.cidadeId = ''; }
+      });
       async function adicionar() {
         const btn = el.querySelector('#novo-add');
         btn.disabled = true;
@@ -153,12 +174,12 @@ Paginas.cadastro = {
           tipoPadrao = tipoEl.value; ufPadrao = ufEl.value; salvarPref();
           const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
           const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
-          const base = baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
+          const base = tipoEl.value === 'MOVEL' && baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
           const r = Store.adicionarRegistro({ projetoId, tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
           UI.toast(`${UI.rotuloTipo(r.tipo)} — ${c.nome}/${c.uf} → ${r.cidadeAtuacao ? r.cidadeAtuacao.nome : '?'} adicionado.`, 'sucesso', 1800);
           const manterAt = { valor: atEl.value, id: atEl.dataset.cidadeId };
           const manterBase = { valor: baseEl.value, id: baseEl.dataset.cidadeId };
-          pagina = 0; renderLinhas();
+          pagina = 0; renderLinhas(); renderEntrada();
           const nAt = el.querySelector('.novo-atuacao'), nBase = el.querySelector('.novo-base');
           if (nAt) { nAt.value = manterAt.valor; if (manterAt.id) nAt.dataset.cidadeId = manterAt.id; }
           if (nBase) { nBase.value = manterBase.valor; if (manterBase.id) nBase.dataset.cidadeId = manterBase.id; }
@@ -192,7 +213,7 @@ Paginas.cadastro = {
         <td>${rotuloBase(r)}</td>
         <td class="direita">${UI.fmtKm(r.distancia)}</td>
         <td class="muted small" title="por ${UI.esc(r.criadoPor || '—')}">${UI.fmtDataHora(r.criadoEm)}</td>
-        <td class="acoes-col nao-imprimir">${App.podeEditar() ? `<button class="btn-icone ed-editar" title="Editar">&#9998;</button><button class="btn-icone perigo ed-excluir" title="Excluir">&#128465;</button>` : ''}</td>
+        <td class="acoes-col nao-imprimir">${App.podeEditar() ? `<button class="btn-link ed-editar">Editar</button> <button class="btn-link perigo ed-excluir">Excluir</button>` : ''}</td>
       </tr>`;
     }
 
@@ -201,9 +222,10 @@ Paginas.cadastro = {
       const inicio = pagina * TAM_PAGINA;
       const fatia = lista.slice(inicio, inicio + TAM_PAGINA);
       const corpo = el.querySelector('#cad-corpo');
-      corpo.innerHTML = (App.podeEditar() ? linhaEntradaHTML() : '') +
-        (fatia.length ? fatia.map(linhaHTML).join('') : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhum registro corresponde à busca.' : 'Nenhuma contratação cadastrada neste projeto. Use a linha acima para adicionar ou clique em "Colar / importar planilha".'}</td></tr>`);
-      ligarEntrada();
+      corpo.innerHTML = fatia.length ? fatia.map(linhaHTML).join('')
+        : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhuma contratação corresponde à busca.' : 'Ainda não há contratações neste projeto.' + (App.podeEditar() ? ' Lance a primeira no formulário acima ou importe a planilha.' : '')}</td></tr>`;
+      el.querySelector('#cad-titulo-lista').innerHTML = `Contratações do projeto <span class="aba-num">${UI.fmtNum(lista.length)}</span>`;
+      el.querySelector('#cad-tabela thead').hidden = !lista.length && !busca;
       corpo.querySelectorAll('input.sel').forEach(c => c.addEventListener('change', () => { if (c.checked) selecionados.add(c.value); else selecionados.delete(c.value); renderRodape(); }));
       corpo.querySelectorAll('.ed-editar').forEach(b => b.addEventListener('click', () => { editandoId = b.closest('tr').dataset.id; renderLinhas(); }));
       corpo.querySelectorAll('.ed-excluir').forEach(b => b.addEventListener('click', async () => {
@@ -242,12 +264,14 @@ Paginas.cadastro = {
       const movelEstado = lista.filter(r => r.atuacaoMovel).length;
       const fora = lista.filter(r => r.foraDoEstado).length;
       const paginas = Math.max(1, Math.ceil(lista.length / TAM_PAGINA));
-      el.querySelector('#cad-rodape').innerHTML = `
-        <span>Total: <b>${UI.fmtNum(lista.length)}</b></span>
-        <span>LOCAL: <b>${UI.fmtNum(local)}</b> (${UI.fmtPct(lista.length ? local / lista.length * 100 : 0)})</span>
-        <span>MÓVEL: <b>${UI.fmtNum(lista.length - local)}</b></span>
-        <span>Atuação em todo o estado: <b>${UI.fmtNum(movelEstado)}</b></span>
-        <span>Origem fora do estado: <b>${UI.fmtNum(fora)}</b></span>
+      const rod = el.querySelector('#cad-rodape');
+      rod.hidden = !lista.length && !App.filtros.tipo;
+      rod.innerHTML = `
+        <span><b>${UI.fmtNum(lista.length)}</b> no total</span>
+        <span><b>${UI.fmtNum(local)}</b> local (${UI.fmtPct(lista.length ? local / lista.length * 100 : 0, 0)})</span>
+        <span><b>${UI.fmtNum(lista.length - local)}</b> móvel</span>
+        ${movelEstado ? `<span><b>${UI.fmtNum(movelEstado)}</b> com atuação em todo o estado</span>` : ''}
+        ${fora ? `<span><b>${UI.fmtNum(fora)}</b> vindas de fora dos estados do projeto</span>` : ''}
         ${App.filtros.tipo ? `<span class="badge badge-amarelo">filtro: somente ${UI.rotuloTipo(App.filtros.tipo)}</span>` : ''}
         <span class="espaco"></span>
         ${selecionados.size && App.podeEditar() ? `<button class="btn btn-perigo btn-pequeno" id="excluir-sel">Excluir ${selecionados.size} selecionado(s)</button>` : ''}
@@ -476,6 +500,7 @@ Paginas.cadastro = {
     }
 
     atualizarInfo();
+    renderEntrada();
     renderLinhas();
   }
 };
