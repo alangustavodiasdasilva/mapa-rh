@@ -34,6 +34,7 @@ Paginas.candidatos = {
     let vagaId = guardado('maparh:cand-vaga'), distritoId = '', analista = '', semana = 'todas', seg = '', pend = '', busca = '';
     // vindo da tela de Vagas pela contagem de uma etapa: abre a Lista já nessa etapa
     try { const s = sessionStorage.getItem('maparh:cand-seg'); if (s) { seg = s; vista = 'lista'; sessionStorage.removeItem('maparh:cand-seg'); } } catch (e) { /* ok */ }
+    let buscaIni = ''; try { buscaIni = sessionStorage.getItem('maparh:cand-busca') || ''; sessionStorage.removeItem('maparh:cand-busca'); } catch (e) { /* ok */ }
     let linhas = [], ativo = true;
     const verMais = {};                 // quantos cartões cada coluna do quadro mostra (30 por vez)
     const marcados = new Set();         // seleção da Lista para ações em lote
@@ -120,7 +121,8 @@ Paginas.candidatos = {
         botoes: [{ texto: 'Cancelar' }, { texto: 'Abrir no WhatsApp', classe: 'btn-primario', acao: md => {
           const txt = md.corpo.querySelector('#ms-txt').value.trim(); if (!txt) throw new Error('Escreva a mensagem.');
           window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
-          anotarAuto(p, `Mensagem pelo WhatsApp: ${(MODELOS.find(x => x[0] === atual) || [, 'mensagem'])[1].toLowerCase()}.`);
+          anotarAuto(p, `Mensagem pelo WhatsApp: ${(MODELOS.find(x => x[0] === atual) || [, 'mensagem'])[1].toLowerCase()}.`).then(desenhar);
+          if (atual === 'triagem' && p.etapa === 'triagem') UI.toast(`${p.pessoa.nome}: primeiro contato anotado. Quando ela responder, é só clicar em "Entrevistar →".`, 'sucesso', 5000);
         } }] });
       const g = s => m.corpo.querySelector(s);
       const pintar = () => { g('#ms-txt').value = montarMensagem(mods[atual], p); g('#ms-tipos').querySelectorAll('[data-mod]').forEach(b => b.classList.toggle('ativa', b.dataset.mod === atual)); };
@@ -164,6 +166,20 @@ Paginas.candidatos = {
     // ---------- sinais rápidos do cartão ----------
     const NAO_ATENDEU = 'Liguei e não atendeu.';
     const tentativas = p => (p.anotacoes || []).filter(a => a.texto === NAO_ATENDEU).length;
+    const CONTATO = 'Mensagem pelo WhatsApp: primeiro contato';
+    const contatoEm = p => { const a = (p.anotacoes || []).filter(x => String(x.texto || '').startsWith(CONTATO)).pop(); return a ? (a.em || true) : null; };
+    const diaCurto = em => em && em !== true ? RH.fmtDia(String(em).slice(0, 10)) : '';
+    // botão principal de quem está na triagem ou na entrevista (o mesmo no Quadro e na Lista)
+    function acaoPrincipal(p, curto) {   // curto: rótulos menores para caber no cartão do Quadro
+      if (p.etapa === 'triagem') return linkWhats(p.pessoa) && !contatoEm(p)
+        ? '<button class="btn btn-pequeno btn-wa" data-acao="contato" title="Abre o WhatsApp com a mensagem de primeiro contato">1º contato</button>'
+        : `<button class="btn btn-pequeno btn-primario" data-acao="avancar">${curto ? 'Entrevistar' : 'Entrevistar →'}</button>`;
+      const res = (p.entrevista && p.entrevista.resultado) || 'aguardando', temData = p.entrevista && p.entrevista.data;
+      return res === 'aprovado' ? `<button class="btn btn-pequeno btn-primario" data-acao="avancar" title="Aprovado: vai para a Documentação">${curto ? 'Docs →' : 'Documentação →'}</button>`
+        : res === 'faltou' ? '<button class="btn btn-pequeno btn-primario" data-acao="remarcar">Remarcar</button>'
+        : !temData ? '<button class="btn btn-pequeno btn-primario" data-acao="agendar">Agendar</button>'
+        : `<button class="btn btn-pequeno" data-acao="resultado" title="Marcar o resultado da entrevista">${curto ? 'Resultado' : 'Marcar resultado'}</button>`;
+    }
     const diasNaEtapa = p => { const ts = p.etapa_em || p.criado_em; return ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)) : 0; };
     const linkWhats = (pe, msg) => { const t = RH.soDigitos(pe.telefone); return t.length >= 10 ? `https://wa.me/55${t}${msg ? '?text=' + encodeURIComponent(msg) : ''}` : ''; };
     // duas entrevistas do mesmo RH no mesmo dia e horário
@@ -240,6 +256,7 @@ Paginas.candidatos = {
         <div id="cd-corpo"><div class="vazio">Carregando…</div></div>
       </div>`;
     const q = s => el.querySelector(s);
+    if (buscaIni) { busca = buscaIni; q('#cd-busca').value = buscaIni; }
     q('#cd-planilha').addEventListener('click', e => { e.stopPropagation(); const mn = q('#cd-planilha-menu'); if (mn.hidden) UI.abrirMenu(q('#cd-planilha'), mn); else mn.hidden = true; });
     q('#cd-planilha-menu').addEventListener('click', () => { q('#cd-planilha-menu').hidden = true; });
     // a Lista usa o layout compacto quando o espaço útil (descontada a barra lateral) é pequeno, e não pela largura da janela
@@ -418,8 +435,8 @@ Paginas.candidatos = {
       const ent = p.entrevista || {};
       // triagem/entrevista: há quanto tempo está na etapa e tentativas de contato sem resposta
       if (aberto && (p.etapa === 'triagem' || (p.etapa === 'entrevista' && !ent.data))) {
-        const d = diasNaEtapa(p), tt = tentativas(p);
-        if (d >= 3 || tt) doc = `<div class="cd-chips">${d >= 3 ? `<span class="cd-chip cd-chip-${d >= 7 ? 'ruim' : 'meio'}" title="Há quanto tempo está nesta etapa">há ${d} dias</span>` : ''}${tt ? `<span class="cd-chip cd-chip-meio">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</span>` : ''}</div>`;
+        const d = diasNaEtapa(p), tt = tentativas(p), ct = p.etapa === 'triagem' && contatoEm(p);
+        if (d >= 3 || tt || ct) doc = `<div class="cd-chips">${ct ? `<span class="cd-chip cd-chip-ok">1º contato${diaCurto(ct) ? ' ' + diaCurto(ct) : ''}</span>` : ''}${d >= 3 ? `<span class="cd-chip cd-chip-${d >= 7 ? 'ruim' : 'meio'}" title="Há quanto tempo está nesta etapa">há ${d} dias</span>` : ''}${tt ? `<span class="cd-chip cd-chip-meio">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</span>` : ''}</div>`;
       }
       if (aberto && p.etapa === 'entrevista' && ent.data) {
         const cls = { aprovado: 'ok', reprovado: 'ruim', faltou: 'ruim', aguardando: 'meio' }[ent.resultado || 'aguardando'];
@@ -441,13 +458,12 @@ Paginas.candidatos = {
       const menu = [];
       if (podeEditar) {
         if (aberto) {
-          if (p.etapa === 'triagem') principal = '<button class="btn btn-pequeno btn-primario" data-acao="avancar">Entrevistar →</button>';
-          else if (p.etapa === 'entrevista') {
+          if (p.etapa === 'triagem') {
+            principal = acaoPrincipal(p, true);
+            if (!/data-acao="avancar"/.test(principal)) menu.push('<button type="button" data-acao="avancar">Já falei com a pessoa: Entrevistar →</button>');
+          } else if (p.etapa === 'entrevista') {
             const res = (p.entrevista && p.entrevista.resultado) || 'aguardando', temData = p.entrevista && p.entrevista.data;
-            principal = res === 'aprovado' ? '<button class="btn btn-pequeno btn-primario" data-acao="avancar">Documentação →</button>'
-              : res === 'faltou' ? '<button class="btn btn-pequeno btn-primario" data-acao="remarcar">Remarcar</button>'
-              : !temData ? '<button class="btn btn-pequeno btn-primario" data-acao="agendar">Agendar</button>'
-              : '<button class="btn btn-pequeno" data-acao="resultado">Marcar resultado</button>';
+            principal = acaoPrincipal(p, true);
             if (res !== 'aprovado') menu.push('<button type="button" data-acao="avancar-direto">Aprovado → Documentação</button>');
             if (temData && res === 'aguardando') menu.push('<button type="button" data-acao="agendar">Remarcar entrevista</button>');
           }
@@ -535,7 +551,7 @@ Paginas.candidatos = {
       // colunas por etapa
       const rhCol = veTudo ? ['RH'] : [];
       const COLS = {
-        fila: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Vaga / cargo', seg === 'triagem' ? 'Na triagem há' : 'Na entrevista há'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,1fr) 110px${veTudo ? ' minmax(90px,.7fr)' : ''} 230px` },
+        fila: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Vaga / cargo', seg === 'triagem' ? 'Contato' : 'Entrevista'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1fr) 150px${veTudo ? ' minmax(90px,.7fr)' : ''} 230px` },
         documentos: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Documentos', 'ASO', 'Treinamento', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) 150px 130px 130px 92px${veTudo ? ' minmax(80px,.6fr)' : ''} 150px` },
         admitido: { cab: ['Pessoa', 'De onde vem → onde trabalha', 'Vaga / cargo', 'Admitido em', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,1fr) 110px 92px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` },
         fora: { cab: ['Pessoa', 'Parou na etapa', 'O que aconteceu', 'Quando'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) 140px minmax(0,1.6fr) 100px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` }
@@ -558,7 +574,7 @@ Paginas.candidatos = {
         if (semCnh(pe)) al.push(['sem CNH', 1]);
         return `<div class="pre-cel pre-quem">
             <div class="pre-nome">${marca(p)}${UI.esc(pe.nome)}</div>
-            <div class="pre-sub">${pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="muted">sem CPF</span>'}${pe.telefone ? ` · ${tel.length >= 10 ? `<a href="https://wa.me/55${tel}" target="_blank" rel="noopener">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)}` : ''}</div>
+            <div class="pre-sub">${pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="muted">sem CPF</span>'}${pe.telefone ? ` · ${tel.length >= 10 && podeEditar ? `<button type="button" class="btn-link cd-tel" data-acao="mensagem" title="Mandar mensagem pelo WhatsApp">${UI.esc(pe.telefone)}</button>` : tel.length >= 10 ? `<a href="https://wa.me/55${tel}" target="_blank" rel="noopener">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)}` : ''}</div>
             ${al.length ? `<div class="cd-alertas">${al.map(([x, g]) => `<span class="${g === 1 ? 'cd-al-ruim' : g === 2 ? 'cd-al-info' : ''}">${UI.esc(x)}</span>`).join('')}</div>` : ''}
           </div>`;
       }
@@ -570,8 +586,12 @@ Paginas.candidatos = {
         let cel = '', acoes = '', faixa = '';
         if (modo === 'fila') {
           const d = diasDesde(desdeEtapa(p));
-          cel = rota(p) + `<div class="pre-cel" data-rot="Vaga">${vagaTxt(p)}</div><div class="pre-cel pre-uma ${d >= 7 ? 'cd-velho' : ''}" data-rot="Há">${dias(d)}</div>`;
-          if (podeEditar) acoes = `<button class="btn btn-pequeno btn-primario" data-acao="avancar">${p.etapa === 'triagem' ? 'Entrevistar →' : 'Documentação →'}</button><button class="btn-link perigo" data-acao="fora">Não segue</button>${editar}`;
+          const e = p.entrevista || {}, ct = contatoEm(p), tt = tentativas(p);
+          const sit = p.etapa === 'triagem'
+            ? (ct ? `<span class="cd-chip cd-chip-ok">1º contato${diaCurto(ct) ? ' ' + diaCurto(ct) : ''}</span>` : '<span class="cd-chip cd-chip-meio">sem contato</span>') + (tt ? `<div class="pre-sub">${tt === 1 ? '1 ligação sem resposta' : tt + ' ligações sem resposta'}</div>` : '')
+            : e.data ? `<b>${RH.fmtDia(e.data)}${e.hora ? ' ' + e.hora : ''}</b><div class="pre-sub">${RESULTADOS[e.resultado || 'aguardando']}${e.faltas ? ` · ${e.faltas}ª falta` : ''}</div>` : '<span class="cd-chip cd-chip-meio">sem data</span>';
+          cel = rota(p) + `<div class="pre-cel" data-rot="Vaga">${vagaTxt(p)}</div><div class="pre-cel" data-rot="${p.etapa === 'triagem' ? 'Contato' : 'Entrevista'}">${sit}<div class="pre-sub ${d >= 7 ? 'cd-velho' : ''}">na etapa ${d === 0 ? 'desde hoje' : 'há ' + dias(d)}</div></div>`;
+          if (podeEditar) acoes = `${acaoPrincipal(p)}<button class="btn-link perigo" data-acao="fora">Não segue</button>${editar}`;
         } else if (modo === 'documentos') {
           const din = dinamicaDe(p), classeDin = din.completa ? 'ok' : din.recusados.length ? 'ruim' : 'pend';
           const rotDocs = din.completa ? 'Completa' : `${din.total - din.pendentes.length} de ${din.total}`;
@@ -737,7 +757,7 @@ Paginas.candidatos = {
             if (!await gravar(p, campos, `Entrevista de ${p.pessoa.nome}: ${RH.fmtDia(data)}${ent.hora ? ' ' + ent.hora : ''}.`)) { if (janela) janela.close(); return false; }
             if (faltou) anotarAuto(p, `Faltou na entrevista de ${RH.fmtDia(e.data)}${e.hora ? ' ' + e.hora : ''}. Remarcada para ${RH.fmtDia(data)}${ent.hora ? ' ' + ent.hora : ''}.`);
             else if (e.data && (e.data !== data || (e.hora || '') !== (ent.hora || ''))) anotarAuto(p, `Entrevista remarcada de ${RH.fmtDia(e.data)}${e.hora ? ' ' + e.hora : ''} para ${RH.fmtDia(data)}${ent.hora ? ' ' + ent.hora : ''}.`);
-            if (janela) janela.location.href = wa;
+            if (janela) { janela.location.href = wa; anotarAuto(p, 'Mensagem pelo WhatsApp: entrevista marcada.'); }
           } }]) });
       const g = s => m.corpo.querySelector(s);
       let msgMexida = false;
@@ -919,7 +939,7 @@ Paginas.candidatos = {
     });
     q('#cd-corpo').addEventListener('click', e => {
       if (e.target.closest('[data-direcionar]')) { e.stopPropagation(); return direcionar(); }
-      const cm = e.target.closest('[data-col]'); if (cm) { colMob = cm.dataset.col; return desenhar(); }
+      const cm = e.target.closest('.cd-col-sel [data-col]'); if (cm) { colMob = cm.dataset.col; return desenhar(); }
       if (e.target.closest('[data-recarregar]')) { q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; return carregar(); }
       if (e.target.closest('[data-limpar]')) { vagaId = ''; distritoId = ''; analista = ''; busca = ''; pend = ''; q('#cd-busca').value = ''; guardar('maparh:cand-vaga', ''); return desenhar(); }
       if (e.target.closest('[data-ver-prontos]')) { e.stopPropagation(); seg = 'documentos'; pend = 'prontas'; return mudarVista('lista'); }
@@ -943,7 +963,7 @@ Paginas.candidatos = {
       if (b.closest('.cd-doc') && b.dataset.acao === 'docs') e.stopPropagation();
       const a = b.dataset.acao;
       if (a === 'editar') formulario(p); else if (a === 'docs') documentos(p); else if (a === 'avancar') avancar(p); else if (a === 'voltar') voltar(p);
-      else if (a === 'mensagem') mandarMensagem(p);
+      else if (a === 'mensagem') mandarMensagem(p); else if (a === 'contato') mandarMensagem(p, 'triagem');
       else if (a === 'agendar') agendar(p, false); else if (a === 'remarcar') agendar(p, true); else if (a === 'resultado') formulario(p, 'entrevista');
       else if (a === 'avancar-direto') enquadrar(p);
       else if (a === 'nao-atendeu') { anotarAuto(p, NAO_ATENDEU).then(() => { desenhar(); UI.toast(`${p.pessoa.nome}: ${tentativas(p)}ª tentativa sem resposta anotada.`, 'sucesso', 3000); }); }

@@ -459,3 +459,12 @@ button.cd-wa { border: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; c
   .cd-barra .cad-proj select { width: 100%; min-width: 0 !important; }
   .cd-barra .linha { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
 }
+
+/* 1º contato pelo WhatsApp (triagem) */
+.btn-wa { background: #16a34a; border-color: #16a34a; color: #fff; }
+.btn-wa:hover { background: #15803d; border-color: #15803d; color: #fff; }
+.cd-tel { padding: 0; font-size: inherit; }
+/* rodapé do cartão: o botão principal encolhe (reticências) e o ⋯ nunca sai do cartão */
+.cd-pe > * { flex-shrink: 0; }
+.cd-pe > .btn { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-left: 9px; padding-right: 9px; }
+.cd-pe .espaco { flex: 1 1 0; min-width: 0; }

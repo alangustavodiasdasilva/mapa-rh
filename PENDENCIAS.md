@@ -38,6 +38,14 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [x] Ícone do WhatsApp no cartão e botão na ficha abrem a mensagem pronta (modelo pela etapa); o envio fica no histórico.
 - [ ] (futuro) Envio automático pelo WhatsApp Business oficial (Meta): número da empresa, modelos aprovados, custo por conversa.
 
+## Correções de 17/11 (v136)
+- [x] Quadro: nenhum botão dos cartões funcionava desde a v134 (o seletor de coluna do celular pegava qualquer clique).
+- [x] Triagem: botão verde "1º contato" abre o WhatsApp com a mensagem de primeiro contato; depois de enviada, o cartão mostra "1º contato dd/mm" e libera "Entrevistar". Sem telefone ou "Já falei com a pessoa" (menu ⋯) segue direto.
+- [x] Lista: telefone abre a mensagem certa (antes abria o WhatsApp vazio); coluna Contato/Entrevista com a situação; Entrevista mostra Agendar / Resultado / Remarcar / Documentação conforme o caso (antes era "Documentação →" para todos).
+- [x] Mensagem da entrevista marcada entra no histórico.
+- [x] (v137) Contratações virou a lista das pessoas admitidas (nome, cargo, origem → onde trabalha, admitido em, chegada, RH; "Abrir" leva à pessoa em Candidatos; exportar planilha). Saiu o lançamento manual só com números.
+- [x] 55 contratações antigas só com números (sem pessoa) foram retiradas do banco em 17/11 (marcadas como removidas; cópia em maparh_priv.backup_registros_20261117).
+
 ## Lote 5 — design — FEITO em v135: Lista compacta, Planilha ▾, filtros das Vagas, Início (bloco principal), Relatórios sem rolagem, Mapa (zoom livre), barra lateral, celular (Quadro uma etapa por vez, Por RH com rótulos). Ficaram (menores):
 - [ ] Lista de Candidatos em 1366px (colunas espremidas) — medir pelo cartão, não pela janela.
 - [ ] Barra de filtros de Candidatos: "Planilha ▾" (importar/exportar), busca no mesmo padrão da Vagas.

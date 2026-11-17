@@ -1,513 +1,118 @@
+// Contratações: quem foi admitido pelo RH em Candidatos (pessoa, cargo, onde trabalha, chegada).
+// A contratação nasce da admissão; para mudar ou desfazer, é em Candidatos. Os números do Mapa e dos Relatórios vêm daqui.
 Paginas.cadastro = {
   titulo: 'Contratações',
   filtrosUsados: ['regiao', 'tipo', 'uf'],
   render(el) {
     const projetos = App.projetosVisiveis();
     if (!projetos.length) {
-      el.innerHTML = `<div class="card"><h2>Nenhum projeto disponível</h2><p>Crie um projeto (um estado, com ano opcional) antes de cadastrar as contratações.</p><button class="btn btn-primario" id="ir-projetos">Ir para Projetos</button></div>`;
+      el.innerHTML = `<div class="card"><h2>Nenhum projeto disponível</h2><p>Crie um projeto (um estado, com ano opcional) antes de contratar.</p><button class="btn btn-primario" id="ir-projetos">Ir para Projetos</button></div>`;
       el.querySelector('#ir-projetos').addEventListener('click', () => App.ir('projetos'));
       return;
     }
     let projetoId = App.filtros.projetoId && projetos.some(p => p.id === App.filtros.projetoId) ? App.filtros.projetoId : projetos[0].id;
-    let pref = {}; try { pref = JSON.parse(localStorage.getItem('maparh:cadastro-pref') || '{}') || {}; } catch (e) { pref = {}; }
-    let tipoPadrao = pref.tipo || 'LOCAL';
-    let ufPadrao = pref.uf || '';
-    let busca = '';
-    let pagina = 0;
-    const TAM_PAGINA = 100;
-    const selecionados = new Set();
-    // contratação que nasceu da admissão (Candidatos): só muda desfazendo a admissão
-    const daAdmissao = r => String(r.id).startsWith('adm-') || !!r.preadmissaoId;
-    let editandoId = null;
-    const MOVEL = Store.MOVEL;
+    let busca = '', pessoas = null, erro = '', limite = 100;
 
     el.innerHTML = `
       <div class="card sem-padding">
         <div class="cad-barra">
           <label class="cad-proj">Projeto<select id="cad-projeto"></select></label>
-          <span class="cad-ufs" id="obra-info"></span>
           <span class="espaco"></span>
-          <div class="linha nao-imprimir">
-            <button class="btn btn-primario" id="btn-importar" title="Cole as linhas copiadas do Excel ou escolha um arquivo">Importar planilha</button>
-            <button class="btn" id="btn-exportar">Exportar CSV</button>
-            <button class="btn" id="btn-modelo" title="Baixa uma planilha modelo para preencher">Baixar modelo</button>
-          </div>
+          <input class="busca nao-imprimir" id="cad-busca" placeholder="Procurar por nome, CPF, cargo ou cidade…">
+          <button class="btn nao-imprimir" id="btn-exportar">Exportar planilha</button>
         </div>
-        <div class="cad-novo nao-imprimir" id="cad-novo"></div>
-        <div class="cad-lista-cab">
-          <b id="cad-titulo-lista">Contratações</b>
-          <input class="busca nao-imprimir" id="cad-busca" placeholder="Procurar por cidade, estado ou tipo…">
-        </div>
-        <div class="tabela-wrap">
-          <table class="tabela" id="cad-tabela">
-            <thead><tr>
-              <th style="width:30px"><input type="checkbox" id="sel-todos" title="Selecionar todos da página"></th>
-              <th>Tipo</th><th>De onde vem</th><th>UF</th>
-              <th>Onde trabalha</th>
-              <th>Base de contratação</th>
-              <th class="direita">Distância</th><th>Cadastrado em</th><th class="acoes-col"></th>
-            </tr></thead>
-            <tbody id="cad-corpo"></tbody>
-          </table>
-        </div>
-        <div class="rodape-tabela" id="cad-rodape"></div>
+        <div class="ct-resumo" id="ct-resumo"></div>
+        <div id="ct-corpo"><div class="vazio">Carregando…</div></div>
       </div>`;
 
-    const selProjeto = el.querySelector('#cad-projeto');
-    selProjeto.innerHTML = projetos.map(p => `<option value="${p.id}" ${p.id === projetoId ? 'selected' : ''}>${UI.esc(Store.rotuloProjeto(p))}${p.ativo ? '' : ' (inativo)'}</option>`).join('');
-    selProjeto.addEventListener('change', () => {
-      projetoId = selProjeto.value;
-      App.filtros.projetoId = projetoId; localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros));
+    const q = s => el.querySelector(s);
+    q('#cad-projeto').innerHTML = projetos.map(p => `<option value="${p.id}" ${p.id === projetoId ? 'selected' : ''}>${UI.esc(Store.rotuloProjeto(p))}${p.ativo ? '' : ' (inativo)'}</option>`).join('');
+    q('#cad-projeto').addEventListener('change', e => {
+      projetoId = e.target.value;
+      App.filtros.projetoId = projetoId; try { localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros)); } catch (er) { /* ok */ }
       App.atualizarFiltroProjetos(); App.atualizarFiltroDistrito(); App.atualizarFiltroUF();
-      selecionados.clear(); pagina = 0; editandoId = null; ufPadrao = projeto().uf;
-      atualizarInfo(); renderEntrada(); renderLinhas();
+      carregar();
     });
-    el.querySelector('#cad-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; pagina = 0; renderLinhas(); }, 150));
-    el.querySelector('#btn-exportar').addEventListener('click', exportar);
-    el.querySelector('#btn-modelo').addEventListener('click', () => UI.baixarCSV('modelo-contratacoes.csv', [
-      ['MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'ESTADO', 'CIDADE DE ATUAÇÃO', 'BASE DE CONTRATAÇÃO'],
-      ['LOCAL', 'PELOTAS', 'RS', 'PELOTAS', 'PELOTAS'],
-      ['MOVEL', 'SANTA MARIA', 'RS', 'PELOTAS', 'PELOTAS'],
-      ['MOVEL', 'BAGE', 'RS', 'MOVEL', 'PORTO ALEGRE']]));
-    el.querySelector('#btn-importar').addEventListener('click', () => abrirImportacao());
-    el.querySelector('#sel-todos').addEventListener('change', e => {
-      el.querySelectorAll('#cad-corpo input.sel').forEach(c => { c.checked = e.target.checked; if (e.target.checked) selecionados.add(c.value); else selecionados.delete(c.value); });
-      renderRodape();
+    q('#cad-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; limite = 100; desenhar(); }, 150));
+    q('#btn-exportar').addEventListener('click', exportar);
+
+    const nomeCidade = id => { const c = id && Store.cidade(id); return c ? `${c.nome}/${c.uf}` : ''; };
+    const nomeRh = p => { const u = p.analista_login && Store.usuarioPorLogin(p.analista_login); return u ? u.nome : (p.analista || ''); };
+    const ondeTrabalha = p => { const d = p.distrito_id && Store.distrito(p.distrito_id); const c = nomeCidade(p.cidade_atuacao_id); return [d ? d.nome : '', c].filter(Boolean).join(' · '); };
+    const dia = d => d ? RH.fmtDataBR(String(d).slice(0, 10)) : '';
+
+    async function carregar() {
+      pessoas = null; erro = ''; desenhar();
+      if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { erro = 'As contratações vêm do banco central. Entre com seu usuário para ver.'; return desenhar(); }
+      try { pessoas = (await Nuvem.rh.listar(projetoId)).filter(p => p.situacao === 'admitido'); }
+      catch (e) { erro = e.message || 'Não foi possível carregar.'; }
+      desenhar();
+    }
+
+    function filtradas() {
+      const f = App.filtros, b = Store.normalizar(busca);
+      return (pessoas || []).filter(p => {
+        if (f.tipo && p.tipo !== f.tipo) return false;
+        if (f.distritoId && p.distrito_id !== f.distritoId) return false;
+        if (!b) return true;
+        const pe = p.pessoa || {};
+        return Store.normalizar([pe.nome, pe.cpf, RH.soDigitos(pe.cpf), p.cargo, nomeCidade(pe.cidade_origem_id), ondeTrabalha(p), nomeRh(p)].join(' ')).includes(b);
+      }).sort((a, b2) => String(b2.admitido_em || '').localeCompare(String(a.admitido_em || '')) || a.pessoa.nome.localeCompare(b2.pessoa.nome, 'pt-BR'));
+    }
+
+    function desenhar() {
+      const corpo = q('#ct-corpo'), resumo = q('#ct-resumo');
+      if (erro) { resumo.innerHTML = ''; corpo.innerHTML = `<div class="vazio">${UI.esc(erro)} <button class="btn btn-pequeno" id="ct-tentar">Tentar de novo</button></div>`; q('#ct-tentar').addEventListener('click', carregar); return; }
+      if (!pessoas) { resumo.innerHTML = ''; corpo.innerHTML = '<div class="vazio">Carregando…</div>'; return; }
+      const l = filtradas(), local = l.filter(p => p.tipo !== 'MOVEL').length;
+      const hoje = RH.hoje(), seg = RH.segundaDaSemana(hoje), fim = (() => { const d = new Date(seg + 'T12:00:00'); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })();
+      const chegam = l.filter(p => p.chegada_data && p.chegada_data >= seg && p.chegada_data <= fim).length;
+      resumo.innerHTML = pessoas.length ? `
+        <div><b>${UI.fmtNum(l.length)}</b>${l.length === 1 ? 'pessoa contratada' : 'pessoas contratadas'}</div>
+        <div><b>${UI.fmtNum(local)}</b>local</div>
+        <div><b>${UI.fmtNum(l.length - local)}</b>móvel</div>
+        <div><b>${UI.fmtNum(chegam)}</b>chega${chegam === 1 ? '' : 'm'} esta semana</div>` : '';
+      if (!pessoas.length) {
+        corpo.innerHTML = `<div class="vazio ct-vazio"><b>Ninguém contratado neste projeto ainda.</b><br>Quando o RH admite um candidato em <a href="#/candidatos">Candidatos</a>, a pessoa aparece aqui, no Mapa e nos Relatórios.</div>`;
+        return;
+      }
+      if (!l.length) { corpo.innerHTML = `<div class="vazio">Ninguém com essa busca${App.filtros.tipo || App.filtros.distritoId ? ' ou com os filtros do topo' : ''}.</div>`; return; }
+      const vis = l.slice(0, limite);
+      corpo.innerHTML = `<div class="ct-lista">
+        <div class="ct-linha ct-cab"><span>Pessoa</span><span>Cargo</span><span>De onde vem → onde trabalha</span><span>Admitido em</span><span>Chegada</span><span>RH</span><span></span></div>
+        ${vis.map(p => {
+          const pe = p.pessoa || {}, origem = nomeCidade(pe.cidade_origem_id), onde = ondeTrabalha(p);
+          return `<div class="ct-linha" data-id="${p.id}">
+            <span class="ct-pessoa"><b>${UI.esc(pe.nome)}</b><small>${pe.cpf ? RH.fmtCPF(pe.cpf) : 'sem CPF'}${pe.telefone ? ' · ' + UI.esc(pe.telefone) : ''}</small></span>
+            <span data-rot="Cargo">${UI.esc(p.cargo || '—')}</span>
+            <span data-rot="Onde">${UI.badgeTipo(p.tipo || 'LOCAL')} ${origem ? UI.esc(origem) : '<span class="muted">origem?</span>'} <span class="muted">→</span> ${onde ? UI.esc(onde) : '<span class="muted">—</span>'}${p.distancia_km != null && +p.distancia_km > 0 ? ` <span class="muted small">(${UI.fmtKm(+p.distancia_km)})</span>` : ''}</span>
+            <span data-rot="Admitido em">${dia(p.admitido_em) || '—'}</span>
+            <span data-rot="Chegada">${p.chegada_data ? dia(p.chegada_data) + (p.chegada_hora ? ` <span class="muted">${String(p.chegada_hora).slice(0, 5)}</span>` : '') : '<span class="muted">—</span>'}</span>
+            <span data-rot="RH">${UI.esc(nomeRh(p).split(' ')[0] || '—')}</span>
+            <span class="ct-acao nao-imprimir"><button class="btn-link" data-abrir="${p.id}" title="Abre em Candidatos (para mudar ou desfazer a admissão)">Abrir</button></span>
+          </div>`;
+        }).join('')}
+      </div>
+      ${l.length > limite ? `<div class="vazio"><button class="btn" id="ct-mais">Mostrar mais ${Math.min(100, l.length - limite)}</button></div>` : ''}`;
+      const mais = q('#ct-mais'); if (mais) mais.addEventListener('click', () => { limite += 100; desenhar(); });
+    }
+    q('#ct-corpo').addEventListener('click', e => {
+      const b = e.target.closest('[data-abrir]'); if (!b) return;
+      const p = (pessoas || []).find(x => x.id === b.dataset.abrir); if (!p) return;
+      try { sessionStorage.setItem('maparh:cand-seg', 'admitido'); sessionStorage.setItem('maparh:cand-busca', p.pessoa.nome); localStorage.setItem('maparh:cand-projeto', projetoId); } catch (er) { /* ok */ }
+      App.ir('candidatos');
     });
-
-    const projeto = () => Store.projeto(projetoId);
-    function atualizarInfo() {
-      const p = projeto();
-      const ufsP = Store.ufsProjeto(p);
-      const nomes = ufsP.map(x => UI.esc(Store.UFS[x] || x));
-      const lista = nomes.length > 1 ? nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1] : nomes[0] || '';
-      el.querySelector('#obra-info').innerHTML = `As pessoas trabalham em <b>${lista}</b>${p.ano ? ' · ' + p.ano : ''}`;
-      if (!ufPadrao) ufPadrao = p.uf;
-    }
-    function salvarPref() { localStorage.setItem('maparh:cadastro-pref', JSON.stringify({ tipo: tipoPadrao, uf: ufPadrao })); }
-    function registrosDoProjeto() {
-      const lista = App.regs({ projetoId })
-        .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-      const b = Store.normalizar(busca);
-      if (!b) return lista;
-      return lista.filter(r => Store.normalizar([
-        r.cidade.nome, r.cidade.uf, UI.rotuloTipo(r.tipo),
-        r.cidadeAtuacao ? r.cidadeAtuacao.nome : '',
-        r.cidadeBase ? r.cidadeBase.nome : ''
-      ].join(' ')).includes(b));
-    }
-    const rotuloAtuacao = r => r.cidadeAtuacao ? UI.esc(r.cidadeAtuacao.nome) : '<span class="muted">—</span>';
-    const rotuloBase = r => r.cidadeBase ? UI.esc(r.cidadeBase.nome) : '<span class="muted">—</span>';
-
-    // Resolve a cidade digitada: seleção do autocomplete, nome exato, grafia aproximada ou busca na internet.
-    async function resolverEntrada(input, uf, rotulo) {
-      const texto = input.value.trim();
-      if (input.dataset.cidadeId && Store.cidade(input.dataset.cidadeId)) return Store.cidade(input.dataset.cidadeId);
-      if (!texto) throw new Error(`Informe a ${rotulo}.`);
-      let c = Store.resolverCidade(texto, uf);
-      if (c) return c;
-      if (!uf) {
-        const cands = Store.candidatasCidade(texto);
-        if (cands.length > 1) throw new Error(`Existem ${cands.length} cidades chamadas "${texto}" (${cands.map(x => x.uf).join(', ')}). Informe o estado.`);
-        throw new Error(`Cidade "${texto}" não encontrada. Informe o estado para buscar na internet.`);
-      }
-      const cands = Store.candidatasCidade(texto).filter(x => Store.conjuntoUF(uf).has(x.uf));
-      if (cands.length > 1) throw new Error(`Existem ${cands.length} cidades chamadas "${texto}" nos estados do projeto (${cands.map(x => x.uf).join(', ')}). Escolha na lista de sugestões.`);
-      c = Store.cidadeAproximada(texto, uf);
-      if (c) { UI.toast(`"${texto}" entendido como ${c.nome}/${c.uf}.`, 'info', 2500); return c; }
-      const ufTxt = Array.isArray(uf) ? uf.join('/') : uf;
-      UI.toast(`Buscando coordenadas de ${texto}/${ufTxt}…`, 'info', 2000);
-      return Geo.geocodificarESalvar(texto, uf);
-    }
-    function ligarAutocomplete(cidEl, ufFn, aoSelecionar) {
-      UI.autocompleteCidade(cidEl, {
-        uf: ufFn, aoSelecionar,
-        aoGeocodificar: async (texto, uf) => {
-          if (!uf) { UI.toast('Selecione o estado antes de buscar na internet.', 'aviso'); return; }
-          try { const c = await Geo.geocodificarESalvar(texto, uf); cidEl.value = c.nome; cidEl.dataset.cidadeId = c.id; UI.toast(`Cidade ${c.nome}/${c.uf} adicionada.`, 'sucesso'); }
-          catch (e) { UI.toast(e.message, 'erro', 6000); }
-        }
-      });
-    }
-
-    function campoCidadeHTML(prefixo, sufixo, valor, cidadeId, placeholder) {
-      return `<input class="${prefixo}-${sufixo}" placeholder="${placeholder}" value="${valor ? UI.esc(valor) : ''}" data-cidade-id="${cidadeId || ''}" style="min-width:130px">`;
-    }
-
-    // Formulário de inclusão: fica fora da tabela, com rótulos, e só é refeito ao trocar de projeto ou depois de adicionar
-    // (assim buscar na lista não apaga o que estava sendo digitado). A base só aparece para MÓVEL: no LOCAL é a própria cidade.
-    function entradaHTML() {
-      const ufs = Store.ufsProjeto(projeto()).join('/');
-      return `
-        <div class="cad-novo-titulo">Nova contratação</div>
-        <div class="cad-novo-grade">
-          <label class="c-tipo">Tipo<select id="novo-tipo"><option value="LOCAL" ${tipoPadrao === 'LOCAL' ? 'selected' : ''}>Local</option><option value="MOVEL" ${tipoPadrao === 'MOVEL' ? 'selected' : ''}>Móvel</option></select></label>
-          <label class="c-cidade">De onde a pessoa vem<input id="novo-cidade" placeholder="Cidade de origem"></label>
-          <label class="c-uf">UF<select id="novo-uf">${UI.opcoesUF(ufPadrao)}</select></label>
-          <span class="cad-seta" aria-hidden="true">&rarr;</span>
-          <label class="c-cidade">Onde vai trabalhar${campoCidadeHTML('novo', 'atuacao', '', '', `Cidade em ${ufs}`)}</label>
-          <label class="c-cidade" id="novo-base-wrap" ${tipoPadrao === 'MOVEL' ? '' : 'hidden'}>Base de contratação${campoCidadeHTML('novo', 'base', '', '', 'Vazio = a cidade de trabalho')}</label>
-          <button class="btn btn-primario" id="novo-add">Adicionar</button>
-        </div>
-        <div class="cad-novo-dica">Enter também adiciona. A cidade de trabalho continua preenchida para lançar várias pessoas seguidas. Muitas de uma vez? Use <b>Importar planilha</b>.</div>`;
-    }
-    function renderEntrada() {
-      const box = el.querySelector('#cad-novo');
-      box.hidden = !App.podeEditar();
-      box.innerHTML = App.podeEditar() ? entradaHTML() : '';
-      ligarEntrada();
-    }
-    function ligarEntrada() {
-      const tipoEl = el.querySelector('#novo-tipo'), cidEl = el.querySelector('#novo-cidade'), ufEl = el.querySelector('#novo-uf');
-      if (!tipoEl) return;
-      ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
-      const atEl = el.querySelector('.novo-atuacao'), baseEl = el.querySelector('.novo-base');
-      ligarAutocomplete(atEl, () => Store.ufsProjeto(projeto()), () => {});
-      ligarAutocomplete(baseEl, () => Store.ufsProjeto(projeto()), c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
-      tipoEl.addEventListener('change', () => {
-        const movel = tipoEl.value === 'MOVEL';
-        el.querySelector('#novo-base-wrap').hidden = !movel;
-        if (!movel) { baseEl.value = ''; baseEl.dataset.cidadeId = ''; }
-      });
-      async function adicionar() {
-        const btn = el.querySelector('#novo-add');
-        btn.disabled = true;
-        try {
-          tipoPadrao = tipoEl.value; ufPadrao = ufEl.value; salvarPref();
-          const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-          const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
-          const base = tipoEl.value === 'MOVEL' && baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
-          const r = Store.adicionarRegistro({ projetoId, tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
-          UI.toast(`${UI.rotuloTipo(r.tipo)} — ${c.nome}/${c.uf} → ${r.cidadeAtuacao ? r.cidadeAtuacao.nome : '?'} adicionado.`, 'sucesso', 1800);
-          const manterAt = { valor: atEl.value, id: atEl.dataset.cidadeId };
-          const manterBase = { valor: baseEl.value, id: baseEl.dataset.cidadeId };
-          pagina = 0; renderLinhas(); renderEntrada();
-          const nAt = el.querySelector('.novo-atuacao'), nBase = el.querySelector('.novo-base');
-          if (nAt) { nAt.value = manterAt.valor; if (manterAt.id) nAt.dataset.cidadeId = manterAt.id; }
-          if (nBase) { nBase.value = manterBase.valor; if (manterBase.id) nBase.dataset.cidadeId = manterBase.id; }
-          const novoCid = el.querySelector('#novo-cidade'); if (novoCid) novoCid.focus();
-        } catch (e) { UI.toast(e.message, 'erro', 6000); btn.disabled = false; }
-      }
-      el.querySelector('#novo-add').addEventListener('click', adicionar);
-      [tipoEl, cidEl, ufEl, atEl, baseEl].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); adicionar(); } }));
-    }
-
-    function linhaHTML(r) {
-      if (r.id === editandoId) {
-        return `<tr data-id="${r.id}">
-          <td></td>
-          <td class="editando"><select class="ed-tipo"><option value="LOCAL" ${r.tipo === 'LOCAL' ? 'selected' : ''}>LOCAL</option><option value="MOVEL" ${r.tipo === 'MOVEL' ? 'selected' : ''}>MÓVEL</option></select></td>
-          <td class="editando"><input class="ed-cidade" value="${UI.esc(r.cidade.nome)}" data-cidade-id="${r.cidade.id}"></td>
-          <td class="editando"><select class="ed-uf" style="min-width:70px">${UI.opcoesUF(r.cidade.uf)}</select></td>
-          <td class="editando">${campoCidadeHTML('ed', 'atuacao', r.cidadeAtuacao?.nome, r.cidadeAtuacao?.id, `Cidade em ${Store.ufsProjeto(projeto())}…`)}</td>
-          <td class="editando">${campoCidadeHTML('ed', 'base', r.cidadeBase?.nome, r.cidadeBase?.id, `Base em ${Store.ufsProjeto(projeto())}…`)}</td>
-          <td class="direita">${UI.fmtKm(r.distancia)}</td>
-          <td class="muted small">${UI.fmtDataHora(r.criadoEm)}</td>
-          <td class="acoes-col"><button class="btn btn-primario btn-pequeno ed-salvar">Salvar</button> <button class="btn btn-pequeno ed-cancelar">Cancelar</button></td>
-        </tr>`;
-      }
-      return `<tr data-id="${r.id}">
-        <td>${daAdmissao(r) ? '' : `<input type="checkbox" class="sel" value="${r.id}" ${selecionados.has(r.id) ? 'checked' : ''}>`}</td>
-        <td>${UI.badgeTipo(r.tipo)}${daAdmissao(r) ? ' <span class="badge badge-azul" title="Veio da admissão em Candidatos. Para mudar, desfaça a admissão lá.">admissão</span>' : ''}</td>
-        <td>${UI.esc(r.cidade.nome)}${r.foraDoEstado ? ' <span class="badge badge-amarelo" title="Origem em outro estado">fora do estado</span>' : ''}</td>
-        <td>${r.cidade.uf}</td>
-        <td>${rotuloAtuacao(r)}</td>
-        <td>${rotuloBase(r)}</td>
-        <td class="direita">${UI.fmtKm(r.distancia)}</td>
-        <td class="muted small" title="por ${UI.esc(r.criadoPor || '—')}">${UI.fmtDataHora(r.criadoEm)}</td>
-        <td class="acoes-col nao-imprimir">${daAdmissao(r) ? '<span class="muted small" title="Para mudar, desfaça a admissão em Candidatos">pela admissão</span>' : App.podeEditar() ? `<button class="btn-link ed-editar">Editar</button> <button class="btn-link perigo ed-excluir">Excluir</button>` : ''}</td>
-      </tr>`;
-    }
-
-    function renderLinhas() {
-      const lista = registrosDoProjeto();
-      const inicio = pagina * TAM_PAGINA;
-      const fatia = lista.slice(inicio, inicio + TAM_PAGINA);
-      // seleção só vale para o que está na lista atual (busca/filtro mudou: o que sumiu sai da seleção)
-      const naLista = new Set(lista.map(r => r.id));
-      for (const id of [...selecionados]) if (!naLista.has(id)) selecionados.delete(id);
-      const st = el.querySelector('#sel-todos'); if (st) st.checked = false;
-      const corpo = el.querySelector('#cad-corpo');
-      corpo.innerHTML = fatia.length ? fatia.map(linhaHTML).join('')
-        : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhuma contratação corresponde à busca.' : (App.filtros.tipo || App.filtros.distritoId || App.filtros.microId || App.filtros.uf) ? 'Nenhuma contratação com os filtros do topo. Limpe os filtros para ver todas.' : 'Ainda não há contratações neste projeto. Elas nascem da admissão em Candidatos' + (App.podeEditar() ? '; também dá para lançar no formulário acima ou importar a planilha.' : '.')}</td></tr>`;
-      el.querySelector('#cad-titulo-lista').innerHTML = `Contratações do projeto <span class="aba-num">${UI.fmtNum(lista.length)}</span>`;
-      el.querySelector('#cad-tabela thead').hidden = !lista.length && !busca;
-      corpo.querySelectorAll('input.sel').forEach(c => c.addEventListener('change', () => { if (c.checked) selecionados.add(c.value); else selecionados.delete(c.value); renderRodape(); }));
-      corpo.querySelectorAll('.ed-editar').forEach(b => b.addEventListener('click', () => { editandoId = b.closest('tr').dataset.id; renderLinhas(); }));
-      corpo.querySelectorAll('.ed-excluir').forEach(b => b.addEventListener('click', async () => {
-        const id = b.closest('tr').dataset.id; const r = lista.find(x => x.id === id);
-        if (await UI.confirmar(`Excluir o registro ${UI.rotuloTipo(r.tipo)} — ${r.cidade.nome}/${r.cidade.uf}?`, { textoOk: 'Excluir', perigo: true })) {
-          Store.excluirRegistro(id, App.usuario); selecionados.delete(id); renderLinhas();
-        }
-      }));
-      const trEd = corpo.querySelector(`tr[data-id="${editandoId}"]`);
-      if (trEd) {
-        const cidEl = trEd.querySelector('.ed-cidade'), ufEl = trEd.querySelector('.ed-uf'), tipoEl = trEd.querySelector('.ed-tipo');
-        const atEl = trEd.querySelector('.ed-atuacao'), baseEl = trEd.querySelector('.ed-base');
-        ligarAutocomplete(cidEl, () => ufEl.value, c => { ufEl.value = c.uf; });
-        ligarAutocomplete(atEl, () => Store.ufsProjeto(projeto()), () => {});
-        ligarAutocomplete(baseEl, () => Store.ufsProjeto(projeto()), c => { if (!atEl.value) { atEl.value = c.nome; atEl.dataset.cidadeId = c.id; } });
-        const salvar = async () => {
-          try {
-            const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
-            const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
-            // LOCAL não tem base própria: a base é a cidade onde trabalha (a base antiga não fica para trás)
-            const base = tipoEl.value === 'LOCAL' || !baseEl.value.trim() ? at : await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação');
-            Store.atualizarRegistro(editandoId, { tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
-            editandoId = null; renderLinhas(); UI.toast('Registro atualizado.', 'sucesso', 1500);
-          } catch (e) { UI.toast(e.message, 'erro', 6000); }
-        };
-        trEd.querySelector('.ed-salvar').addEventListener('click', salvar);
-        trEd.querySelector('.ed-cancelar').addEventListener('click', () => { editandoId = null; renderLinhas(); });
-        [cidEl, ufEl, tipoEl, atEl, baseEl].forEach(x => x.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); salvar(); } if (e.key === 'Escape') { editandoId = null; renderLinhas(); } }));
-        setTimeout(() => cidEl.focus(), 30);
-      }
-      renderRodape(lista);
-    }
-
-    function renderRodape(lista) {
-      lista = lista || registrosDoProjeto();
-      const local = lista.filter(r => r.tipo === 'LOCAL').length;
-      const movelEstado = lista.filter(r => r.atuacaoMovel).length;
-      const fora = lista.filter(r => r.foraDoEstado).length;
-      const paginas = Math.max(1, Math.ceil(lista.length / TAM_PAGINA));
-      const rod = el.querySelector('#cad-rodape');
-      rod.hidden = !lista.length && !App.filtros.tipo;
-      rod.innerHTML = `
-        <span><b>${UI.fmtNum(lista.length)}</b> no total</span>
-        <span><b>${UI.fmtNum(local)}</b> local (${UI.fmtPct(lista.length ? local / lista.length * 100 : 0, 0)})</span>
-        <span><b>${UI.fmtNum(lista.length - local)}</b> móvel</span>
-        ${movelEstado ? `<span><b>${UI.fmtNum(movelEstado)}</b> com atuação em todo o estado</span>` : ''}
-        ${fora ? `<span><b>${UI.fmtNum(fora)}</b> vindas de fora dos estados do projeto</span>` : ''}
-        ${App.filtros.tipo ? `<span class="badge badge-amarelo">filtro: somente ${UI.rotuloTipo(App.filtros.tipo)}</span>` : ''}
-        <span class="espaco"></span>
-        ${selecionados.size && App.podeEditar() ? `<button class="btn btn-perigo btn-pequeno" id="excluir-sel">Excluir ${selecionados.size} selecionado(s)</button>` : ''}
-        ${paginas > 1 ? `<span class="nao-imprimir"><button class="btn btn-pequeno" id="pg-ant" ${pagina === 0 ? 'disabled' : ''}>&lsaquo;</button> página ${pagina + 1} de ${paginas} <button class="btn btn-pequeno" id="pg-prox" ${pagina >= paginas - 1 ? 'disabled' : ''}>&rsaquo;</button></span>` : ''}`;
-      const ex = el.querySelector('#excluir-sel');
-      if (ex) ex.addEventListener('click', async () => {
-        if (await UI.confirmar(`Excluir ${selecionados.size} registro(s) selecionado(s)?`, { textoOk: 'Excluir', perigo: true })) {
-          Store.excluirRegistros([...selecionados], App.usuario); selecionados.clear(); renderLinhas();
-        }
-      });
-      const ant = el.querySelector('#pg-ant'), prox = el.querySelector('#pg-prox');
-      if (ant) ant.addEventListener('click', () => { pagina--; renderLinhas(); });
-      if (prox) prox.addEventListener('click', () => { pagina++; renderLinhas(); });
-    }
 
     function exportar() {
-      const lista = registrosDoProjeto();
-      const p = projeto();
-      const linhas = [['MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'ESTADO', 'CIDADE DE ATUAÇÃO', 'BASE DE CONTRATAÇÃO', 'PROJETO', 'UF PROJETO', 'ANO', 'DISTANCIA KM', 'ORIGEM FORA DO ESTADO', 'CADASTRADO EM']];
-      lista.forEach(r => linhas.push([
-        UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf,
-        r.cidadeAtuacao ? r.cidadeAtuacao.nome : '',
-        r.cidadeBase ? r.cidadeBase.nome : '',
-        p.nome, Store.ufsProjeto(p).join('/'), p.ano || '',
-        r.distancia == null ? '' : Math.round(r.distancia),
-        r.foraDoEstado ? 'SIM' : 'NAO', UI.fmtDataHora(r.criadoEm)
-      ]));
+      const l = filtradas(); if (!l.length) { UI.toast('Nada para exportar.', 'aviso'); return; }
+      const p = Store.projeto(projetoId);
+      const linhas = [['NOME', 'CPF', 'TELEFONE', 'CARGO', 'MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'DISTRITO', 'CIDADE DE ATUAÇÃO', 'DISTANCIA KM', 'ADMITIDO EM', 'CHEGADA', 'HORA CHEGADA', 'RH']];
+      l.forEach(x => { const pe = x.pessoa || {}, d = x.distrito_id && Store.distrito(x.distrito_id);
+        linhas.push([pe.nome, pe.cpf ? RH.fmtCPF(pe.cpf) : '', pe.telefone || '', x.cargo || '', x.tipo === 'MOVEL' ? 'MÓVEL' : 'LOCAL', nomeCidade(pe.cidade_origem_id), d ? d.nome : '', nomeCidade(x.cidade_atuacao_id),
+          x.distancia_km == null ? '' : Math.round(+x.distancia_km), dia(x.admitido_em), dia(x.chegada_data), x.chegada_hora ? String(x.chegada_hora).slice(0, 5) : '', nomeRh(x)]); });
       UI.baixarCSV(`contratacoes-${Store.normalizar(p.nome).replace(/ /g, '-')}.csv`, linhas);
     }
 
-    // ---------- importação (colar do Excel ou arquivo) ----------
-    // Colunas: MOVEL/LOCAL | CIDADE DE ORIGEM | ESTADO | CIDADE DE ATUAÇÃO | BASE DE CONTRATAÇÃO
-    // Quando CIDADE DE ATUAÇÃO = "MOVEL" → usa BASE DE CONTRATAÇÃO como atuação
-    function interpretar(matriz, tipoDef, ufDef) {
-      const n = s => Store.normalizar(s);
-      let iTipo = -1, iCid = -1, iUF = -1, iAt = -1, iBase = -1, inicio = 0;
-      for (let i = 0; i < Math.min(matriz.length, 5); i++) {
-        const cab = matriz[i].map(n);
-        const t = cab.findIndex(h => /movel|local|tipo/.test(h) && !/atuacao|destino/.test(h));
-        const c = cab.findIndex(h => /origem|residencia|municipio/.test(h) || (/cidade/.test(h) && !/atuacao|destino|trabalho|obra|base|contrat/.test(h)));
-        const u = cab.findIndex(h => /^(estado|uf)$/.test(h) || /estado|\buf\b/.test(h));
-        const a = cab.findIndex(h => /atuacao|destino|trabalho|obra|lotacao/.test(h) && !/base|contrat/.test(h));
-        const b = cab.findIndex(h => /base|contrat/.test(h));
-        if (c >= 0 || a >= 0 || (t >= 0 && u >= 0)) { iTipo = t; iCid = c; iUF = u; iAt = a; iBase = b; inicio = i + 1; break; }
-      }
-      const linhas = [];
-      for (let i = inicio; i < matriz.length; i++) {
-        const cel = matriz[i];
-        if (!cel.some(v => v)) continue;
-        let tipo = '', cidade = '', uf = '', atuacao = '', base = '';
-        if (iCid >= 0 || iTipo >= 0 || iAt >= 0) {
-          tipo = iTipo >= 0 ? cel[iTipo] || '' : '';
-          cidade = iCid >= 0 ? cel[iCid] || '' : '';
-          uf = iUF >= 0 ? cel[iUF] || '' : '';
-          atuacao = iAt >= 0 ? cel[iAt] || '' : '';
-          base = iBase >= 0 ? cel[iBase] || '' : '';
-        } else {
-          const resto = [];
-          for (const v of cel) {
-            const nv = n(v);
-            if (!nv) continue;
-            if (!tipo && /^(local|movel|l|m)$/.test(nv)) tipo = v;
-            else if (!uf && /^[a-z]{2}$/.test(nv) && Store.UFS[nv.toUpperCase()]) uf = v;
-            else resto.push(v);
-          }
-          cidade = resto[0] || ''; atuacao = resto[1] || ''; base = resto[2] || '';
-        }
-        const nt = n(tipo);
-        tipo = nt.startsWith('mov') || nt === 'm' ? 'MOVEL' : nt.startsWith('loc') || nt === 'l' ? 'LOCAL' : (tipoDef || '');
-        uf = String(uf || '').trim().toUpperCase();
-        if (uf && !Store.UFS[uf]) { const achou = Object.keys(Store.UFS).find(k => n(Store.UFS[k]) === n(uf)); uf = achou || uf; }
-        if (!uf) uf = ufDef || '';
-        atuacao = String(atuacao || '').trim();
-        base = String(base || '').trim();
-        if (!cidade.trim() && !tipo && !atuacao) continue;
-        linhas.push({ linha: i + 1, tipo, cidade: String(cidade).trim(), uf, atuacao, base, status: 'pendente', cidadeObj: null, atuacaoObj: null, baseObj: null, erro: '', ajustes: [] });
-      }
-      return linhas;
-    }
-
-    function abrirImportacao() {
-      const p = projeto();
-      const m = UI.modal({
-        titulo: 'Colar / importar planilha',
-        largura: '900px',
-        corpo: `
-          <p class="muted small">Copie as linhas da planilha (colunas <b>MOVEL/LOCAL</b>, <b>CIDADE DE ORIGEM</b>, <b>ESTADO</b>, <b>CIDADE DE ATUAÇÃO</b>, <b>BASE DE CONTRATAÇÃO</b>) e cole abaixo, ou escolha um arquivo .xlsx / .csv. Quando CIDADE DE ATUAÇÃO for <b>MOVEL</b>, o sistema usa a BASE DE CONTRATAÇÃO como atuação. O cabeçalho é reconhecido automaticamente.</p>
-          <div class="form-linha">
-            <label>Colar da planilha<textarea class="colar" id="imp-texto" placeholder="LOCAL&#9;PIRATINI&#9;RS&#9;PELOTAS&#9;PELOTAS&#10;MOVEL&#9;SANTA MARIA&#9;RS&#9;PELOTAS&#9;PELOTAS&#10;MOVEL&#9;BAGE&#9;RS&#9;MOVEL&#9;PORTO ALEGRE"></textarea></label>
-            <div>
-              <label>Ou arquivo (.xlsx, .xls, .csv, .txt)<input type="file" id="imp-arquivo" accept=".xlsx,.xls,.csv,.txt"></label>
-              <label>Tipo padrão (se a coluna faltar)<select id="imp-tipo"><option value="LOCAL">LOCAL</option><option value="MOVEL">MÓVEL</option></select></label>
-              <label>Estado de origem padrão (se a coluna faltar)<select id="imp-uf">${UI.opcoesUF(p.uf)}</select></label>
-              <button class="btn btn-primario" id="imp-analisar">Analisar linhas</button>
-            </div>
-          </div>
-          <div id="imp-resultado" class="mt"></div>`,
-        botoes: [{ texto: 'Fechar' }, { texto: 'Importar linhas válidas', classe: 'btn-primario', acao: importar }]
-      });
-      const btnImportar = m.el.querySelector('.modal-rodape .btn-primario');
-      btnImportar.disabled = true;
-      let linhas = [];
-      let matrizArquivo = null;
-      m.corpo.querySelector('#imp-arquivo').addEventListener('change', async e => {
-        const arq = e.target.files[0]; if (!arq) return;
-        try { matrizArquivo = await UI.lerArquivo(arq); UI.toast(`${matrizArquivo.length} linha(s) lida(s) do arquivo.`, 'sucesso'); }
-        catch (err) { UI.toast(err.message, 'erro', 6000); matrizArquivo = null; }
-      });
-      m.corpo.querySelector('#imp-analisar').addEventListener('click', async () => {
-        const texto = m.corpo.querySelector('#imp-texto').value;
-        const matriz = texto.trim() ? UI.csvParse(texto) : matrizArquivo;
-        if (!matriz || !matriz.length) { UI.toast('Cole as linhas ou escolha um arquivo.', 'aviso'); return; }
-        linhas = interpretar(matriz, m.corpo.querySelector('#imp-tipo').value, m.corpo.querySelector('#imp-uf').value);
-        await resolverLinhas();
-      });
-      function situacao(l) {
-        if (l.status === 'ok') {
-          const at = l.atuacaoObj ? UI.esc(l.atuacaoObj.nome) : '?';
-          const base = l.baseObj ? ` · base: ${UI.esc(l.baseObj.nome)}` : '';
-          return `<span class="status-ok">OK</span> <span class="muted small">${UI.esc(l.cidadeObj.nome)}/${l.cidadeObj.uf} → ${at}${base}${l.ajustes.length ? ' · ajustado: ' + UI.esc(l.ajustes.join(', ')) : ''}</span>`;
-        }
-        if (l.status === 'buscando') return '<span class="status-espera">buscando na internet…</span>';
-        return `<span class="status-erro">${UI.esc(l.erro || 'não encontrada')}</span>`;
-      }
-      function renderResultado(msg) {
-        const validas = linhas.filter(l => l.status === 'ok').length;
-        const res = m.corpo.querySelector('#imp-resultado');
-        res.innerHTML = `<div class="linha entre mb"><b>${linhas.length} linha(s) encontrada(s) · ${validas} válida(s)</b><span class="muted small">${UI.esc(msg || '')}</span></div>` +
-          (linhas.some(l => l.status === 'erro') && !Store.temIBGE() ? `<div class="banner banner-aviso mb" style="border-radius:8px">Algumas cidades não foram encontradas. Baixar a lista completa de municípios (menu <b>Cidades</b>) resolve a maioria dos casos automaticamente. <button class="btn btn-pequeno" id="imp-ibge">Baixar agora</button></div>` : '') +
-          `<div style="max-height:320px;overflow:auto">` + UI.tabela({
-            colunas: [
-              { titulo: 'Linha', render: l => l.linha },
-              { titulo: 'Tipo', render: l => l.tipo ? UI.badgeTipo(l.tipo) : '<span class="status-erro">?</span>' },
-              { titulo: 'Origem', render: l => UI.esc(l.cidade) },
-              { titulo: 'UF', render: l => UI.esc(l.uf) },
-              { titulo: 'Atuação', render: l => UI.esc(l.atuacao || '—') },
-              { titulo: 'Base contratação', render: l => UI.esc(l.base || '—') },
-              { titulo: 'Situação', render: situacao }
-            ], linhas
-          }) + `</div>`;
-        const b = res.querySelector('#imp-ibge');
-        if (b) b.addEventListener('click', async () => {
-          b.disabled = true; b.textContent = 'Baixando…';
-          try { const n = await Geo.importarIBGE(t => b.textContent = t); UI.toast(`${n} municípios carregados.`, 'sucesso'); await resolverLinhas(); }
-          catch (e) { UI.toast(e.message, 'erro', 6000); b.disabled = false; b.textContent = 'Baixar agora'; }
-        });
-        btnImportar.disabled = validas === 0;
-      }
-      function resolverLocal(nome, uf, ajustes) {
-        let c = Store.resolverCidade(nome, uf);
-        if (c) return c;
-        c = Store.cidadeAproximada(nome, uf);
-        if (c) { ajustes.push(`${nome} → ${c.nome}`); return c; }
-        return null;
-      }
-      async function resolverLinhas() {
-        const pendencias = [];
-        for (const l of linhas) {
-          l.cidadeObj = null; l.atuacaoObj = null; l.baseObj = null; l.erro = ''; l.ajustes = []; l.status = 'ok';
-          if (!l.cidade) { l.status = 'erro'; l.erro = 'cidade de origem vazia'; continue; }
-          if (!l.tipo) { l.status = 'erro'; l.erro = 'tipo (LOCAL/MÓVEL) não informado'; continue; }
-          if (!l.atuacao && !l.base) { l.status = 'erro'; l.erro = 'cidade de atuação não informada'; continue; }
-          // origem
-          if (!l.uf) {
-            const cands = Store.candidatasCidade(l.cidade);
-            if (cands.length === 1) l.cidadeObj = cands[0];
-            else { l.status = 'erro'; l.erro = cands.length > 1 ? `origem ambígua (${cands.map(x => x.uf).join(', ')}) — informe a UF` : 'informe a UF de origem'; continue; }
-          } else {
-            l.cidadeObj = resolverLocal(l.cidade, l.uf, l.ajustes);
-            if (!l.cidadeObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'cidadeObj', nome: l.cidade, uf: l.uf }); }
-          }
-          // base de contratação (resolver primeiro pois atuação pode depender dela)
-          if (l.base) {
-            l.baseObj = resolverLocal(l.base, Store.ufsProjeto(p), l.ajustes);
-            if (!l.baseObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'baseObj', nome: l.base, uf: Store.ufsProjeto(p) }); }
-          }
-          // atuação: se MOVEL → usa base de contratação; senão resolve normalmente
-          const ehMovelAtuacao = Store.ehMovel(l.atuacao) || /^m[oó]vel/i.test(l.atuacao);
-          if (ehMovelAtuacao) {
-            // atuação = base de contratação (resolvido acima)
-            l.atuacaoObj = l.baseObj || null;
-            if (!l.atuacaoObj && !l.base) { l.status = 'erro'; l.erro = 'Atuação "MOVEL" requer BASE DE CONTRATAÇÃO'; continue; }
-          } else if (l.atuacao) {
-            l.atuacaoObj = resolverLocal(l.atuacao, Store.ufsProjeto(p), l.ajustes);
-            if (!l.atuacaoObj) { l.status = 'buscando'; pendencias.push({ l, campo: 'atuacaoObj', nome: l.atuacao, uf: Store.ufsProjeto(p) }); }
-          } else {
-            // sem atuação informada → usa base
-            l.atuacaoObj = l.baseObj;
-          }
-        }
-        renderResultado();
-        const distintas = [...new Set(pendencias.map(x => Store.normalizar(x.nome) + '|' + x.uf))];
-        let feitas = 0;
-        for (const chave of distintas) {
-          const grupo = pendencias.filter(x => Store.normalizar(x.nome) + '|' + x.uf === chave);
-          renderResultado(`Buscando coordenadas ${feitas + 1} de ${distintas.length}…`);
-          try {
-            const c = await Geo.geocodificarESalvar(grupo[0].nome, grupo[0].uf);
-            grupo.forEach(x => {
-              x.l[x.campo] = c;
-              // se atuacaoObj dependia de baseObj e baseObj acabou de resolver
-              if (x.campo === 'baseObj' && (Store.ehMovel(x.l.atuacao) || /^m[oó]vel/i.test(x.l.atuacao))) x.l.atuacaoObj = c;
-            });
-          } catch (e) {
-            grupo.forEach(x => { x.l.status = 'erro'; x.l.erro = `"${x.nome}" (${x.uf}) não encontrada na internet`; });
-          }
-          feitas++;
-        }
-        for (const l of linhas) if (l.status === 'buscando') l.status = l.cidadeObj && l.atuacaoObj ? 'ok' : 'erro';
-        renderResultado(distintas.length ? 'Busca concluída.' : '');
-      }
-      async function importar() {
-        const validas = linhas.filter(l => l.status === 'ok');
-        if (!validas.length) throw new Error('Nenhuma linha válida para importar.');
-        const invalidas = linhas.length - validas.length;
-        if (invalidas && !(await UI.confirmar(`${invalidas} linha(s) com problema serão ignoradas. Importar as ${validas.length} válidas?`))) return false;
-        const n = Store.adicionarRegistros(validas.map(l => ({
-          projetoId, tipo: l.tipo, cidadeId: l.cidadeObj.id,
-          atuacao: l.atuacaoObj.id,
-          baseContratacao: l.baseObj ? l.baseObj.id : l.atuacaoObj.id
-        })), App.usuario);
-        UI.toast(`${n} contratação(ões) importada(s).`, 'sucesso');
-        App.atualizarFiltroUF();
-        pagina = 0; renderLinhas();
-      }
-    }
-
-    atualizarInfo();
-    renderEntrada();
-    renderLinhas();
+    carregar();
   }
 };
