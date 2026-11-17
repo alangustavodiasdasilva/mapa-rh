@@ -672,9 +672,12 @@ const Nuvem = (() => {
     } catch (e) { console.warn('Nuvem: sem aviso na hora', e); canal = null; }
   }
   function pararDeOuvir() { if (canal && sb) { try { sb.removeChannel(canal); } catch (e) { /* ok */ } } canal = null; sairPresenca(); }
-  // Presença: cada um avisa o que está olhando (uma cidade no mapa, a ficha de um candidato) e todos veem a foto
-  let canalPres = null, meuOnde = '', timerOnde = null, aoMudarPres = () => {};
-  const ondeRemoto = new Map();   // login -> { login, nome, onde } recebido por broadcast (mais novo que o track)
+  // Presença ("está olhando"):
+  //  - quem está online: track UMA vez ao entrar (o servidor limita quantas vezes cada um pode mudar a presença);
+  //  - o que cada um está olhando: aviso direto (broadcast), na hora do clique e repetido a cada 20 s para quem entrar depois.
+  let canalPres = null, conectado = false, meuOnde = '', aoMudarPres = () => {}, timerLembrete = null, ultimoAvisoNovo = 0;
+  const ondeRemoto = new Map();   // login -> { login, nome, onde, t }
+  const VALIDADE_ONDE = 60000;    // sem aviso há 1 min: não está mais olhando
   const minhaPresenca = () => { const u = Store.usuarioAtual(); return u ? { login: u.login, nome: u.nome, onde: meuOnde } : null; };
   function entrarPresenca() {
     const me = minhaPresenca(); if (canalPres || !sb || !me) return;
@@ -682,41 +685,60 @@ const Nuvem = (() => {
       // canal privado: só usuários do Safra RH (regra no banco, realtime.messages); se o servidor não aceitar, cai no canal comum
       const abrir = privado => {
         const c = sb.channel('maparh-presenca', { config: { private: privado, presence: { key: me.login }, broadcast: { self: false, ack: false } } });
-        c.on('broadcast', { event: 'onde' }, ({ payload }) => { if (payload && payload.login) { ondeRemoto.set(payload.login, payload); aoMudarPres(); } })
+        c.on('broadcast', { event: 'onde' }, ({ payload }) => { if (payload && payload.login) { ondeRemoto.set(payload.login, { ...payload, t: Date.now() }); aoMudarPres(); } })
+          .on('presence', { event: 'join' }, ({ key }) => {
+            // alguém entrou: conta para ele o que estou olhando (no máximo a cada 2 s)
+            if (key !== me.login && Date.now() - ultimoAvisoNovo > 2000) { ultimoAvisoNovo = Date.now(); setTimeout(avisarOnde, 300); }
+            aoMudarPres();
+          })
           .on('presence', { event: 'leave' }, ({ key }) => { ondeRemoto.delete(key); aoMudarPres(); })
           .on('presence', { event: 'sync' }, () => aoMudarPres())
           .subscribe(st => {
-            if (st === 'SUBSCRIBED') { const m = minhaPresenca(); if (m) { c.track(m).catch(() => {}); c.send({ type: 'broadcast', event: 'onde', payload: m }).catch(() => {}); } }
-            else if (st === 'CHANNEL_ERROR' && privado && canalPres === c) { console.warn('Nuvem: presença privada recusada; usando canal comum'); try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = abrir(false); }
-            else if ((st === 'TIMED_OUT' || st === 'CHANNEL_ERROR') && canalPres === c) { try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = null; setTimeout(entrarPresenca, 3000); }
+            if (canalPres !== c) return;
+            if (st === 'SUBSCRIBED') {
+              conectado = true;
+              const m = minhaPresenca(); if (m) c.track({ login: m.login, nome: m.nome }).catch(() => {});
+              avisarOnde();
+              clearInterval(timerLembrete); timerLembrete = setInterval(() => { if (!document.hidden) avisarOnde(); aoMudarPres(); }, 20000);   // também tira da tela quem parou de avisar
+            } else if (st === 'CHANNEL_ERROR' && privado) {
+              console.warn('Nuvem: presença privada recusada; usando canal comum');
+              conectado = false; try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = abrir(false);
+            } else if (st === 'TIMED_OUT' || st === 'CHANNEL_ERROR' || st === 'CLOSED') {
+              conectado = false; clearInterval(timerLembrete);
+              if (st !== 'CLOSED') { try { sb.removeChannel(c); } catch (e) { /* ok */ } canalPres = null; setTimeout(entrarPresenca, 5000); }
+            }
           });
         return c;
       };
       canalPres = abrir(true);
     } catch (e) { console.warn('Nuvem: sem presença', e); canalPres = null; }
   }
-  function sairPresenca() { if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; ondeRemoto.clear(); }
-  function avisarOnde() { const m = minhaPresenca(); if (canalPres && m) canalPres.send({ type: 'broadcast', event: 'onde', payload: m }).catch(() => {}); }
+  function sairPresenca() { clearInterval(timerLembrete); conectado = false; if (canalPres && sb) { try { canalPres.untrack(); sb.removeChannel(canalPres); } catch (e) { /* ok */ } } canalPres = null; ondeRemoto.clear(); }
+  // só manda com o canal conectado (senão a biblioteca manda por fora, pelo servidor, e atrasa)
+  function avisarOnde() { const m = minhaPresenca(); if (canalPres && conectado && m) canalPres.send({ type: 'broadcast', event: 'onde', payload: m }).catch(() => {}); }
   function onde(v) {
     if ((v || '') === meuOnde) return; meuOnde = v || ''; setTimeout(() => aoMudarPres(), 0);
     avisarOnde();   // na hora, para os outros
-    clearTimeout(timerOnde);
-    timerOnde = setTimeout(() => { const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); }, 800);   // registro para quem entrar depois
   }
-  // o que cada um está olhando: o broadcast mais recente vale mais que o registro do track
-  const ondeDe = x => (ondeRemoto.get(x.login) || x).onde || '';
+  // quem está online (pela presença) e o que cada um está olhando (pelo último aviso, se recente)
+  function online() {
+    const out = new Map();
+    if (canalPres) for (const lista of Object.values(canalPres.presenceState())) for (const x of lista) if (x.login && !out.has(x.login)) out.set(x.login, { login: x.login, nome: x.nome });
+    return out;
+  }
+  const ondeDe = login => { const r = ondeRemoto.get(login); return r && Date.now() - r.t < VALIDADE_ONDE ? r.onde || '' : ''; };
   // quem (fora eu) está olhando aquilo: [{ login, nome }]
   function olhando(v) {
     if (!canalPres || !v) return [];
-    const me = minhaPresenca(), st = canalPres.presenceState(), out = [];
-    for (const lista of Object.values(st)) for (const x of lista) if (ondeDe(x) === v && (!me || x.login !== me.login) && !out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome });
+    const me = minhaPresenca(), out = [];
+    for (const [login, x] of online()) if (login !== (me && me.login) && ondeDe(login) === v) out.push({ login, nome: x.nome || (ondeRemoto.get(login) || {}).nome });
     return out;
   }
   function aoMudarPresenca(fn) { aoMudarPres = fn; }
   // todo mundo conectado e o que cada um está olhando (eu incluído): [{ login, nome, onde }]
   function presentes() {
     const me = minhaPresenca(), out = me ? [me] : [];
-    if (canalPres) for (const lista of Object.values(canalPres.presenceState())) for (const x of lista) if (!out.some(y => y.login === x.login)) out.push({ login: x.login, nome: x.nome, onde: ondeDe(x) });
+    for (const [login, x] of online()) if (!out.some(y => y.login === login)) out.push({ login, nome: x.nome, onde: ondeDe(login) });
     return out;
   }
   function iniciarRelogio(precisaCargaInicial) {
@@ -741,7 +763,7 @@ const Nuvem = (() => {
     ouvindo = true;
     window.addEventListener('online', () => { if (eu) { tiqueAtual(); agendarEnvio(300); } });
     window.addEventListener('offline', () => { if (eu) mudarEstado('offline'); });
-    document.addEventListener('visibilitychange', () => { if (eu && !document.hidden) { tiqueAtual(); avisarOnde(); const m = minhaPresenca(); if (canalPres && m) canalPres.track(m).catch(() => {}); } });
+    document.addEventListener('visibilitychange', () => { if (eu && !document.hidden) { tiqueAtual(); avisarOnde(); } });
   }
   // Ao abrir a página: retoma a sessão guardada, se houver. Devolve o usuário ou null.
   async function iniciar() {
