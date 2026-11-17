@@ -3,7 +3,11 @@
 const Analise = (() => {
   const media = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
   const pct = (parte, total) => total ? (parte / total) * 100 : 0;
-  const ROTULO_MOVEL = 'MÓVEL — todo o estado';
+  const ROTULO_MOVEL = 'Sem cidade definida (todo o estado)';
+  // Estados do projeto juntos (ex.: "PR/RS/SC"): o MÓVEL legado vale para todos eles, não só para o estado principal
+  const ufsMovel = p => (Store.ufsProjeto(p).join('/') || (p && p.uf) || '');
+  // registro MÓVEL que tem base de contratação (a cidade de atuação mostrada é a base)
+  const ehBase = r => !!(r.cidadeBase && Store.ehMovel(r.atuacao));
 
   function resumo(regs) {
     const total = regs.length;
@@ -46,11 +50,11 @@ const Analise = (() => {
   function porCidadeAtuacao(regs) {
     const mapa = new Map();
     for (const r of regs) {
-      const chave = r.atuacaoMovel ? 'MOVEL:' + r.projeto.uf : r.cidadeAtuacao.id;
+      const chave = r.atuacaoMovel ? 'MOVEL:' + ufsMovel(r.projeto) : r.cidadeAtuacao.id;
       let it = mapa.get(chave);
       if (!it) {
-        it = { chave, cidade: r.cidadeAtuacao, movelEstado: r.atuacaoMovel, uf: r.atuacaoMovel ? r.projeto.uf : r.cidadeAtuacao.uf,
-          rotulo: r.atuacaoMovel ? `${ROTULO_MOVEL} (${r.projeto.uf})` : `${r.cidadeAtuacao.nome}/${r.cidadeAtuacao.uf}`,
+        it = { chave, cidade: r.cidadeAtuacao, movelEstado: r.atuacaoMovel, uf: r.atuacaoMovel ? ufsMovel(r.projeto) : r.cidadeAtuacao.uf,
+          rotulo: r.atuacaoMovel ? `${ROTULO_MOVEL} — ${ufsMovel(r.projeto)}` : `${r.cidadeAtuacao.nome}/${r.cidadeAtuacao.uf}`,
           local: 0, movel: 0, total: 0, origens: new Set(), foraDoEstado: 0, dists: [], projetos: new Set() };
         mapa.set(chave, it);
       }
@@ -99,7 +103,7 @@ const Analise = (() => {
     const mapa = new Map();
     for (const r of regs) {
       let chave, nome, distrito = '', cor, micro = null, ordem = 0;
-      if (r.atuacaoMovel) { chave = 'MOVEL:' + r.projeto.uf; nome = `${ROTULO_MOVEL} (${r.projeto.uf})`; cor = '#7c3aed'; ordem = 1; }
+      if (r.atuacaoMovel) { chave = 'MOVEL:' + ufsMovel(r.projeto); nome = `${ROTULO_MOVEL} — ${ufsMovel(r.projeto)}`; cor = '#7c3aed'; ordem = 1; }
       else {
         const info = Store.corDaCidade(r.cidadeAtuacao.id);
         if (info && info.micro) { chave = info.micro.id; nome = info.micro.nome; distrito = info.distrito.nome; cor = info.cor; micro = info.micro; }
@@ -161,15 +165,17 @@ const Analise = (() => {
       const k = r.projetoId + '|' + (r.atuacaoMovel ? 'MOVEL' : r.cidadeAtuacao.id) + '|' + r.cidadeId;
       let it = mapa.get(k);
       if (!it) {
-        it = { projeto: r.projeto, cidadeAtuacao: r.cidadeAtuacao, atuacaoMovel: r.atuacaoMovel, uf: r.projeto.uf, cidadeOrigem: r.cidade,
-          local: 0, movel: 0, total: 0, dist: r.distancia, foraDoEstado: r.foraDoEstado };
+        // uf: no MÓVEL legado são todos os estados do projeto ("PR/RS/SC"); base: quantos têm a cidade como base de contratação
+        it = { projeto: r.projeto, cidadeAtuacao: r.cidadeAtuacao, atuacaoMovel: r.atuacaoMovel, uf: r.atuacaoMovel ? ufsMovel(r.projeto) : r.projeto.uf, cidadeOrigem: r.cidade,
+          local: 0, movel: 0, total: 0, base: 0, dist: r.distancia, foraDoEstado: r.foraDoEstado };
         mapa.set(k, it);
       }
       it[r.tipo === 'LOCAL' ? 'local' : 'movel']++; it.total++;
+      if (ehBase(r)) it.base++;
     }
     return [...mapa.values()].sort((a, b) => b.total - a.total);
   }
-  const rotuloAtuacao = f => f.atuacaoMovel ? `${ROTULO_MOVEL} (${f.uf})` : `${f.cidadeAtuacao.nome}/${f.cidadeAtuacao.uf}`;
+  const rotuloAtuacao = f => f.atuacaoMovel ? `${ROTULO_MOVEL} — ${f.uf}` : `${f.cidadeAtuacao.nome}/${f.cidadeAtuacao.uf}`;
 
   function porMes(regs) {
     const mapa = new Map();
@@ -188,5 +194,5 @@ const Analise = (() => {
     return nomes[parseInt(mes, 10) - 1] + '/' + a.slice(2);
   }
 
-  return { ROTULO_MOVEL, resumo, porCidadeOrigem, porCidadeAtuacao, porMicro, porProjeto, porAno, porUF, faixasDistancia, fluxos, rotuloAtuacao, porMes, rotuloMes };
+  return { ROTULO_MOVEL, ufsMovel, ehBase, resumo, porCidadeOrigem, porCidadeAtuacao, porMicro, porProjeto, porAno, porUF, faixasDistancia, fluxos, rotuloAtuacao, porMes, rotuloMes };
 })();

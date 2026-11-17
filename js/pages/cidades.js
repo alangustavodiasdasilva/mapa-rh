@@ -126,12 +126,11 @@ Paginas.cidades = {
       let lista = Store.cidades();
       if (uf) lista = lista.filter(c => c.uf === uf);
       if (busca.trim()) { const n = Store.normalizar(busca); lista = lista.filter(c => Store.normalizar(c.nome).includes(n)); }
-      const uso = new Map();
-      {
-        for (const r of Store.registros()) {
-          uso.set(r.cidadeId, (uso.get(r.cidadeId) || 0) + 1);
-          if (!Store.ehMovel(r.atuacao)) uso.set(r.atuacao, (uso.get(r.atuacao) || 0) + 1000);
-        }
+      // quantas vezes cada cidade aparece como origem e como atuação (dois contadores separados)
+      const usoOrig = new Map(), usoAtu = new Map(), uso = new Map();
+      for (const r of Store.registros()) {
+        usoOrig.set(r.cidadeId, (usoOrig.get(r.cidadeId) || 0) + 1); uso.set(r.cidadeId, true);
+        if (!Store.ehMovel(r.atuacao)) { usoAtu.set(r.atuacao, (usoAtu.get(r.atuacao) || 0) + 1); uso.set(r.atuacao, true); }
       }
       if (soEmUso) lista = lista.filter(c => uso.has(c.id));
       const total = lista.length;
@@ -145,7 +144,7 @@ Paginas.cidades = {
           { titulo: 'Latitude', classe: 'direita', render: c => c.lat.toFixed(4) },
           { titulo: 'Longitude', classe: 'direita', render: c => c.lng.toFixed(4) },
           { titulo: 'Origem', render: c => `<span class="badge ${ORIGENS[c.origem][1]}">${ORIGENS[c.origem][0]}</span>` },
-          { titulo: 'Uso', classe: 'direita', render: c => { const u = uso.get(c.id) || 0; const atu = Math.floor(u / 1000), regs = u % 1000; return [regs ? `${regs} como origem` : '', atu ? `${atu} como atuação` : ''].filter(Boolean).join(', ') || '<span class="muted">—</span>'; } },
+          { titulo: 'Uso', classe: 'direita', render: c => { const atu = usoAtu.get(c.id) || 0, regs = usoOrig.get(c.id) || 0; return [regs ? `${regs} como origem` : '', atu ? `${atu} como atuação` : ''].filter(Boolean).join(', ') || '<span class="muted">—</span>'; } },
           { titulo: '', classe: 'acoes-col', render: c => `<button class="btn-icone ficha" data-id="${c.id}" title="Ficha da cidade no mapa (IBGE, SINE, anotações)">&#128269;</button>` + (podeEditar ? `<button class="btn-icone ed" data-id="${c.id}" title="Ajustar coordenadas">&#9998;</button>${(c.origem === 'manual' || c.origem === 'geocode') && !uso.has(c.id) ? `<button class="btn-icone perigo ex" data-id="${c.id}" title="Excluir">&#128465;</button>` : ''}` : '') }
         ],
         linhas: lista
@@ -189,7 +188,8 @@ Paginas.cidades = {
         const nome = c ? c.nome : document.getElementById('c-nome').value.trim(), ufv = c ? c.uf : document.getElementById('c-uf').value;
         if (!nome || !ufv) { UI.toast('Informe cidade e UF.', 'aviso'); return; }
         UI.toast('Buscando…', 'info', 1500);
-        const r = await Geo.geocodificar(nome, ufv);
+        let r = null;
+        try { r = await Geo.geocodificar(nome, ufv); } catch (err) { UI.toast('Não foi possível buscar agora: ' + (err.message || err), 'erro', 6000); return; }
         if (!r) { UI.toast('Não encontrada na internet.', 'erro'); return; }
         document.getElementById('c-lat').value = r.lat.toFixed(4); document.getElementById('c-lng').value = r.lng.toFixed(4);
         UI.toast(`Encontrada: ${r.descricao}`, 'sucesso', 5000);

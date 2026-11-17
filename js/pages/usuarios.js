@@ -1,5 +1,5 @@
 Paginas.usuarios = {
-  titulo: 'Controle de acesso',
+  titulo: 'Usuários e acesso',
   semFiltros: true,
   render(el) {
     const nuvem = App.nuvem();
@@ -7,10 +7,11 @@ Paginas.usuarios = {
     function renderLista() {
       const usuarios = Store.usuarios().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       el.innerHTML = `
-        <div class="grade grade-3 mb">
-          <div class="card"><h3>Administrador</h3><p class="muted small">Acesso total: usuários, auditoria, backup, todos os projetos.</p></div>
-          <div class="card"><h3>Gestor</h3><p class="muted small">Cadastra e edita contratações, projetos e cidades — apenas nos projetos liberados.</p></div>
-          <div class="card"><h3>Visualizador</h3><p class="muted small">Somente consulta: dashboard, mapa, relatórios, distritos e mapas PDRs dos projetos liberados.</p></div>
+        <div class="grade kpis mb">
+          <div class="card"><h3>Administrador</h3><p class="muted small">Tudo: aprova vagas, direciona candidatos aos RHs, usuários, auditoria e backup, em todos os projetos.</p></div>
+          <div class="card"><h3>Gestor</h3><p class="muted small">Pede vagas, cuida de contratações, projetos, distritos, cidades e cargos nos projetos liberados. Com "Acessa Candidatos", acompanha todos os RHs.</p></div>
+          <div class="card"><h3>RH (analista)</h3><p class="muted small">Trabalha só os candidatos direcionados para ele e vê só as vagas em que é o responsável.</p></div>
+          <div class="card"><h3>Visualizador</h3><p class="muted small">Só consulta: Início, vagas, mapa, relatórios, distritos e unidades dos projetos liberados. Não vê dados pessoais.</p></div>
         </div>
         <div class="card sem-padding">
           <div class="linha entre" style="padding:12px 16px;border-bottom:1px solid var(--borda)">
@@ -19,9 +20,9 @@ Paginas.usuarios = {
           </div>
           ${UI.tabela({
             colunas: [
-              { titulo: 'Nome', render: u => `${UI.esc(u.nome)}${u.id === App.usuario.id ? ' <span class="badge badge-azul">você</span>' : ''}` },
+              { titulo: 'Nome', render: u => `<span class="com-avatar">${UI.avatar(u, 30)}<span>${UI.esc(u.nome)}${u.id === App.usuario.id ? ' <span class="badge badge-azul">você</span>' : ''}</span></span>` },
               { titulo: 'Login', render: u => UI.esc(u.login) },
-              { titulo: 'Perfil', render: u => UI.esc(Store.PERFIS[u.perfil]) },
+              { titulo: 'Perfil', render: u => UI.esc(Store.PERFIS[u.perfil]) + (u.rh && u.perfil === 'gestor' ? ' <span class="badge badge-azul" title="Acessa Candidatos (dados pessoais) e vê os candidatos de todos os RHs">candidatos</span>' : '') },
               { titulo: 'Projetos', render: u => u.projetos == null ? '<span class="muted">todos</span>' : (u.projetos.map(id => Store.projeto(id)).filter(Boolean).map(p => UI.esc(p.nome)).join(', ') || '<span class="status-erro">nenhum</span>') },
               { titulo: 'Situação', render: u => u.ativo ? '<span class="badge badge-verde">ativo</span>' : '<span class="badge badge-cinza">inativo</span>' },
               { titulo: 'Criado em', render: u => UI.fmtData(u.criadoEm) },
@@ -42,12 +43,15 @@ Paginas.usuarios = {
       }));
     }
 
+    let fotoNova;   // undefined = não mexeu; null = tirar; texto = foto nova
     function abrirForm(u) {
+      fotoNova = undefined;
       const projetos = Store.projetos().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       const todos = !u || u.projetos == null;
       UI.modal({
         titulo: u ? `Editar usuário — ${u.nome}` : 'Novo usuário',
         corpo: `
+          ${nuvem ? `<div class="foto-campo"><span id="u-foto-ver">${UI.avatar(u || { nome: '?' }, 64)}</span><div><div class="linha"><label class="btn btn-pequeno" style="margin:0;cursor:pointer">Escolher foto<input type="file" id="u-foto" accept="image/*" hidden></label><button type="button" class="btn-link perigo" id="u-foto-tirar" ${u && u.foto ? '' : 'hidden'}>Tirar foto</button></div><div class="muted small" style="margin-top:4px">Aparece nos cartões, na lista e no Por RH. A imagem é recortada em quadrado.</div></div></div>` : ''}
           <div class="form-linha">
             <label>Nome<input id="u-nome" value="${UI.esc(u ? u.nome : '')}"></label>
             <label>Login<input id="u-login" value="${UI.esc(u ? u.login : '')}" ${u && u.id === App.usuario.id ? 'disabled' : ''}></label>
@@ -59,6 +63,8 @@ Paginas.usuarios = {
             </select></label>
           </div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="u-ativo" ${!u || u.ativo ? 'checked' : ''} ${u && u.id === App.usuario.id ? 'disabled' : ''}> Usuário ativo</label>
+          ${nuvem ? `<label id="u-rh-wrap" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="u-rh" ${u && u.rh ? 'checked' : ''} style="margin-top:3px"> <span>Acessa <b>Candidatos</b> e acompanha todos os RHs<br><span class="muted small">Vê e edita dados pessoais (CPF, nascimento, telefone) dos candidatos dos projetos liberados, de todos os RHs. Administrador sempre acessa.</span></span></label>
+          <p class="muted small" id="u-perfil-nota" style="margin:0"></p>` : ''}
           <div id="u-projetos-wrap">
             <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="u-todos" ${todos ? 'checked' : ''}> Acesso a todos os projetos</label>
             <div class="checkbox-lista" id="u-projetos" ${todos ? 'hidden' : ''}>
@@ -73,15 +79,29 @@ Paginas.usuarios = {
             const todosSel = q('#u-todos').checked;
             const projSel = [...m.corpo.querySelectorAll('#u-projetos input:checked')].map(c => c.value);
             const obj = { id: u ? u.id : null, nome: q('#u-nome').value, login: u && u.id === App.usuario.id ? u.login : q('#u-login').value,
-              senha: q('#u-senha').value, perfil, ativo: q('#u-ativo').checked, projetos: perfil === 'admin' || todosSel ? null : projSel };
+              senha: q('#u-senha').value, perfil, ativo: q('#u-ativo').checked, projetos: perfil === 'admin' || todosSel ? null : projSel,
+              rh: nuvem && q('#u-rh') ? q('#u-rh').checked : undefined, foto: fotoNova };
             if (nuvem) await Nuvem.salvarUsuario(obj); else Store.salvarUsuario(obj, App.usuario);
             if (u && u.id === App.usuario.id) { App.usuario = Store.usuarioAtual(); App.atualizarBanner(); }
             UI.toast('Usuário salvo.', 'sucesso'); renderLista();
           } }
         ]
       });
+      // foto: reduzida no navegador (160x160) antes de ir para o banco
+      const fi = document.getElementById('u-foto');
+      if (fi) {
+        fi.addEventListener('change', async () => {
+          try { fotoNova = await UI.reduzirImagem(fi.files[0]); document.getElementById('u-foto-ver').innerHTML = UI.avatar({ nome: document.getElementById('u-nome').value, foto: fotoNova }, 64); document.getElementById('u-foto-tirar').hidden = false; }
+          catch (e) { UI.toast(e.message, 'erro'); }
+        });
+        document.getElementById('u-foto-tirar').addEventListener('click', () => { fotoNova = null; document.getElementById('u-foto-ver').innerHTML = UI.avatar({ nome: document.getElementById('u-nome').value }, 64); document.getElementById('u-foto-tirar').hidden = true; });
+      }
       const perfilSel = document.getElementById('u-perfil'), todosChk = document.getElementById('u-todos'), wrap = document.getElementById('u-projetos-wrap');
-      const ajustar = () => { wrap.style.display = perfilSel.value === 'admin' ? 'none' : ''; document.getElementById('u-projetos').hidden = todosChk.checked; };
+      const rhWrap = document.getElementById('u-rh-wrap');
+      const ajustar = () => { wrap.style.display = perfilSel.value === 'admin' ? 'none' : ''; document.getElementById('u-projetos').hidden = todosChk.checked;
+        if (rhWrap) rhWrap.style.display = perfilSel.value === 'gestor' ? 'flex' : 'none';
+        const nota = document.getElementById('u-perfil-nota');
+        if (nota) nota.textContent = perfilSel.value === 'analista' ? 'RH (analista): trabalha em Candidatos só com as pessoas direcionadas para ele e vê só as vagas em que é o responsável. Não pede vaga nem importa planilha.' : ''; };
       perfilSel.addEventListener('change', ajustar); todosChk.addEventListener('change', ajustar); ajustar();
     }
 
@@ -101,7 +121,10 @@ Paginas.auditoria = {
       'relatorio.exportar': 'Relatório exportado', 'auditoria.limpar': 'Auditoria limpa',
       'distrito.criar': 'Distrito criado', 'distrito.editar': 'Distrito editado', 'distrito.excluir': 'Distrito excluído', 'distrito.importar': 'Distritos importados',
       'micro.criar': 'Microrregião criada', 'micro.editar': 'Microrregião editada', 'micro.excluir': 'Microrregião excluída',
-      'mapaPdr.adicionar': 'Mapa PDR adicionado', 'mapaPdr.excluir': 'Mapa PDR excluído', 'cidade.info': 'Anotações da cidade' };
+      'mapaPdr.adicionar': 'Mapa PDR adicionado', 'mapaPdr.excluir': 'Mapa PDR excluído', 'cidade.info': 'Anotações da cidade',
+      'cargo.criar': 'Cargo criado', 'cargo.editar': 'Cargo editado', 'cargo.excluir': 'Cargo excluído',
+      'vaga.criar': 'Vaga pedida', 'vaga.editar': 'Vaga editada', 'vaga.aprovar': 'Vaga aprovada', 'vaga.recusar': 'Vaga recusada', 'vaga.status': 'Situação da vaga', 'vaga.divulgar': 'Divulgação da vaga', 'vaga.excluir': 'Vaga excluída',
+      'candidato.criar': 'Candidato criado', 'candidato.editar': 'Candidato editado', 'candidato.etapa': 'Etapa do candidato', 'candidato.excluir': 'Candidato excluído', 'cidade.excluir': 'Cidade excluída' };
     const nuvem = App.nuvem();
     el.innerHTML = `
       ${nuvem ? `<div class="abas mb"><button class="aba ativa" data-aud="acoes">Ações no sistema</button><button class="aba" data-aud="banco">Alterações nos dados</button></div>
@@ -213,7 +236,7 @@ Paginas.backup = {
           : 'Nesta versão os dados são gravados no armazenamento local deste navegador, neste computador. Eles não são apagados ao fechar o navegador, mas podem ser perdidos se o histórico/dados do site forem limpos ou se o computador for trocado. Por isso, faça backups periódicos. Se precisar que várias pessoas usem o sistema ao mesmo tempo em computadores diferentes, o próximo passo é publicá-lo em um servidor com banco de dados central.'}</p>
       </div>`;
     el.querySelector('#bk-exportar').addEventListener('click', () => {
-      const data = new Date().toISOString().slice(0, 10);
+      const data = RH.hoje();
       UI.baixarArquivo(`backup-mapa-rh-${data}.json`, Store.exportar(), 'application/json');
       Store.auditar('backup.exportar', 'Backup exportado', App.usuario);
       UI.toast('Backup gerado.', 'sucesso');

@@ -26,19 +26,30 @@ const UI = (() => {
   }
 
   // ---------- Toast ----------
-  function toast(msg, tipo = 'info', ms = 3500) {
+  // Avisos: o mesmo texto não empilha (vira um só, com ×N); no máximo 3 na tela; erro fica mais; passar o mouse segura.
+  const toastsAtivos = new Map(), TOAST_MAX = 3;
+  function toast(msg, tipo = 'info', ms = 3500, { id } = {}) {
     let area = document.getElementById('toasts');
-    if (!area) { area = document.createElement('div'); area.id = 'toasts'; document.body.appendChild(area); }
+    if (!area) { area = document.createElement('div'); area.id = 'toasts'; area.setAttribute('role', 'status'); area.setAttribute('aria-live', 'polite'); document.body.appendChild(area); }
+    const chave = id || tipo + '|' + msg, ex = toastsAtivos.get(chave);
+    const tempo = tipo === 'erro' ? Math.max(ms, 7000) : ms;
+    if (ex) { ex.msg.textContent = msg; if (!id) { ex.n++; ex.cont.textContent = '×' + ex.n; ex.cont.hidden = false; } clearTimeout(ex.t); ex.t = setTimeout(ex.sair, tempo); return; }
+    while (toastsAtivos.size >= TOAST_MAX) { const v = [...toastsAtivos.values()]; (v.find(x => x.tipo !== 'erro') || v[0]).sair(); }
     const el = document.createElement('div');
     el.className = 'toast toast-' + tipo;
-    el.textContent = msg;
-    area.appendChild(el);
+    el.innerHTML = '<span class="toast-msg"></span><span class="toast-cont" hidden></span><button type="button" class="toast-x" aria-label="Fechar">×</button>';
+    const it = { el, n: 1, tipo, msg: el.querySelector('.toast-msg'), cont: el.querySelector('.toast-cont') };
+    it.msg.textContent = msg;
+    it.sair = () => { clearTimeout(it.t); if (toastsAtivos.get(chave) === it) toastsAtivos.delete(chave); el.classList.remove('visivel'); setTimeout(() => el.remove(), 300); };
+    el.querySelector('.toast-x').onclick = it.sair;
+    el.onmouseenter = () => clearTimeout(it.t); el.onmouseleave = () => { it.t = setTimeout(it.sair, 2000); };
+    it.t = setTimeout(it.sair, tempo);
+    toastsAtivos.set(chave, it); area.appendChild(el);
     requestAnimationFrame(() => el.classList.add('visivel'));
-    setTimeout(() => { el.classList.remove('visivel'); setTimeout(() => el.remove(), 300); }, ms);
   }
 
   // ---------- Modal ----------
-  function modal({ titulo, corpo, botoes = [], largura = '560px', aoFechar, fecharAoClicarFora = true }) {
+  function modal({ titulo, corpo, botoes = [], largura = '560px', aoFechar, fecharAoClicarFora = false }) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
@@ -77,7 +88,13 @@ const UI = (() => {
     if (!botoes.length) rodape.remove();
     overlay.querySelector('.modal-fechar').addEventListener('click', api.fechar);
     if (fecharAoClicarFora) overlay.addEventListener('mousedown', e => { if (e.target === overlay) api.fechar(); });
-    function aoTeclar(e) { if (e.key === 'Escape') api.fechar(); }
+    function aoTeclar(e) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const abertas = document.querySelectorAll('.modal-overlay');
+      if (abertas[abertas.length - 1] !== overlay) return;
+      if (document.querySelector('.ac-lista:not([hidden])')) return;
+      e.preventDefault(); api.fechar();
+    }
     document.addEventListener('keydown', aoTeclar);
     document.body.appendChild(overlay);
     const primeiro = corpoEl.querySelector('input,select,textarea,button');
@@ -92,7 +109,7 @@ const UI = (() => {
         titulo,
         corpo: `<p>${esc(mensagem)}</p>`,
         largura: '440px',
-        aoFechar: () => { if (!respondido) resolve(false); },
+        aoFechar: () => { if (!respondido) resolve(false); }, fecharAoClicarFora: true,
         botoes: [
           { texto: 'Cancelar', classe: 'btn-secundario', acao: () => { respondido = true; resolve(false); } },
           { texto: textoOk, classe: perigo ? 'btn-perigo' : 'btn-primario', acao: () => { respondido = true; resolve(true); } }
@@ -129,6 +146,7 @@ const UI = (() => {
         lista.appendChild(div);
       });
       lista.hidden = itens.length === 0;
+      posicionarLista(input, lista);
     }
     async function escolher(i) {
       const it = itens[i];
@@ -161,12 +179,114 @@ const UI = (() => {
       if (e.key === 'ArrowDown') { e.preventDefault(); ativo = Math.min(ativo + 1, itens.length - 1); render(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); ativo = Math.max(ativo - 1, 0); render(); }
       else if (e.key === 'Enter') { if (ativo >= 0) { e.preventDefault(); e.stopImmediatePropagation(); escolher(ativo); } } // 1º Enter escolhe, 2º Enter confirma
-      else if (e.key === 'Escape') fechar();
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
     });
     return { fechar };
   }
 
   // ---------- CSV / arquivos ----------
+  // Campo de texto com sugestões (no lugar do <datalist> do navegador, que abre aquela caixa preta).
+  // fonte() -> lista de textos ou de { valor, sub }. Mostra tudo ao focar; filtra ao digitar; aceita texto livre.
+  function sugestoes(input, fonte, opcoes = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ac-wrap ac-sug';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const seta = document.createElement('span'); seta.className = 'ac-seta'; seta.setAttribute('aria-hidden', 'true'); wrap.appendChild(seta);
+    const lista = document.createElement('div');
+    lista.className = 'ac-lista'; lista.hidden = true;
+    wrap.appendChild(lista);
+    input.setAttribute('autocomplete', 'off');
+    let itens = [], ativo = -1;
+    const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    function abrir(tudo) {
+      const q = tudo ? '' : norm(input.value.trim());
+      const todos = (fonte() || []).map(x => typeof x === 'string' ? { valor: x } : x).filter(x => x && x.valor);
+      itens = (q ? todos.filter(x => norm(x.valor + ' ' + (x.sub || '')).includes(q)) : todos).slice(0, 50);
+      ativo = itens.findIndex(x => norm(x.valor) === norm(input.value.trim()));
+      lista.innerHTML = itens.length ? itens.map((x, i) => `<div class="ac-item ${i === ativo ? 'ativo' : ''}" data-i="${i}">${esc(x.valor)}${x.sub ? ` <span class="muted">· ${esc(x.sub)}</span>` : ''}</div>`).join('')
+        : (opcoes.vazio && !q ? `<div class="ac-vazio">${opcoes.vazio}</div>` : '');
+      lista.hidden = !lista.innerHTML;
+      posicionarLista(input, lista);
+      const a = lista.querySelector('.ativo'); if (a) a.scrollIntoView({ block: 'nearest' });
+    }
+    const fechar = () => { lista.hidden = true; ativo = -1; };
+    function escolher(i) { const x = itens[i]; if (!x) return; input.value = x.valor; fechar(); input.dispatchEvent(new Event('change', { bubbles: true })); if (opcoes.aoSelecionar) opcoes.aoSelecionar(x); }
+    lista.addEventListener('mousedown', e => e.preventDefault());
+    lista.addEventListener('click', e => { const d = e.target.closest('[data-i]'); if (d) escolher(+d.dataset.i); });
+    input.addEventListener('focus', () => abrir(true));
+    input.addEventListener('click', () => { if (lista.hidden) abrir(true); });
+    input.addEventListener('input', () => abrir(false));
+    input.addEventListener('blur', () => setTimeout(fechar, 150));
+    input.addEventListener('keydown', e => {
+      if (lista.hidden) { if (e.key === 'ArrowDown') { e.preventDefault(); abrir(true); } return; }
+      const marcar = () => lista.querySelectorAll('.ac-item').forEach((d, i) => { d.classList.toggle('ativo', i === ativo); if (i === ativo) d.scrollIntoView({ block: 'nearest' }); });
+      if (e.key === 'ArrowDown') { e.preventDefault(); ativo = Math.min(ativo + 1, itens.length - 1); marcar(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); ativo = Math.max(ativo - 1, 0); marcar(); }
+      else if (e.key === 'Enter') { if (ativo >= 0) { e.preventDefault(); e.stopImmediatePropagation(); escolher(ativo); } }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
+      else if (e.key === 'Tab') fechar();
+    });
+    return { abrir, fechar };
+  }
+  // Foto do usuário (ou as iniciais num círculo azul, quando não tem foto). u = { nome, foto }
+  function iniciais(nome) { const p = String(nome || '').trim().split(/\s+/).filter(Boolean); return ((p[0] || '?')[0] + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase(); }
+  function avatar(u, tam = 24, extra = '') {
+    const nome = (u && u.nome) || '';
+    const st = `width:${tam}px;height:${tam}px;font-size:${Math.max(9, Math.round(tam * 0.4))}px`;
+    return u && u.foto ? `<img class="avatar ${extra}" src="${esc(u.foto)}" alt="" title="${esc(nome)}" style="${st}">`
+      : `<span class="avatar avatar-ini ${extra}" title="${esc(nome)}" style="${st}">${esc(iniciais(nome))}</span>`;
+  }
+  // Lê uma imagem escolhida e devolve um JPEG quadrado pequeno (recorte do centro) em data URL
+  function reduzirImagem(arquivo, lado = 160) {
+    return new Promise((resolve, reject) => {
+      if (!arquivo || !/^image\//.test(arquivo.type)) return reject(new Error('Escolha um arquivo de imagem (JPG ou PNG).'));
+      const leitor = new FileReader();
+      leitor.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+      leitor.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Imagem inválida.'));
+        img.onload = () => {
+          const c = document.createElement('canvas'); c.width = c.height = lado;
+          const m = Math.min(img.width, img.height), ctx = c.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, lado, lado);
+          ctx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, lado, lado);
+          resolve(c.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = leitor.result;
+      };
+      leitor.readAsDataURL(arquivo);
+    });
+  }
+  // Menu "⋯": abre por cima de tudo (posição fixa na tela), embaixo do botão ou, se não couber, em cima.
+  // Assim nenhuma borda de tabela, cartão ou coluna corta o menu. Fecha ao rolar a página ou mudar o tamanho.
+  function abrirMenu(botao, menu) {
+    document.querySelectorAll('.menu-flutuante:not([hidden])').forEach(m => { if (m !== menu) m.hidden = true; });
+    menu.classList.add('menu-flutuante');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = false;
+    const r = botao.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+    const esq = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    const cima = r.bottom + 4 + h > window.innerHeight - 8 && r.top - 4 - h > 8;
+    menu.style.left = esq + 'px';
+    menu.style.top = (cima ? r.top - 4 - h : r.bottom + 4) + 'px';
+  }
+  // lista de sugestões (cidades, cargos…) presa ao campo, mas por cima de tudo: nenhuma borda corta
+  function posicionarLista(input, lista) {
+    if (lista.hidden) return;
+    const r = input.getBoundingClientRect(), h = Math.min(lista.scrollHeight, 260);
+    const cima = r.bottom + 2 + h > window.innerHeight - 8 && r.top - 2 - h > 8;
+    Object.assign(lista.style, { position: 'fixed', left: r.left + 'px', width: Math.max(240, r.width) + 'px', right: 'auto', top: (cima ? r.top - 2 - h : r.bottom + 2) + 'px', zIndex: 1300 });
+  }
+  window.addEventListener('scroll', e => { document.querySelectorAll('.ac-lista:not([hidden])').forEach(l => { const inp = l.parentNode.querySelector('input'); if (inp) posicionarLista(inp, l); }); }, true);
+  function fecharMenus() { document.querySelectorAll('.menu-flutuante:not([hidden])').forEach(m => { m.hidden = true; }); }
+  document.addEventListener('mousedown', e => { if (!e.target.closest('.menu-flutuante, [data-acao="menu"], [data-menu]')) fecharMenus(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('.menu-flutuante:not([hidden])')) { fecharMenus(); e.stopPropagation(); } }, true);
+  // altura real do topo fixo (quebra em duas linhas em telas estreitas): barras grudadas usam --topo-h
+  const ajustarTopo = () => { const tp = document.querySelector('.topo'); if (tp) document.documentElement.style.setProperty('--topo-h', tp.offsetHeight + 'px'); };
+  window.addEventListener('resize', ajustarTopo); window.addEventListener('hashchange', () => setTimeout(ajustarTopo, 60)); setTimeout(ajustarTopo, 300);
+  window.addEventListener('scroll', fecharMenus, true);
+  window.addEventListener('resize', fecharMenus);
   function csvSerializar(linhas, separador = ';') {
     return linhas.map(l => l.map(v => {
       const s = v == null ? '' : String(v);
@@ -274,5 +394,5 @@ const UI = (() => {
   }
 
   return { esc, fmtNum, fmtPct, fmtKm, fmtDataHora, fmtData, rotuloTipo, badgeTipo, debounce, toast, modal, confirmar, linksBuscaCandidatos, modalBuscaCandidatos,
-    autocompleteCidade, csvSerializar, baixarArquivo, baixarCSV, csvParse, lerArquivo, tabela, opcoesUF };
+    autocompleteCidade, sugestoes, avatar, abrirMenu, fecharMenus, reduzirImagem, csvSerializar, baixarArquivo, baixarCSV, csvParse, lerArquivo, tabela, opcoesUF };
 })();

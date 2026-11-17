@@ -9,7 +9,20 @@ const Malha = (() => {
   const prontas = new Map(); // uf -> dados já carregados (para consultas imediatas)
 
   // ---------- cache no IndexedDB (não ocupa o espaço limitado do localStorage) ----------
+  // A conexão é aberta uma vez e reaproveitada (antes abria uma nova a cada leitura/gravação).
+  let promessaDB = null;
   function abrirDB() {
+    if (!promessaDB) {
+      promessaDB = abrirDBNova().then(db => {
+        if (!db) { promessaDB = null; return null; } // falhou: tenta de novo na próxima vez
+        db.onversionchange = () => { try { db.close(); } catch (e) { /* ignora */ } promessaDB = null; };
+        db.onclose = () => { promessaDB = null; };
+        return db;
+      });
+    }
+    return promessaDB;
+  }
+  function abrirDBNova() {
     return new Promise(resolve => {
       if (!window.indexedDB) return resolve(null);
       let req;
@@ -110,8 +123,15 @@ const Malha = (() => {
     const n = Store.normalizar(c.nome);
     return dadosUF.codigos.get(n) || dadosUF.compactos.get(n.replace(/\s+/g, '')) || null;
   }
+  // Procura primeiro pelo código IBGE da cidade; se não houver (ou não estiver na malha), tenta pelo nome
   function featureDaCidade(c, dadosUF) {
-    const cod = codigoDaCidade(c, dadosUF);
+    if (!c || !dadosUF) return null;
+    if (c.ibge) {
+      const f = dadosUF.features.get(String(c.ibge));
+      if (f) return f;
+    }
+    const n = Store.normalizar(c.nome);
+    const cod = dadosUF.codigos.get(n) || dadosUF.compactos.get(n.replace(/\s+/g, ''));
     return cod ? dadosUF.features.get(cod) || null : null;
   }
 

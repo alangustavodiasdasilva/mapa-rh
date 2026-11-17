@@ -51,7 +51,8 @@ Paginas.projetos = {
           const p = Store.projeto(id);
           const qtd = Store.registros().filter(r => r.projetoId === id).length;
           if (await UI.confirmar(`Excluir o projeto "${p.nome}" e suas ${qtd} contratação(ões)? Esta ação não pode ser desfeita.`, { textoOk: 'Excluir tudo', perigo: true })) {
-            Store.excluirProjeto(id, App.usuario); UI.toast('Projeto excluído.', 'sucesso'); App.atualizarFiltroProjetos(); renderLista();
+            try { Store.excluirProjeto(id, App.usuario); UI.toast('Projeto excluído.', 'sucesso'); App.atualizarFiltroProjetos(); renderLista(); }
+            catch (e) { UI.toast(e.message, 'erro', 7000); }
           }
         });
       });

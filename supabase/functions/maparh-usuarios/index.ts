@@ -2,13 +2,16 @@
 // Ações: status | primeiro | criar | atualizar | excluir | incluirProjeto
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+// só o site publicado e o endereço de teste local chamam esta função
+const ORIGENS = ["https://alangustavodiasdasilva.github.io", "http://localhost:8791", "http://127.0.0.1:8791"];
+let cors: Record<string, string> = {};
+const montarCors = (req: Request) => {
+  const o = req.headers.get("Origin") ?? "";
+  cors = { "Access-Control-Allow-Origin": ORIGENS.includes(o) ? o : ORIGENS[0], "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 };
 const json = (o: unknown) => new Response(JSON.stringify(o), { headers: { ...cors, "Content-Type": "application/json" } });
-const PERFIS = ["admin", "gestor", "leitor"];
+const PERFIS = ["admin", "gestor", "analista", "leitor"];
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
@@ -38,6 +41,7 @@ async function adminsAtivos(excetoId = "") {
 }
 
 Deno.serve(async (req) => {
+  montarCors(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
     const d = await req.json();
@@ -60,9 +64,14 @@ Deno.serve(async (req) => {
     const { data: eu } = await sb.from("maparh_membros").select("*").eq("user_id", quem.user.id).maybeSingle();
     if (!eu || !eu.ativo) throw new Error("Seu usuário não tem acesso ao Mapa RH.");
 
-    if (d.acao === "incluirProjeto") { // gestor que cria um projeto passa a enxergá-lo
-      if (eu.projetos && d.projetoId && !eu.projetos.includes(String(d.projetoId))) {
-        await sb.from("maparh_membros").update({ projetos: [...eu.projetos, String(d.projetoId)] }).eq("user_id", eu.user_id);
+    if (d.acao === "incluirProjeto") { // gestor restrito que CRIA um projeto novo passa a enxergá-lo (projeto que já existe, não)
+      if (eu.perfil !== "gestor") throw new Error("Só um gestor pode criar projeto por aqui.");
+      const pid = String(d.projetoId ?? "");
+      if (!/^[a-z0-9]{6,30}$/i.test(pid)) throw new Error("Projeto inválido.");
+      const { data: existe } = await sb.from("maparh_itens").select("id").eq("colecao", "projetos").eq("id", pid).maybeSingle();
+      if (existe) throw new Error("Este projeto já existe: peça acesso ao administrador.");
+      if (eu.projetos && !eu.projetos.includes(pid)) {
+        await sb.from("maparh_membros").update({ projetos: [...eu.projetos, pid] }).eq("user_id", eu.user_id);
       }
       return json({ ok: true });
     }
@@ -76,7 +85,7 @@ Deno.serve(async (req) => {
     if (d.acao === "atualizar") {
       const { data: alvo } = await sb.from("maparh_membros").select("*").eq("user_id", d.id).maybeSingle();
       if (!alvo) throw new Error("Usuário não encontrado.");
-      const v = validar({ ...d, login: d.login || alvo.login }, { senhaObrigatoria: false });
+      const v = validar({ ...d, login: d.login || alvo.login, projetos: d.projetos === undefined ? alvo.projetos : d.projetos }, { senhaObrigatoria: false });
       if (alvo.perfil === "admin" && alvo.ativo && (v.perfil !== "admin" || !v.ativo) && (await adminsAtivos(alvo.user_id)) === 0) throw new Error("É preciso manter ao menos um administrador ativo.");
       const auth: Record<string, unknown> = { user_metadata: { nome: v.nome, login: v.login } };
       if (v.login !== alvo.login) { auth.email = emailDe(v.login); auth.email_confirm = true; }

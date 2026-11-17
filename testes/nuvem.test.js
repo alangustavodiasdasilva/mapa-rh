@@ -6,7 +6,7 @@ const dormir = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- banco de mentira ----------
 const tabela = new Map(); let relogio = Date.parse('2026-11-16T12:00:00Z'); const membros = [];
-let falharRede = false;
+let falharRede = false, insertsDuplicados = 0;
 const embaralhar = o => (o && typeof o === 'object' && !Array.isArray(o)) ? Object.fromEntries(Object.keys(o).sort().reverse().map(k => [k, embaralhar(o[k])])) : Array.isArray(o) ? o.map(embaralhar) : o;
 function consulta(nome, quem) {
   const f = []; let op = 'select', carga = null, lim = null, faixa = null, ordem = [];
@@ -14,18 +14,24 @@ function consulta(nome, quem) {
     select() { return q; }, neq(c, v) { f.push(r => r[c] !== v); return q; }, eq(c, v) { f.push(r => r[c] === v); return q; },
     gte(c, v) { f.push(r => r[c] >= v); return q; }, order(c, o) { ordem.push([c, o && o.ascending === false ? -1 : 1]); return q; },
     range(a, b) { faixa = [a, b]; return q; }, limit(n) { lim = n; return q; },
-    upsert(linhas) { op = 'upsert'; carga = linhas; return q; }, delete() { op = 'delete'; return q; },
+    upsert(linhas) { op = 'upsert'; carga = linhas; return q; }, insert(linhas) { op = 'insert'; carga = linhas; return q; }, delete() { op = 'delete'; return q; },
     then(ok, erro) { return exec().then(ok, erro); }
   };
   async function exec() {
     if (falharRede) return { data: null, error: { message: 'rede caiu' } };
     if (nome === 'maparh_membros') return { data: membros.map(m => ({ ...m })), error: null };
+    // como no banco: auditoria só se insere; repetida dá 23505 (o lote inteiro falha)
+    if (op === 'insert') {
+      if (carga.some(l => tabela.has(l.colecao + '/' + l.id))) { insertsDuplicados++; return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }; }
+      op = 'upsert';
+    }
     if (op === 'upsert') {
+      if (carga.some(l => l.colecao === 'auditoria' && tabela.has(l.colecao + '/' + l.id))) return { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
       if (quem.perfil === 'leitor' && carga.some(l => l.colecao !== 'auditoria')) return { data: null, error: { message: 'RLS' } };
       for (const l of carga) { relogio += 1000; tabela.set(l.colecao + '/' + l.id, { ...l, dados: embaralhar(JSON.parse(JSON.stringify(l.dados))), atualizado_em: new Date(relogio).toISOString() }); }
       return { data: null, error: null };
     }
-    let linhas = [...tabela.values()].filter(r => f.every(fn => fn(r)));
+    let linhas = [...tabela.values()].filter(r => f.every(fn => fn(r)) && (op === 'delete' || r.colecao !== 'auditoria' || quem.perfil === 'admin'));
     if (op === 'delete') { linhas.forEach(r => tabela.delete(r.colecao + '/' + r.id)); return { data: null, error: null }; }
     linhas.sort((a, b) => { for (const [c, s] of ordem) { if (a[c] < b[c]) return -s; if (a[c] > b[c]) return s; } return 0; });
     if (faixa) linhas = linhas.slice(faixa[0], faixa[1] + 1);
@@ -38,6 +44,8 @@ function consulta(nome, quem) {
 // ---------- um "navegador" ----------
 function navegador(usuarioId, { confirmar = true } = {}) {
   const guarda = new Map(); const avisos = []; const baixados = [];
+  // quem abre a página já logado tem a sessão do sistema válida (sem ela, a sessão do banco é encerrada)
+  guarda.set('maparh:sessao', JSON.stringify({ usuarioId, expira: Date.now() + 3600e3 }));
   const quem = membros.find(m => m.user_id === usuarioId);
   const ctx = {
     console, setTimeout, clearTimeout, setInterval: () => 0, clearInterval: () => {}, Date, JSON, Math, Object, Array, Map, Set, String, Number, Promise, Error, parseInt, parseFloat, isNaN, encodeURIComponent,
@@ -117,6 +125,13 @@ const cidade = (S, n, uf) => { S.salvarCidade({ nome: n, uf, lat: -28, lng: -51,
   C.Store.salvarConfig({ googleKey: 'x' }, uC); await dormir(1300);
   conferir('leitor recebeu os dados', C.Store.projetos().length === 2);
   conferir('leitor não enfileira gravação que o banco recusaria (só auditoria)', C.Nuvem.pendentes === 0 && !(tabela.get('meta/config') && tabela.get('meta/config').dados.googleKey), 'pend=' + C.Nuvem.pendentes);
+  // auditoria que já está no banco (o leitor não consegue ler): reenviar não pode virar aviso em loop
+  const avisosAntes = C.avisos.length, dupAntes = insertsDuplicados;
+  C.Store.auditar('teste.dup', 'repetida', uC);
+  const ultima = C.Store.dados.auditoria[C.Store.dados.auditoria.length - 1];
+  tabela.set('auditoria/' + ultima.id, { colecao: 'auditoria', id: ultima.id, dados: { ...ultima }, removido: false, atualizado_em: new Date(relogio += 1000).toISOString() });
+  await dormir(3500);
+  conferir('auditoria repetida conta como enviada (sem aviso em loop)', insertsDuplicados - dupAntes === 1 && C.Nuvem.pendentes === 0 && !C.avisos.slice(avisosAntes).some(a => /não foi gravada|não foram gravadas/.test(String(a))), `dup=${insertsDuplicados - dupAntes} pend=${C.Nuvem.pendentes} avisos=${JSON.stringify(C.avisos.slice(avisosAntes))}`);
 
   // 7) outro navegador com dados locais próprios entra na nuvem já populada: junta (sem contratações)
   const D = navegador('u-gestor', { confirmar: true }); D.Store.init();

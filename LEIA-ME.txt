@@ -33,6 +33,13 @@ O menu segue a ordem do trabalho:
                    para marcar conforme entrega. Ao ADMITIR, a contratação é criada
                    sozinha no projeto da vaga (de onde vem -> onde trabalha) e aparece
                    em Contratações, no Mapa e nos Relatórios. Voltar a etapa desfaz.
+    Candidatos -> fluxo único (triagem, entrevista, documentação, admissão); substitui a planilha da semana. Uma linha por pessoa: dinâmica, ASO,
+                   treinamento, data e horário de chegada, analista. A pessoa é única pelo
+                   CPF (o sistema avisa se ela já passou pela empresa). "Importar planilha"
+                   lê o modelo SEMANA, mostra o que tem erro antes de gravar e permite
+                   desfazer a importação inteira. "Admitir" cria a contratação no mapa.
+                   Tem dados pessoais: só o administrador vê, ou quem ele liberar em
+                   Usuários e acesso ("Acessa Candidatos").
   CONTRATAÇÕES
     Contratações -> a lista/planilha de quem já foi contratado (importação em lote).
     Mapa, Relatórios -> acompanhamento.

@@ -5,7 +5,7 @@ Paginas.mapa = {
       <div class="mapa-wrap">
         <div id="mapa"></div>
         <div class="card mapa-controles nao-imprimir" id="controles">
-          <div class="painel-cab"><b>Mostrar no mapa</b><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></div>
+          <div class="painel-cab"><b>Mostrar no mapa</b><button class="btn-icone painel-toggle" title="Recolher / expandir" aria-label="Recolher ou expandir as opções do mapa" aria-expanded="true">&#8722;</button></div>
           <div class="painel-corpo">
           <p class="muted small" style="margin:0 0 8px">Os filtros do topo escolhem <b>quais contratações</b> entram. Aqui você liga e desliga <b>o que aparece</b>.</p>
           <div style="margin-bottom:8px"><input id="c-busca-cidade" placeholder="Localizar cidade no mapa…" autocomplete="off" style="font-size:12px;padding:5px 8px"></div>
@@ -62,7 +62,7 @@ Paginas.mapa = {
         <div class="malha-status nao-imprimir" id="malha-status" hidden></div>
         <div class="cidade-hover nao-imprimir" id="cidade-hover" hidden></div>
         <div class="mapa-kpis nao-imprimir" id="mapa-kpis"></div>
-        <div class="card mapa-painel" id="painel" hidden></div>
+        <div class="card mapa-painel" id="painel" role="dialog" aria-label="Detalhes da seleção" tabindex="-1" hidden></div>
       </div>`;
 
     if (typeof L === 'undefined') {
@@ -74,6 +74,33 @@ Paginas.mapa = {
     const fluxos = Analise.fluxos(regs);
     const projetos = App.projetosVisiveis().filter(p => !App.filtros.projetoId || p.id === App.filtros.projetoId);
     const COR_ATUACAO = '#1d4ed8', COR_ORIGEM = '#ea580c', COR_HUB = '#7c3aed';
+    // Microrregião / distrito / cor de cada cidade, montado uma vez (Store.corDaCidade percorre tudo a cada chamada)
+    const infoCidade = new Map();
+    for (const d of Store.distritos()) for (const m of (d.micros || [])) for (const id of (m.cidadeIds || [])) {
+      if (!infoCidade.has(id)) infoCidade.set(id, { cor: (m.cor) || d.cor || '#059669', distrito: d, micro: m, polo: m.poloCidadeId === id });
+    }
+    const corDe = id => infoCidade.get(id) || null;
+    // Cidade da base pelo código IBGE (índice montado na primeira consulta)
+    let indiceIbge = null;
+    function cidadePorIbge(cod) {
+      if (!cod) return null;
+      if (!indiceIbge) { indiceIbge = new Map(); for (const c of Store.cidades()) if (c.ibge) indiceIbge.set(String(c.ibge), c); }
+      return indiceIbge.get(String(cod)) || null;
+    }
+    // MÓVEL antigo ("todo o estado"): vale para todos os estados do projeto ("PR/RS/SC"); o ponto fica no meio deles
+    function centroUFs(ufs) {
+      const cs = String(ufs || '').split('/').map(u => Store.UF_CENTRO[u]).filter(Boolean);
+      if (!cs.length) return [-15.5, -52];
+      return [cs.reduce((n, c) => n + c[0], 0) / cs.length, cs.reduce((n, c) => n + c[1], 0) / cs.length];
+    }
+    const nomeUFs = ufs => String(ufs || '').includes('/') ? ufs : (Store.UFS[ufs] || ufs);
+    // Contratações que não entram no mapa porque a cidade não foi reconhecida (só dos projetos/tipo do filtro atual)
+    const qtdSemCidade = (() => {
+      if (typeof Store.registrosDescartados !== 'function') return 0;
+      const visiveis = new Set(App.projetosVisiveis().map(p => p.id));
+      return Store.registrosDescartados().filter(r => r.projeto && visiveis.has(r.projetoId) &&
+        (!App.filtros.projetoId || r.projetoId === App.filtros.projetoId) && (!App.filtros.tipo || r.tipo === App.filtros.tipo)).length;
+    })();
 
     // balão padronizado: título com bolinha colorida, linha de contexto, número e etiquetas LOCAL/MÓVEL
     function balao({ cor, titulo, tipo, sub, total, local, movel, dica }) {
@@ -133,7 +160,7 @@ Paginas.mapa = {
     for (const f of fluxos) {
       if (f.atuacaoMovel) {
         let h = porHub.get(f.uf);
-        if (!h) { const c = Store.UF_CENTRO[f.uf] || [-15.5, -52]; h = { uf: f.uf, lat: c[0], lng: c[1], total: 0, local: 0, movel: 0, fluxos: [], projetos: new Set() }; porHub.set(f.uf, h); }
+        if (!h) { const c = centroUFs(f.uf); h = { uf: f.uf, lat: c[0], lng: c[1], total: 0, local: 0, movel: 0, fluxos: [], projetos: new Set() }; porHub.set(f.uf, h); }
         h.total += f.total; h.local += f.local; h.movel += f.movel; h.fluxos.push(f); h.projetos.add(f.projeto.id);
       } else {
         let a = porAtuacao.get(f.cidadeAtuacao.id);
@@ -182,13 +209,13 @@ Paginas.mapa = {
     for (const f of fluxos) {
       const destino = f.atuacaoMovel ? porHub.get(f.uf) : f.cidadeAtuacao;
       if (!f.atuacaoMovel && f.cidadeAtuacao.id === f.cidadeOrigem.id) continue;
-      const infoCor = f.cidadeAtuacao ? Store.corDaCidade(f.cidadeAtuacao.id) : null;
+      const infoCor = f.cidadeAtuacao ? corDe(f.cidadeAtuacao.id) : null;
       const corLinha = f.projeto.cor || COR_ATUACAO;
       const rotuloDistrito = infoCor ? ` (${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''})` : '';
       const linha = L.polyline(curva(destino, f.cidadeOrigem), {
         color: corLinha, weight: 1.5 + Math.log2(f.total + 1) * 1.2, opacity: 0.65, dashArray: f.atuacaoMovel ? '6 6' : null,
         renderer: rendLinhas, bubblingMouseEvents: false
-      }).bindTooltip(`<b>${UI.esc(f.projeto.nome)}</b><br>Vêm de <b>${UI.esc(f.cidadeOrigem.nome)}/${f.cidadeOrigem.uf}</b> ➜ trabalham em <b>${UI.esc(Analise.rotuloAtuacao(f))}</b>${rotuloDistrito}<br>${f.total} contratação(ões) · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}<br><span class="muted small">clique na linha para ver o trajeto</span>`, { sticky: true });
+      }).bindTooltip(`<b>${UI.esc(f.projeto.nome)}</b><br>Vêm de <b>${UI.esc(f.cidadeOrigem.nome)}/${f.cidadeOrigem.uf}</b> ➜ ${f.base && f.base === f.total ? 'base de contratação em' : 'trabalham em'} <b>${UI.esc(Analise.rotuloAtuacao(f))}</b>${rotuloDistrito}${f.base && f.base < f.total ? ` · ${f.base} com base de contratação aqui` : ''}<br>${f.total} contratação(ões) · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}<br><span class="muted small">clique na linha para ver o trajeto</span>`, { sticky: true });
       linha._fluxo = f; linha._destino = destino;
       linha.on('click', () => abrirPainelFluxo(f, linha));
       todasLinhas.push(linha);
@@ -267,13 +294,12 @@ Paginas.mapa = {
         if (s) camadas.setas.addLayer(s);
       });
     }
-    mapa.on('zoomend', atualizarSetas);
     aplicarModoLinhas(); atualizarAvisoLinhas();
 
     // ---------- marcadores de origem: agrupados conforme o zoom ----------
     // Cidades de origem que ficariam sobrepostas no zoom atual viram uma única bolha com o total;
     // ao aproximar o zoom elas se separam. A bolha fica sobre a cidade com mais contratações do grupo.
-    // Ordem de empilhamento: malha (350) < unidades PDR (410) < cidades de atuação (430) < bolhas de origem (440) < nomes das microrregiões (450)
+    // Ordem de empilhamento: malha (350) < unidades PDR (410) < cidades de atuação (430) < nomes das microrregiões (435) < bolhas de origem (440)
     mapa.createPane('silos').style.zIndex = 410;
     mapa.createPane('atuacao').style.zIndex = 430;
     mapa.createPane('origens').style.zIndex = 440;
@@ -305,7 +331,15 @@ Paginas.mapa = {
     function selecionarOrigem(g) { abrirPainelOrigem(g); destacarLinhas(linhasPorChave.get('O:' + g.cidade.id) || []); }
     function selecionarAtuacao(a) { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); }
     const COR_CLASSES = ['#fed7aa', '#fdba74', '#fb923c', '#ea580c', '#9a3412'];
-    let cortesCoropleto = [];
+    // Faixas dos "municípios pintados": calculadas uma vez com TODAS as origens (não mudam ao selecionar uma cidade).
+    // Cortes iguais ao maior valor são descartados para não sobrar faixa vazia na legenda.
+    const totaisOrigem = [...porOrigem.values()].map(g => g.total).sort((a, b) => a - b);
+    const minOrigem = totaisOrigem.length ? totaisOrigem[0] : 1, maxOrigem = totaisOrigem.length ? totaisOrigem[totaisOrigem.length - 1] : 1;
+    const cortesCoropleto = (() => {
+      if (!totaisOrigem.length) return [];
+      const q = f => totaisOrigem[Math.min(totaisOrigem.length - 1, Math.floor(f * totaisOrigem.length))];
+      return [...new Set([q(0.2), q(0.4), q(0.6), q(0.8)])].filter(c => c >= minOrigem && c < maxOrigem);
+    })();
     function classeDe(n) { let k = 0; for (const c of cortesCoropleto) if (n > c) k++; return Math.min(k, COR_CLASSES.length - 1); }
     mapa.createPane('coropleto').style.zIndex = 360;
     let versaoCoropleto = 0;
@@ -314,10 +348,6 @@ Paginas.mapa = {
       const versao = ++versaoCoropleto;
       const origens = [...porOrigem.values()].filter(g => !foco || foco.has(g.cidade.id));
       if (!origens.length) return;
-      const totais = origens.map(g => g.total).sort((a, b) => a - b);
-      const q = f => totais[Math.min(totais.length - 1, Math.floor(f * totais.length))];
-      cortesCoropleto = [...new Set([q(0.2), q(0.4), q(0.6), q(0.8)])];
-      atualizarLegendaOrigens();
       const porUF = new Map();
       origens.forEach(g => { if (!porUF.has(g.cidade.uf)) porUF.set(g.cidade.uf, []); porUF.get(g.cidade.uf).push(g); });
       for (const [uf, lista] of porUF) {
@@ -351,7 +381,9 @@ Paginas.mapa = {
     function saidasDe(g) {
       const fica = g.fluxos.filter(f => !f.atuacaoMovel && f.cidadeAtuacao.id === g.cidade.id);
       const proprias = fica.reduce((n, f) => n + f.total, 0);
-      return { proprias, foram: g.total - proprias, ficaLocal: fica.reduce((n, f) => n + f.local, 0), ficaMovel: fica.reduce((n, f) => n + f.movel, 0), destinos: g.fluxos.length - fica.length };
+      // destinos = cidades distintas (um fluxo é projeto + atuação + origem: dois projetos na mesma cidade contam uma vez)
+      const destinos = new Set(g.fluxos.filter(f => !fica.includes(f)).map(f => f.atuacaoMovel ? 'H:' + f.uf : f.cidadeAtuacao.id)).size;
+      return { proprias, foram: g.total - proprias, ficaLocal: fica.reduce((n, f) => n + f.local, 0), ficaMovel: fica.reduce((n, f) => n + f.movel, 0), destinos };
     }
     function resumoDestinos(g) {
       const s = saidasDe(g);
@@ -362,7 +394,7 @@ Paginas.mapa = {
       const s = saidasDe(g);
       const r = Math.round(raioOrigem(g.total));
       const d = deslocamentoOrigem(g.cidade.id, r);
-      const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${d ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${g.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - d, r] });
+      const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${d ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 10}px">${g.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - d, r] });
       const tip = balao({ cor: COR_ORIGEM, titulo: `${UI.esc(g.cidade.nome)}/${g.cidade.uf}`, tipo: 'são daqui', sub: resumoDestinos(g), total: g.total, local: g.local, movel: g.movel, dica: 'clique para ver quem são e onde trabalham' });
       const m = L.marker([g.cidade.lat, g.cidade.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [0, -r - 2] });
       m.on('click', () => selecionarOrigem(g));
@@ -389,7 +421,7 @@ Paginas.mapa = {
         if (!varias) { desenharBolhasCidade(gr.itens[0]); continue; }
         const r = Math.round(raioOrigem(gr.total));
         const desloc = deslocamentoOrigem(gr.cidade.id, r); // evita cobrir o losango da cidade de atuação
-        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 9}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r] });
+        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="bolha-origem${varias ? ' varias' : ''}${desloc ? ' encostada' : ''}" style="width:${2 * r}px;height:${2 * r}px;line-height:${2 * r - 3}px;font-size:${r >= 12 ? 11 : 10}px">${gr.total}</div>`, iconSize: [2 * r, 2 * r], iconAnchor: [r - desloc, r] });
         const tip = varias
           ? balao({ cor: COR_ORIGEM, titulo: `${gr.itens.length} cidades de origem`, tipo: 'de onde vêm · agrupadas', sub: gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)}/${g.cidade.uf} (${g.total})`).join(' · ') + (gr.itens.length > 5 ? ' …' : ''), total: gr.total, local: gr.local, movel: gr.movel, dica: 'aproxime o zoom para separar · clique para ver a lista' })
           : balao({ cor: COR_ORIGEM, titulo: `${UI.esc(gr.cidade.nome)}/${gr.cidade.uf}`, tipo: 'de onde vêm', sub: resumoDestinos(gr.itens[0]), total: gr.total, local: gr.local, movel: gr.movel, dica: 'clique para ver para onde foram' });
@@ -398,14 +430,13 @@ Paginas.mapa = {
         camadas.origens.addLayer(m);
       }
     }
-    mapa.on('zoomend', () => { if (estilo === 'bolhas') desenharOrigens(); });
     desenharOrigens();
 
     const marcadoresHub = new Map(), marcadoresAtuacao = new Map();
     for (const h of porHub.values()) {
       pontos.push([h.lat, h.lng]); pontosFoco.push([h.lat, h.lng]);
       const m = L.circleMarker([h.lat, h.lng], { pane: 'atuacao', radius: raioAtuacao(h.total), color: COR_HUB, weight: 2, dashArray: '4 3', fillColor: COR_HUB, fillOpacity: 0.35 })
-        .bindTooltip(balao({ cor: COR_HUB, titulo: `${h.uf} — ${UI.esc(Store.UFS[h.uf] || h.uf)}`, tipo: 'atuação móvel', sub: 'podem atuar em qualquer lugar do estado', total: h.total, local: h.local, movel: h.movel }), TT);
+        .bindTooltip(balao({ cor: COR_HUB, titulo: `Sem cidade definida — ${UI.esc(nomeUFs(h.uf))}`, tipo: 'todo o estado', sub: `cadastro antigo (MÓVEL): podem atuar em qualquer lugar de ${UI.esc(h.uf)}`, total: h.total, local: h.local, movel: h.movel }), TT);
       m.on('click', e => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e); abrirPainelHub(h); destacarLinhas(linhasPorChave.get('H:' + h.uf) || []); });
       m._total = h.total;
       marcadoresHub.set('H:' + h.uf, m);
@@ -413,14 +444,14 @@ Paginas.mapa = {
     }
     for (const a of porAtuacao.values()) {
       pontos.push([a.cidade.lat, a.cidade.lng]); pontosFoco.push([a.cidade.lat, a.cidade.lng]);
-      const infoCor = Store.corDaCidade(a.cidade.id);
-      const corMarcador = COR_ATUACAO;
-      const rotuloDist = infoCor ? `<br><span class="muted small">${UI.esc(infoCor.distrito.nome)}${infoCor.micro ? ' · ' + UI.esc(infoCor.micro.nome) : ''}</span>` : '';
+      const infoCor = corDe(a.cidade.id);
       const m = L.marker([a.cidade.lat, a.cidade.lng], { icon: iconeAtuacao(a.total), pane: 'atuacao', keyboard: false })
         .bindTooltip(() => {
           const proprias = a.fluxos.filter(f => f.cidadeOrigem.id === a.cidade.id).reduce((n, f) => n + f.total, 0);
-          return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: 'trabalham aqui',
-            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias ? `${a.total - proprias} vieram de ${a.fluxos.length - (proprias ? 1 : 0)} outra(s) cidade(s)` : ''}${a.total - proprias && proprias ? ' · ' : ''}${proprias ? `${proprias} são daqui mesmo` : ''}`,
+          const outras = new Set(a.fluxos.map(f => f.cidadeOrigem.id).filter(id => id !== a.cidade.id)).size; // cidades distintas
+          const base = a.fluxos.reduce((n, f) => n + (f.base || 0), 0);
+          return balao({ cor: COR_ATUACAO, titulo: `${UI.esc(a.cidade.nome)}/${a.cidade.uf}`, tipo: base === a.total ? 'base de contratação' : 'trabalham aqui',
+            sub: `${infoCor ? `${UI.esc(infoCor.micro.nome)} · ${UI.esc(infoCor.distrito.nome)} · ` : ''}${a.total - proprias ? `${a.total - proprias} vieram de ${outras} outra(s) cidade(s)` : ''}${a.total - proprias && proprias ? ' · ' : ''}${proprias ? `${proprias} são daqui mesmo` : ''}${base && base < a.total ? ` · ${base} com base de contratação aqui` : ''}`,
             total: a.total, local: a.local, movel: a.movel, dica: 'clique para ver quem são e de onde vêm' });
         }, { ...TT, offset: [0, -ladoAtuacao(a.total) * 0.71 - 4] });
       m.on('click', () => { abrirPainelAtuacao(a); destacarLinhas(linhasPorChave.get('A:' + a.cidade.id) || []); });
@@ -444,6 +475,7 @@ Paginas.mapa = {
     const polysMalha = []; // { poly, cidadeId, normal } — para apagar as outras cidades quando uma está selecionada
     const estiloMalha = (cidadeId, normal) => (!foco || foco.has(cidadeId)) ? normal : { ...normal, fillOpacity: 0.08, opacity: 0.25 };
     function aplicarFoco(chaves) {
+      if (!chaves && !foco) return; // já está mostrando tudo: não redesenha
       foco = chaves ? new Set(chaves) : null;
       for (const pm of polysMalha) pm.poly.setStyle(estiloMalha(pm.cidadeId, pm.normal));
       if (typeof ajustarRotulos === 'function') ajustarRotulos();
@@ -465,7 +497,7 @@ Paginas.mapa = {
     // ---------- distritos e microrregiões (malha dos municípios do IBGE) ----------
     // Os polígonos ficam em um "pane" próprio, abaixo dos marcadores, para nunca cobrirem as bolhas de atuação/origem.
     mapa.createPane('malha').style.zIndex = 350;
-    mapa.createPane('rotulos').style.zIndex = 405; // abaixo das unidades e dos losangos: o nome da micro não cobre nada
+    mapa.createPane('rotulos').style.zIndex = 435; // acima das unidades e dos losangos (o nome fica abaixo do losango e legível), abaixo das bolhas
     // com filtro de distrito/microrregião no topo, a malha e a legenda mostram só a região filtrada
     const regiaoFiltro = App.regiaoFiltrada();
     const distritos = App.distritosFiltrados().filter(d => !regiaoFiltro.distrito || d.id === regiaoFiltro.distrito.id)
@@ -478,20 +510,22 @@ Paginas.mapa = {
       mapa.getContainer().classList.toggle('mapa-longe', mapa.getZoom() < 9);
       // com uma cidade selecionada ficam só os rótulos da microrregião dela (os totais de distrito somem)
       const noFoco = r => !foco || (!r.distrito && (r.cidadeIds || []).some(id => foco.has(id)));
+      // 1) escreve: mostra os candidatos e esconde os fora do foco
       for (const r of rotulosMapa.filter(r => r.marcador._icon && !noFoco(r))) r.marcador._icon.style.display = 'none';
-      const itens = rotulosMapa.filter(r => r.marcador._icon && noFoco(r));
+      const itens = rotulosMapa.filter(r => r.marcador._icon && noFoco(r)).sort((a, b) => b.prioridade - a.prioridade);
       for (const r of itens) r.marcador._icon.style.display = '';
-      const aceitos = [];
-      for (const r of itens.sort((a, b) => b.prioridade - a.prioridade)) {
-        const span = r.marcador._icon.firstElementChild;
-        if (!span) continue;
-        const b = span.getBoundingClientRect();
-        const caixa = [b.left - 3, b.top - 2, b.right + 3, b.bottom + 2];
-        if (aceitos.some(c => caixa[0] < c[2] && caixa[2] > c[0] && caixa[1] < c[3] && caixa[3] > c[1])) r.marcador._icon.style.display = 'none';
+      // 2) lê todas as caixas de uma vez (um único cálculo de layout)
+      const caixas = itens.map(r => { const span = r.marcador._icon.firstElementChild; if (!span) return null; const b = span.getBoundingClientRect(); return [b.left - 3, b.top - 2, b.right + 3, b.bottom + 2]; });
+      // 3) decide e escreve
+      const aceitos = [], esconder = [];
+      itens.forEach((r, i) => {
+        const caixa = caixas[i];
+        if (!caixa) return;
+        if (aceitos.some(c => caixa[0] < c[2] && caixa[2] > c[0] && caixa[1] < c[3] && caixa[3] > c[1])) esconder.push(r);
         else aceitos.push(caixa);
-      }
+      });
+      for (const r of esconder) r.marcador._icon.style.display = 'none';
     }
-    mapa.on('zoomend', ajustarRotulos);
     const cidadesDaMicro = m => (m.cidadeIds || []).map(id => Store.cidade(id)).filter(Boolean);
     function limitesDe(cidades) {
       const pts = cidades.map(c => [c.lat, c.lng]);
@@ -503,7 +537,7 @@ Paginas.mapa = {
     const totaisMicro = new Map(), totaisDistrito = new Map();
     for (const r of regs) {
       if (!r.cidadeAtuacao) continue;
-      const info = Store.corDaCidade(r.cidadeAtuacao.id);
+      const info = corDe(r.cidadeAtuacao.id);
       if (!info || !info.micro) continue;
       totaisMicro.set(info.micro.id, (totaisMicro.get(info.micro.id) || 0) + 1);
       totaisDistrito.set(info.distrito.id, (totaisDistrito.get(info.distrito.id) || 0) + 1);
@@ -564,9 +598,13 @@ Paginas.mapa = {
           const f = dadosUF ? Malha.featureDaCidade(it.cidade, dadosUF) : null;
           const tooltip = balao({ cor: it.cor, titulo: `${it.polo ? '👑 ' : ''}${UI.esc(it.cidade.nome)}/${it.cidade.uf}`, sub: `${UI.esc(it.micro.nome)} (${UI.fmtNum(totaisMicro.get(it.micro.id) || 0)} contratações) · distrito ${UI.esc(it.distrito.nome)} (${UI.fmtNum(totaisDistrito.get(it.distrito.id) || 0)})` });
           if (!f) {
-            // sem limite oficial (sem internet ou nome diferente do IBGE): mostra um círculo no lugar
+            // sem contorno oficial (sem internet ou cidade não achada na malha do IBGE): mostra um círculo tracejado no lugar
             semMalha++;
-            camadas.distritos.addLayer(L.circleMarker([it.cidade.lat, it.cidade.lng], { pane: 'malha', radius: 10, color: '#fff', weight: 1.5, fillColor: it.cor, fillOpacity: 0.8 }).bindTooltip(tooltip, { ...TT, sticky: true }));
+            const tipSemContorno = balao({ cor: it.cor, titulo: `${it.polo ? '👑 ' : ''}${UI.esc(it.cidade.nome)}/${it.cidade.uf}`, tipo: 'município sem contorno do IBGE',
+              sub: `${UI.esc(it.micro.nome)} (${UI.fmtNum(totaisMicro.get(it.micro.id) || 0)} contratações) · distrito ${UI.esc(it.distrito.nome)}`, dica: 'o círculo marca o centro da cidade · clique para abrir a ficha' });
+            const circ = L.circleMarker([it.cidade.lat, it.cidade.lng], { pane: 'malha', radius: 9, color: '#0f172a', weight: 1.5, dashArray: '3 2', fillColor: it.cor, fillOpacity: 0.75 }).bindTooltip(tipSemContorno, TT);
+            circ.on('click', e => { L.DomEvent.stopPropagation(e); abrirPainelCidade(it.cidade, {}); });
+            camadas.distritos.addLayer(circ);
             continue;
           }
           const normal = { color: '#fff', weight: 1, opacity: 0.9, fillColor: it.cor, fillOpacity: 0.72 };
@@ -578,29 +616,15 @@ Paginas.mapa = {
           camadas.distritos.addLayer(poly);
         }
       }
-      if (ufsSemMalha === porUF.size) definirStatus('Limites dos municípios indisponíveis (sem internet?). Mostrando as cidades como pontos.');
-      else if (semMalha) definirStatus(`${semMalha} município(s) sem limite na malha do IBGE — mostrados como ponto.`);
+      if (ufsSemMalha === porUF.size) definirStatus('Limites dos municípios indisponíveis (sem internet?). Mostrando as cidades como círculos.');
+      else if (semMalha) definirStatus(`${semMalha} município(s) sem contorno do IBGE — mostrados como círculo.`);
       else definirStatus('');
+      const avisoCirculo = el.querySelector('#legenda-sem-contorno');
+      if (avisoCirculo) avisoCirculo.hidden = !semMalha;
       if (statusMalha.textContent) setTimeout(() => { if (ativo) definirStatus(''); }, 8000);
     }
     desenharDistritos();
 
-    // "Aproximar de…": distritos e microrregiões (mantido só se o elemento existir)
-    const selFoco = el.querySelector('#c-foco');
-    if (selFoco && distritos.length) {
-      selFoco.style.display = '';
-      selFoco.innerHTML = '<option value="">Aproximar de…</option>' + Store.distritos().map(d =>
-        `<optgroup label="${UI.esc(d.nome)}"><option value="d:${d.id}">Distrito ${UI.esc(d.nome)} (todo)</option>` +
-        (d.micros || []).map(m => `<option value="m:${d.id}:${m.id}">&nbsp;&nbsp;${UI.esc(m.nome)}</option>`).join('') + '</optgroup>').join('');
-      selFoco.addEventListener('change', () => {
-        const v = selFoco.value;
-        if (!v) return;
-        const [tipo, did, mid] = v.split(':');
-        const d = Store.distrito(did);
-        if (!d) return;
-        focar(tipo === 'd' ? Store.cidadesDoDistrito(d) : cidadesDaMicro((d.micros || []).find(m => m.id === mid) || {}));
-      });
-    }
 
     // ---------- silos de grãos / PDRs (cor = microrregião da cidade onde a unidade fica) ----------
     const COR_SILO_FORA = '#94a3b8'; // unidade em cidade que não está em nenhuma microrregião
@@ -611,9 +635,16 @@ Paginas.mapa = {
           <path d="M12 4v17" stroke="${fundo}" stroke-width="1.2"/>
         </svg>`;
     }
-    function criarIconeSilo(cor, apagado = false) {
+    function criarIconeSilo(cor) {
       const svg = `<div style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;background:${cor};border:1.5px solid #fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:pointer">${glifoSilo(Store.corTexto(cor), cor, 9)}</div>`;
-      return L.divIcon({ className: 'silo-marcador-div' + (apagado ? ' silo-apagado' : ''), html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
+      return L.divIcon({ className: 'silo-marcador-div', html: svg, iconSize: [14, 14], iconAnchor: [7, 7] });
+    }
+    // microrregião (cor) de cada unidade, calculada uma vez e reaproveitada a cada zoom
+    const cacheMicroSilo = new Map();
+    function microDeSilo(s) {
+      const k = `${s.mapaId}|${s.lat},${s.lng}|${s.nome}|${s.cidade || ''}`;
+      if (!cacheMicroSilo.has(k)) cacheMicroSilo.set(k, Store.microDoSilo(s));
+      return cacheMicroSilo.get(k);
     }
 
     function renderSilos() {
@@ -631,18 +662,18 @@ Paginas.mapa = {
       // unidades muito próximas no zoom atual viram um único marcador com a quantidade
       for (const gr of agruparPorProximidade(silos, s => [s.lat, s.lng], 30)) {
         if (gr.itens.length === 1) { desenharSilo(gr.itens[0]); continue; }
-        const infos = gr.itens.map(s => Store.microDoSilo(s));
+        const infos = gr.itens.map(microDeSilo);
         const contagem = new Map();
         infos.forEach(i => { const k = i ? i.cor : COR_SILO_FORA; contagem.set(k, (contagem.get(k) || 0) + 1); });
         const cor = [...contagem.entries()].sort((a, b) => b[1] - a[1])[0][0]; // cor da microrregião predominante
         const nomes = gr.itens.slice(0, 6).map(s => UI.esc(s.nome)).join('<br>');
-        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div' + (gr.itens.some(siloEmFoco) ? '' : ' silo-apagado'), html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
+        const m = L.marker(gr.latLng, { icon: L.divIcon({ className: 'silo-marcador-div', html: `<div class="silo-grupo" style="background:${cor}">${glifoSilo(Store.corTexto(cor), cor, 10)}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), pane: 'silos', keyboard: false })
           .bindTooltip(balao({ cor, titulo: `🌾 ${gr.itens.length} unidades próximas`, sub: nomes.replace(/<br>/g, ' · ') + (gr.itens.length > 6 ? ' …' : ''), dica: 'clique para aproximar' }), { ...TT, offset: [0, -16] });
         m.on('click', () => mapa.setView(gr.latLng, Math.min(mapa.getZoom() + 2, 14)));
         camadas.silos.addLayer(m);
       }
       function desenharSilo(s) {
-        const info = Store.microDoSilo(s);                     // microrregião da cidade da unidade
+        const info = microDeSilo(s);                           // microrregião da cidade da unidade
         const cor = info ? info.cor : COR_SILO_FORA;
         const microNome = info ? info.micro.nome : (s.micro || '');
         const distNome = info ? info.distrito.nome : (s.distrito || '');
@@ -651,7 +682,7 @@ Paginas.mapa = {
         let linhaMicro = '<div class="muted small">Cidade fora das microrregiões cadastradas</div>';
         if (microNome) linhaMicro = `<div><span class="ponto-cor" style="background:${UI.esc(cor)}"></span>Microrregião: <b>${UI.esc(microNome)}</b>${distNome ? ` <span class="muted">(${UI.esc(distNome)})</span>` : ''}</div>`;
         else if (distNome) linhaMicro = `<div>Distrito: <b>${UI.esc(distNome)}</b></div>`;
-        const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor, !siloEmFoco(s)), pane: 'silos' })
+        const m = L.marker([s.lat, s.lng], { icon: criarIconeSilo(cor), pane: 'silos' })
           .bindTooltip(balao({ cor, titulo: `🌾 ${UI.esc(s.nome)}`, sub: local, dica: 'clique para ver os detalhes' }), { ...TT, offset: [0, -13] })
           .bindPopup(`
             <div style="min-width:220px">
@@ -669,24 +700,30 @@ Paginas.mapa = {
       }
     }
     let silosMedidos = false;
-    mapa.on('zoomend', renderSilos);
 
     // ---------- agências do SINE (camada opcional) ----------
     const camadaSine = L.layerGroup();
     // (re)monta a camada: as bases dos estados (PR, SC…) chegam depois do mapa abrir, então ela é refeita quando carregam
     const ZOOM_MIN_SINE = 9; // afastado demais vira uma nuvem de "S": as agências só aparecem perto
+    // Estado da agência: o campo uf; sem ele (planilha importada sem a coluna), o estado da cidade com esse nome
+    function ufAgencia(a) {
+      if (a.uf) return String(a.uf).toUpperCase();
+      const c = Store.resolverCidade(a.cidade);
+      return c ? c.uf : '';
+    }
+    const cidadeAgencia = a => { const uf = ufAgencia(a); return Store.resolverCidade(a.cidade, uf) || Store.cidadeAproximada(a.cidade, uf); };
     function montarCamadaSine() {
       camadaSine.clearLayers();
       if (mapa.getZoom() < ZOOM_MIN_SINE && !foco) {
-        const ags0 = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS'));
+        const ags0 = Store.agenciasSine().filter(a => App.ufNoFiltro(ufAgencia(a)));
         el.querySelector('#qtd-sine').textContent = ags0.length;
         el.querySelector('#c-sine-wrap').style.display = ags0.length ? '' : 'none';
         el.querySelector('#c-sine-wrap').title = 'Aproxime o zoom para ver as agências (ou clique numa cidade)';
         return;
       }
       // agência sem coordenada (base de SC) fica no centro da cidade
-      const ags = Store.agenciasSine().filter(a => App.ufNoFiltro(a.uf || 'RS')).map(a => {
-        const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS');
+      const ags = Store.agenciasSine().filter(a => App.ufNoFiltro(ufAgencia(a))).map(a => {
+        const c = cidadeAgencia(a);
         if (foco && !(c && foco.has(c.id))) return null; // seleção ativa: só a agência da cidade selecionada
         if (a.lat != null && a.lng != null) return a;
         return c ? { ...a, lat: c.lat, lng: c.lng } : null;
@@ -696,12 +733,11 @@ Paginas.mapa = {
       for (const a of ags) {
         const m = L.marker([a.lat, a.lng], { icon: L.divIcon({ className: 'silo-marcador-div', html: '<div class="sine-marcador">S</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), pane: 'silos', keyboard: false })
           .bindTooltip(balao({ cor: '#0f766e', titulo: `SINE ${UI.esc(a.nome || a.cidade)}`, sub: [a.endereco, (a.telefones || []).join(' · ')].filter(Boolean).map(UI.esc).join('<br>'), dica: 'clique para abrir a ficha da cidade' }), { ...TT, offset: [0, -14] });
-        m.on('click', () => { const c = Store.resolverCidade(a.cidade, a.uf || 'RS') || Store.cidadeAproximada(a.cidade, a.uf || 'RS'); if (c) abrirPainelCidade(c, {}); });
+        m.on('click', () => { const c = cidadeAgencia(a); if (c) abrirPainelCidade(c, {}); });
         camadaSine.addLayer(m);
       }
     }
     montarCamadaSine();
-    mapa.on('zoomend', () => { if (el.querySelector('#c-sine').checked) montarCamadaSine(); });
     el.querySelector('#c-sine').addEventListener('change', e => { if (e.target.checked) { montarCamadaSine(); camadaSine.addTo(mapa); if (mapa.getZoom() < ZOOM_MIN_SINE) UI.toast('Aproxime o zoom para ver as agências do SINE (ou clique numa cidade).', 'info', 3500); } else mapa.removeLayer(camadaSine); });
     Store.carregarBasesSineEmUso().then(() => { if (ativo) montarCamadaSine(); });
 
@@ -731,40 +767,69 @@ Paginas.mapa = {
     });
 
     // ---------- painéis ----------
-    function fecharPainel() { painel.hidden = true; painel.innerHTML = ''; camadaDestaque.clearLayers(); linhasSelecionadas = null; aplicarFoco(null); }
+    // seqPainel muda a cada painel aberto/fechado: tarefas assíncronas de um painel antigo veem que mudou e não escrevem mais nada
+    let seqPainel = 0;
+    const wrapMapa = el.querySelector('.mapa-wrap');
+    function fecharPainel() {
+      seqPainel++;
+      const estavaAberto = !painel.hidden;
+      painel.hidden = true; painel.innerHTML = ''; camadaDestaque.clearLayers();
+      wrapMapa.classList.remove('painel-aberto');
+      const tinhaLinhas = !!linhasSelecionadas;
+      linhasSelecionadas = null;
+      if (foco) aplicarFoco(null); else if (tinhaLinhas) aplicarModoLinhas(); // nada selecionado: não redesenha
+      if (estavaAberto && focoAntesPainel && document.contains(focoAntesPainel)) { try { focoAntesPainel.focus({ preventScroll: true }); } catch (e) { /* ignora */ } }
+      focoAntesPainel = null;
+    }
+    let focoAntesPainel = null;
     function cabecalhoPainel(titulo, sub) {
-      return `<h3><span>${titulo}</span><button class="btn-icone" id="painel-fechar" title="Fechar e mostrar tudo de novo">&times;</button></h3><div class="muted small mb">${sub}</div>` +
+      return `<h3><span>${titulo}</span><button class="btn-icone" id="painel-fechar" title="Fechar e mostrar tudo de novo (Esc)" aria-label="Fechar painel">&times;</button></h3><div class="muted small mb">${sub}</div>` +
         `<div class="painel-foco-aviso small">Mostrando no mapa só o que se liga a esta seleção · <a href="#" id="painel-mostrar-tudo">mostrar tudo</a></div>`;
     }
+    // liga os botões do painel, mostra o painel e passa o foco do teclado para ele; devolve o número desta abertura
     function ligarFechar() {
       painel.querySelector('#painel-fechar').addEventListener('click', fecharPainel);
+      if (painel.hidden) focoAntesPainel = document.activeElement;
       painel.hidden = false;
+      wrapMapa.classList.add('painel-aberto');
+      painel.scrollTop = 0;
+      try { painel.focus({ preventScroll: true }); } catch (e) { /* ignora */ }
       const mt = painel.querySelector('#painel-mostrar-tudo');
-      if (mt) mt.addEventListener('click', e => { e.preventDefault(); linhasSelecionadas = null; aplicarFoco(null); mt.closest('.painel-foco-aviso').remove(); });
+      if (mt) mt.addEventListener('click', e => { e.preventDefault(); linhasSelecionadas = null; if (foco) aplicarFoco(null); else aplicarModoLinhas(); mt.closest('.painel-foco-aviso').remove(); });
+      return ++seqPainel;
     }
+    // Esc fecha o painel (se não houver uma janela aberta por cima)
+    function aoTeclar(e) {
+      if (e.key !== 'Escape' || painel.hidden || document.querySelector('.modal-overlay')) return;
+      fecharPainel();
+    }
+    document.addEventListener('keydown', aoTeclar);
     // ---------- painéis: sempre listam as PESSOAS (uma linha por contratação), para o número do mapa bater com a lista ----------
     const colProjeto = { titulo: 'Projeto', render: f => `<span class="ponto-cor" style="background:${UI.esc(f.projeto.cor)}"></span>${UI.esc(f.projeto.nome)}${f.projeto.ano ? ' <span class="muted small">' + f.projeto.ano + '</span>' : ''}` };
     const badgeTipo = r => UI.badgeTipo(r.tipo);
     const nomeCidade = c => c ? `${UI.esc(c.nome)}/${c.uf}` : '—';
-    const regiaoCurta = id => { const i = Store.corDaCidade(id); return i ? `<span class="muted small"> · ${UI.esc(i.micro.nome)}</span>` : ''; };
-    const rotuloMovel = r => `<span class="badge badge-roxo">MÓVEL · todo o estado ${UI.esc(r.projeto.uf)}</span>`;
+    const regiaoCurta = id => { const i = corDe(id); return i ? `<span class="muted small"> · ${UI.esc(i.micro.nome)}</span>` : ''; };
+    const rotuloMovel = r => `<span class="badge badge-roxo">Sem cidade definida · todo o estado ${UI.esc(Analise.ufsMovel(r.projeto))}</span>`;
+    const seloBase = r => Analise.ehBase(r) ? ' <span class="badge badge-roxo" title="Cadastro MÓVEL: esta é a base de contratação">base de contratação</span>' : '';
     // pessoas por agrupamento (mesma regra usada nos números do mapa)
     const pessoasDeOrigem = cidadeId => regs.filter(r => r.cidadeId === cidadeId);
     const pessoasDeAtuacao = cidadeId => regs.filter(r => !r.atuacaoMovel && r.cidadeAtuacao && r.cidadeAtuacao.id === cidadeId);
-    const pessoasDoHub = uf => regs.filter(r => r.atuacaoMovel && r.projeto.uf === uf);
+    const pessoasDoHub = uf => regs.filter(r => r.atuacaoMovel && Analise.ufsMovel(r.projeto) === uf);
     const pessoasDoFluxo = f => regs.filter(r => r.projetoId === f.projeto.id && r.cidadeId === f.cidadeOrigem.id && (f.atuacaoMovel ? r.atuacaoMovel : (!r.atuacaoMovel && r.cidadeAtuacao && r.cidadeAtuacao.id === f.cidadeAtuacao.id)));
-    // Lista de pessoas: nº, de onde vem, onde trabalha, tipo, distância (+ projeto quando há mais de um)
+    // Lista de pessoas: de onde vem / onde trabalha (numa coluna só, para caber no painel), tipo, distância (+ projeto quando há mais de um)
     function listaPessoas(lista, { origem = true, destino = true, referencia = null, cadastro = false, limite = 300 } = {}) {
       const varios = new Set(lista.map(r => r.projetoId)).size > 1;
       const nome = c => c ? c.nome : '';
       const ordenada = lista.slice().sort((a, b) => nome(a.cidade).localeCompare(nome(b.cidade)) || nome(a.cidadeAtuacao).localeCompare(nome(b.cidadeAtuacao)) || (a.criadoEm || '').localeCompare(b.criadoEm || ''));
-      let n = 0;
+      const txtOrigem = r => `<a href="#" class="p-origem" data-id="${r.cidadeId}" title="Ver todos que são desta cidade">${nomeCidade(r.cidade)}</a>${regiaoCurta(r.cidadeId)}${referencia && r.cidadeId === referencia ? ' <span class="badge badge-azul">daqui mesmo</span>' : ''}${r.foraDoEstado ? ' <span class="badge badge-amarelo">fora do estado</span>' : ''}`;
+      const txtDestino = r => r.atuacaoMovel ? rotuloMovel(r) : `<a href="#" class="p-destino" data-id="${r.cidadeAtuacao.id}" title="Ver todos que trabalham nesta cidade">${nomeCidade(r.cidadeAtuacao)}</a>${regiaoCurta(r.cidadeAtuacao.id)}${referencia && r.cidadeAtuacao.id === referencia ? ' <span class="badge badge-azul">aqui mesmo</span>' : ''}${seloBase(r)}`;
+      const colCidades = origem && destino
+        ? [{ titulo: 'De onde ➜ onde trabalha', render: r => `${txtOrigem(r)} <span class="muted">➜</span> ${txtDestino(r)}` }]
+        : [...(origem ? [{ titulo: 'De onde vem', render: txtOrigem }] : []), ...(destino ? [{ titulo: 'Onde trabalha', render: txtDestino }] : [])];
       return UI.tabela({
         vazio: 'Ninguém no filtro atual.',
         colunas: [
-          { titulo: '#', classe: 'direita', render: () => ++n },
-          ...(origem ? [{ titulo: 'De onde vem', render: r => `<a href="#" class="p-origem" data-id="${r.cidadeId}" title="Ver todos que são desta cidade">${nomeCidade(r.cidade)}</a>${regiaoCurta(r.cidadeId)}${referencia && r.cidadeId === referencia ? ' <span class="badge badge-azul">daqui mesmo</span>' : ''}${r.foraDoEstado ? ' <span class="badge badge-amarelo">fora do estado</span>' : ''}` }] : []),
-          ...(destino ? [{ titulo: 'Onde trabalha', render: r => r.atuacaoMovel ? rotuloMovel(r) : `<a href="#" class="p-destino" data-id="${r.cidadeAtuacao.id}" title="Ver todos que trabalham nesta cidade">${nomeCidade(r.cidadeAtuacao)}</a>${regiaoCurta(r.cidadeAtuacao.id)}${referencia && r.cidadeAtuacao.id === referencia ? ' <span class="badge badge-azul">aqui mesmo</span>' : ''}` }] : []),
+          ...colCidades,
           { titulo: 'Tipo', render: badgeTipo },
           ...(varios ? [colProjeto] : []),
           { titulo: 'Dist.', classe: 'direita', render: r => UI.fmtKm(r.distancia) },
@@ -800,7 +865,7 @@ Paginas.mapa = {
       return UI.tabela({
         vazio: 'Nenhuma contratação para o filtro atual.',
         colunas: [
-          { titulo: 'Onde trabalham', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">MÓVEL · todo o estado ${f.uf}</span>` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}${regiaoCurta(f.cidadeAtuacao.id)}` },
+          { titulo: 'Onde trabalham', render: f => f.atuacaoMovel ? `<span class="badge badge-roxo">Sem cidade definida · todo o estado ${UI.esc(f.uf)}</span>` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}${regiaoCurta(f.cidadeAtuacao.id)}${f.base ? ' <span class="badge badge-roxo">base de contratação</span>' : ''}` },
           ...(new Set(lista.map(f => f.projeto.id)).size > 1 ? [colProjeto] : []),
           { titulo: 'L', classe: 'direita', render: f => f.local },
           { titulo: 'M', classe: 'direita', render: f => f.movel },
@@ -838,8 +903,8 @@ Paginas.mapa = {
     // Ponto roxo: atuação móvel em todo o estado
     function abrirPainelHub(h) {
       const lista = pessoasDoHub(h.uf);
-      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>Atuação móvel em ${UI.esc(Store.UFS[h.uf] || h.uf)}`,
-        `<b>${lista.length}</b> pessoa(s) podem atuar em qualquer lugar do estado · vêm de ${h.fluxos.length} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
+      painel.innerHTML = cabecalhoPainel(`<span class="ponto-cor" style="background:${COR_HUB}"></span>Sem cidade definida — ${UI.esc(nomeUFs(h.uf))}`,
+        `<b>${lista.length}</b> pessoa(s) com cadastro antigo (MÓVEL), sem cidade de trabalho: podem atuar em qualquer lugar de ${UI.esc(h.uf)} · vêm de ${new Set(h.fluxos.map(f => f.cidadeOrigem.id)).size} cidade(s) · ${h.local} local · ${h.movel} móvel`) +
         listaPessoas(lista, { destino: false }) + resumo('Resumo por cidade de origem', tabelaOrigens(h.fluxos, h.total));
       ligarFechar(); ligarListas();
       aplicarFoco(['H:' + h.uf, ...h.fluxos.map(f => f.cidadeOrigem.id)]);
@@ -855,16 +920,16 @@ Paginas.mapa = {
     }
     // Clique em uma linha: quem faz aquele trajeto (de onde vêm ➜ onde trabalham), com as duas pontas enquadradas
     function abrirPainelFluxo(f, linha) {
-      const o = f.cidadeOrigem, infoO = Store.corDaCidade(o.id);
-      const infoA = f.atuacaoMovel ? null : Store.corDaCidade(f.cidadeAtuacao.id);
-      const destNome = f.atuacaoMovel ? `todo o estado ${UI.esc(f.uf)} (móvel)` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}`;
+      const o = f.cidadeOrigem, infoO = corDe(o.id);
+      const infoA = f.atuacaoMovel ? null : corDe(f.cidadeAtuacao.id);
+      const destNome = f.atuacaoMovel ? `todo o estado ${UI.esc(f.uf)} (sem cidade definida)` : `${UI.esc(f.cidadeAtuacao.nome)}/${f.cidadeAtuacao.uf}${f.base ? ' (base de contratação)' : ''}`;
       const regiao = i => i ? `${UI.esc(i.micro.nome)} · distrito ${UI.esc(i.distrito.nome)}` : 'fora das microrregiões cadastradas';
       const lista = pessoasDoFluxo(f);
       painel.innerHTML = cabecalhoPainel(`<span class="legenda-traco" style="color:${UI.esc(linha.options.color)};margin-right:8px"></span>De ${UI.esc(o.nome)} para ${destNome}`,
         `<b>${lista.length}</b> pessoa(s) são de ${UI.esc(o.nome)} e trabalham em ${destNome} · ${f.local} local · ${f.movel} móvel${f.dist != null ? ' · ' + UI.fmtKm(f.dist) : ''}${new Set(regs.map(r => r.projetoId)).size > 1 ? ` · ${UI.esc(f.projeto.nome)}` : ''}`) +
         `<div class="ficha-grade" style="margin-bottom:10px">
           <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
-          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'atuação móvel' : regiao(infoA)}</div></div>
+          <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'cadastro antigo (MÓVEL)' : regiao(infoA)}</div></div>
         </div>
         <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
         listaPessoas(lista, { origem: false, destino: false, cadastro: true });
@@ -885,12 +950,14 @@ Paginas.mapa = {
       perto.sort((a, b) => a[0] - b[0]);
       return [...new Set(perto.slice(0, 10).map(x => x[1]))].slice(0, 4);
     }
-    async function destacarMunicipio(cid, feature) {
+    async function destacarMunicipio(cid, feature, seq) {
       camadaDestaque.clearLayers();
       if (!feature) {
         try { const dadosUF = await Malha.carregarUF(cid.uf); feature = Malha.featureDaCidade(cid, dadosUF); } catch (e) { feature = null; }
       }
-      if (!feature || painel.hidden) return null;
+      // enquanto baixava, o usuário pode ter aberto outro painel ou saído da página
+      if (!ativo || (seq != null && seq !== seqPainel) || !feature || painel.hidden) return null;
+      camadaDestaque.clearLayers();
       const contorno = L.geoJSON(feature, { pane: 'destaque', interactive: false, style: { color: '#0f172a', weight: 3, opacity: 0.9, dashArray: '7 5', fill: true, fillColor: '#fde047', fillOpacity: 0.08 } });
       camadaDestaque.addLayer(contorno);
       return contorno;
@@ -907,7 +974,9 @@ Paginas.mapa = {
       return `<div class="ficha-dado" ${ind.ajuda ? `title="${UI.esc(ind.ajuda)}"` : ''}><div class="rotulo">${ind.rotulo} <span class="muted">(${v.ano})</span></div><div class="valor">${txt}</div></div>`;
     }
     async function abrirPainelCidade(cid, { feature = null, codigo = null, fluxosOrigem = null, aproximar = false } = {}) {
-      const info = Store.corDaCidade(cid.id);
+      let meu = ++seqPainel;
+      const mudou = () => !ativo || meu !== seqPainel; // outro painel foi aberto (ou a página fechada) no meio do caminho
+      const info = corDe(cid.id);
       const g = porOrigem.get(cid.id), a = porAtuacao.get(cid.id);
       const fluxos = fluxosOrigem || (g ? g.fluxos : null);
       const cod = codigo || cid.ibge || null;
@@ -915,7 +984,10 @@ Paginas.mapa = {
       const editar = App.podeEditar();
       // SINE: agência(s) na cidade ou a mais próxima; os campos de anotação vêm pré-preenchidos (editáveis) quando ainda não foram salvos
       const busca = q => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
-      if (Store.BASES_SINE.includes(cid.uf) && !Store.fonteBaseSine(cid.uf)) { await Store.carregarBaseSine(cid.uf); }
+      if (Store.BASES_SINE.includes(cid.uf) && !Store.fonteBaseSine(cid.uf)) {
+        try { await Store.carregarBaseSine(cid.uf); } catch (e) { /* sem a base: segue com o que tem */ }
+        if (mudou()) return;
+      }
       const sineLocal = Store.sineDaCidade(cid);
       const sinePerto = sineLocal.length ? null : Store.sineMaisProximo(cid);
       const fmtAg = a => `<div class="sine-card"><div class="sine-nome">${UI.esc(a.nome || a.cidade)}${a.cidade && Store.normalizar(a.cidade) !== Store.normalizar(cid.nome) ? ` <span class="muted">· ${UI.esc(a.cidade)}</span>` : ''}</div>
@@ -948,7 +1020,7 @@ Paginas.mapa = {
         `<div class="ficha">
           <div class="ficha-secao">Contratações <span class="muted small">no filtro atual · clique para ver quem</span></div>
           <div class="ficha-grade" style="margin-bottom:4px">
-            <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${a.fluxos.length} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
+            <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${new Set(a.fluxos.map(f => f.cidadeOrigem.id)).size} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
             <button class="ficha-dado ficha-botao" id="ficha-ver-origem" ${g ? '' : 'disabled'}><div class="rotulo"><span class="bolha-origem mini">&nbsp;</span>São daqui</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${resumoDestinos(g).replace(/<[^>]+>/g, '')} · ver quem` : 'ninguém contratado daqui'}</div></button>
           </div>
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
@@ -980,7 +1052,7 @@ Paginas.mapa = {
           </div>
           ${Store.fonteBaseSine(cid.uf) ? `<div class="muted small" style="margin-top:6px">Agências do SINE: base ${UI.esc(Store.fonteBaseSine(cid.uf).fonte || '')}, de ${UI.esc(Store.fonteBaseSine(cid.uf).atualizadoEm || '')}${Store.fonteBaseSine(cid.uf).parcial ? ' (lista parcial)' : ''}. Confirme por telefone antes de divulgar.</div>` : ''}
         </div>`;
-      ligarFechar();
+      meu = ligarFechar();
       // sem agência na base: procura na internet (Google Places se houver chave; senão OpenStreetMap) e grava o que achar
       const caixaOnline = painel.querySelector('#sine-online');
       if (caixaOnline) {
@@ -988,10 +1060,10 @@ Paginas.mapa = {
           const st = painel.querySelector('#sine-online-status'); if (st) st.textContent = ' Buscando na internet…';
           try {
             const r = await Geo.buscarSineOnline(cid, { forcar });
-            if (!painel.contains(caixaOnline)) return;
+            if (mudou() || !painel.contains(caixaOnline)) return;
             if (r.agencias.length) { abrirPainelCidade(cid, { feature, codigo, fluxosOrigem, aproximar: false }); UI.toast(`${r.agencias.length} agência(s) encontrada(s) ${r.origem === 'google' ? 'no Google' : 'no OpenStreetMap'} e salva(s) para ${cid.nome}.`, 'sucesso'); }
             else if (st) st.textContent = ' ' + (r.aviso || 'Nada encontrado na internet.') + (Store.config().googleKey ? '' : ' Dica: com a chave do Google Places (em Cidades → Agências do SINE) a busca acha muito mais.');
-          } catch (e) { if (st) st.textContent = ' ' + e.message; }
+          } catch (e) { if (st && !mudou()) st.textContent = ' ' + e.message; }
         };
         const bd = painel.querySelector('#sine-online-denovo'); if (bd) bd.addEventListener('click', () => rodar(true));
         rodar(false);
@@ -1013,7 +1085,8 @@ Paginas.mapa = {
         catch (e) { UI.toast(e.message, 'erro'); }
       });
       // divisa do município
-      const contorno = await destacarMunicipio(cid, feature);
+      const contorno = await destacarMunicipio(cid, feature, meu);
+      if (mudou()) return;
       if (aproximar && contorno) mapa.fitBounds(contorno.getBounds().pad(0.4), { maxZoom: 11 });
       // dados do IBGE
       const alvo = painel.querySelector('#ficha-ibge');
@@ -1021,11 +1094,11 @@ Paginas.mapa = {
       if (!cod) { alvo.innerHTML = '<span class="muted small">Sem código IBGE para esta cidade (baixe a lista completa de municípios no menu Cidades).</span>'; return; }
       try {
         const d = await IbgeCidade.dados(cod);
-        if (!alvo.isConnected) return;
+        if (mudou() || !alvo.isConnected) return;
         const chaves = ['populacaoEstimada', 'populacaoCenso', 'area', 'densidade', 'popOcupada', 'salarioMedio', 'rendaMeioSM', 'pibPerCapita'].filter(k => d && d[k]);
         alvo.innerHTML = chaves.length ? chaves.map(k => fmtInd(k, d[k])).join('') : '<span class="muted small">O IBGE não retornou dados para este município.</span>';
       } catch (e) {
-        if (alvo.isConnected) alvo.innerHTML = '<span class="muted small">Não foi possível consultar o IBGE agora (sem internet?).</span>';
+        if (!mudou() && alvo.isConnected) alvo.innerHTML = '<span class="muted small">Não foi possível consultar o IBGE agora (sem internet?).</span>';
       }
     }
     // Painel de uma microrregião: números das contratações com atuação nas cidades dela
@@ -1157,18 +1230,21 @@ Paginas.mapa = {
       const ufs = ufsDoPonto(e.latlng.lat, e.latlng.lng);
       if (!ufs.length) return; // mar ou fora do Brasil
       identificando = true;
+      const seqClique = seqPainel;
       definirStatus('Identificando o município…');
       try {
         const m = await Malha.municipioNoPonto(e.latlng.lat, e.latlng.lng, ufs);
+        if (!ativo) return;
         definirStatus('');
-        if (!m || !ativo) return;
-        let cid = Store.resolverCidade(m.nome, m.uf) || Store.cidadeAproximada(m.nome, m.uf);
+        if (!m || seqClique !== seqPainel) return; // o usuário já clicou em outra coisa
+        // primeiro pelo código IBGE devolvido pela malha; o nome só se a cidade não tiver código na base
+        let cid = cidadePorIbge(m.codigo) || Store.resolverCidade(m.nome, m.uf) || Store.cidadeAproximada(m.nome, m.uf);
         if (!cid) { // cidade ainda não está na base: usa o centro do polígono
           const b = L.geoJSON(m.feature).getBounds().getCenter();
           cid = { id: Store.idCidade(m.nome, m.uf), nome: m.nome, uf: m.uf, lat: b.lat, lng: b.lng, ibge: m.codigo };
         }
         abrirPainelCidade(cid, { feature: m.feature, codigo: m.codigo });
-      } catch (err) { definirStatus(''); console.warn(err); }
+      } catch (err) { if (ativo) definirStatus(''); console.warn(err); }
       finally { identificando = false; }
     });
 
@@ -1177,7 +1253,7 @@ Paginas.mapa = {
     mapa.getPane('divisas').style.pointerEvents = 'none';
     const rendDivisas = L.canvas({ pane: 'divisas' });
     const camadaDivisas = L.layerGroup();
-    const divisasDesenhadas = new Set();
+    const divisasPorUF = new Map(); // uf -> camada (null enquanto carrega)
     const ZOOM_MIN_DIVISAS = 7;
     function ufsNaTela() {
       const b = mapa.getBounds().pad(0.05), cont = {};
@@ -1189,18 +1265,28 @@ Paginas.mapa = {
       if (!ligada) { if (mapa.hasLayer(camadaDivisas)) mapa.removeLayer(camadaDivisas); return; }
       if (!mapa.hasLayer(camadaDivisas)) camadaDivisas.addTo(mapa);
       const satelite = el.querySelector('#c-fundo').value === 'satelite';
-      for (const uf of ufsNaTela()) {
-        if (divisasDesenhadas.has(uf)) continue;
-        divisasDesenhadas.add(uf);
+      const naTela = ufsNaTela();
+      // estados que saíram da tela: tira as divisas deles (antes só acumulavam e pesavam o mapa)
+      for (const [uf, camada] of divisasPorUF) {
+        if (naTela.includes(uf)) continue;
+        if (camada) camadaDivisas.removeLayer(camada);
+        divisasPorUF.delete(uf);
+      }
+      for (const uf of naTela) {
+        if (divisasPorUF.has(uf)) continue;
+        divisasPorUF.set(uf, null);
         try {
           const d = await Malha.carregarUF(uf);
           if (!ativo) return;
-          camadaDivisas.addLayer(L.geoJSON({ type: 'FeatureCollection', features: [...d.features.values()] }, { renderer: rendDivisas, pane: 'divisas', interactive: false,
-            style: { color: satelite ? '#ffffff' : '#475569', weight: satelite ? 0.8 : 0.6, opacity: satelite ? 0.6 : 0.5, fill: false } }));
-        } catch (e) { divisasDesenhadas.delete(uf); console.warn('Divisas indisponíveis', uf, e); }
+          if (!divisasPorUF.has(uf) || divisasPorUF.get(uf)) continue; // saiu da tela (ou foi redesenhada) enquanto carregava
+          const camada = L.geoJSON({ type: 'FeatureCollection', features: [...d.features.values()] }, { renderer: rendDivisas, pane: 'divisas', interactive: false,
+            style: { color: satelite ? '#ffffff' : '#475569', weight: satelite ? 0.8 : 0.6, opacity: satelite ? 0.6 : 0.5, fill: false } });
+          divisasPorUF.set(uf, camada);
+          camadaDivisas.addLayer(camada);
+        } catch (e) { divisasPorUF.delete(uf); console.warn('Divisas indisponíveis', uf, e); }
       }
     }
-    redesenharDivisas = () => { camadaDivisas.clearLayers(); divisasDesenhadas.clear(); atualizarDivisas(); };
+    redesenharDivisas = () => { camadaDivisas.clearLayers(); divisasPorUF.clear(); atualizarDivisas(); };
     mapa.on('moveend', atualizarDivisas);
     el.querySelector('#c-divisas').addEventListener('change', e => { atualizarDivisas(); if (e.target.checked && mapa.getZoom() < ZOOM_MIN_DIVISAS) UI.toast('Aproxime o zoom para ver as divisas dos municípios.', 'info', 3500); });
     atualizarDivisas();
@@ -1210,12 +1296,14 @@ Paginas.mapa = {
     mapa.on('mousemove', e => {
       const agora = Date.now(); if (agora - ultimoHover < 90) return; ultimoHover = agora;
       if (mapa.getZoom() < 6) { hoverEl.hidden = true; hoverCodigo = ''; return; }
-      const m = Malha.municipioNoPontoCarregado(e.latlng.lat, e.latlng.lng, ufsDoPonto(e.latlng.lat, e.latlng.lng));
+      // só testa os estados com malha já carregada (primeiro os que estão na tela); não percorre as 5.570 cidades a cada movimento
+      const ufsTeste = [...new Set([...divisasPorUF.keys(), ...Malha.ufsCarregadas()])].filter(uf => Malha.malhaPronta(uf));
+      const m = ufsTeste.length ? Malha.municipioNoPontoCarregado(e.latlng.lat, e.latlng.lng, ufsTeste) : null;
       if (!m) { hoverEl.hidden = true; hoverCodigo = ''; return; }
       if (m.codigo === hoverCodigo) return;
       hoverCodigo = m.codigo;
-      const c = Store.resolverCidade(m.nome, m.uf);
-      const reg = c ? Store.distritoDaCidade(c.id) : null;
+      const c = cidadePorIbge(m.codigo) || Store.resolverCidade(m.nome, m.uf);
+      const reg = c ? corDe(c.id) : null;
       hoverEl.innerHTML = `<b>${UI.esc(m.nome)}/${m.uf}</b>${reg ? ' · ' + UI.esc(reg.micro.nome) : ''} <span>clique para abrir a ficha</span>`;
       hoverEl.hidden = false;
     });
@@ -1237,38 +1325,48 @@ Paginas.mapa = {
 
     // ---------- legenda ----------
     const todosSilos = App.silosFiltrados();
+    // unidades por mapa PDR com o MESMO filtro do total (antes contava todos os pontos do mapa, sem filtro)
+    const silosPorMapa = new Map();
+    for (const s of todosSilos) silosPorMapa.set(s.mapaId, (silosPorMapa.get(s.mapaId) || 0) + 1);
+    const mapasComSilos = Store.mapasPdr().filter(m => silosPorMapa.get(m.id));
+    // projetos que têm contratação no que está sendo mostrado
+    const projetosNaTela = projetos.filter(p => regs.some(r => r.projetoId === p.id));
     const legenda = el.querySelector('#legenda');
     const item = (marca, texto) => `<div class="legenda-item">${marca}<span>${texto}</span></div>`;
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
-    legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><span class="linha" style="gap:6px"><button class="btn-link small" id="legenda-ajuda" title="Como ler o mapa">como ler?</button><button class="btn-icone painel-toggle" title="Recolher / expandir">&#8722;</button></span></div><div class="painel-corpo">` +
+    legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><span class="linha" style="gap:6px"><button class="btn-link small" id="legenda-ajuda" title="Como ler o mapa">como ler?</button><button class="btn-icone painel-toggle" title="Recolher / expandir" aria-label="Recolher ou expandir a legenda" aria-expanded="true">&#8722;</button></span></div><div class="painel-corpo">` +
+      (qtdSemCidade ? `<div class="legenda-aviso small"><b>${UI.fmtNum(qtdSemCidade)}</b> contratação(ões) sem cidade reconhecida não aparecem no mapa. Corrija a cidade no cadastro ou baixe a lista do IBGE em Cidades.</div>` : '') +
       `<div class="legenda-secao">Em cada cidade</div>` +
       item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique: quem são e de onde vêm') +
       `<div id="legenda-origens"></div>` +
       `<div class="legenda-secao">Ligações</div>` +
-      projetosComDados.map(p => item(`<span class="legenda-traco" style="color:${UI.esc(p.cor)}"></span>`, `${UI.esc(Store.rotuloProjeto(p))} — <b>de onde vêm ➜ onde trabalham</b>; a seta aponta para o trabalho. Clique na linha para ver o trajeto`)).join('') +
+      (projetosNaTela.length ? item(`<span class="legenda-traco" style="color:${UI.esc(projetosNaTela.length === 1 ? projetosNaTela[0].cor : '#475569')}"></span>`, '<b>De onde vêm ➜ onde trabalham</b>, na cor do projeto; a seta aponta para o trabalho. Clique na linha para ver o trajeto') +
+        (projetosNaTela.length > 1 ? `<div class="legenda-projetos">${projetosNaTela.map(p => `<span title="${UI.esc(Store.rotuloProjeto(p))}">${bola(p.cor || COR_ATUACAO, 9)}${UI.esc(p.nome)}</span>`).join('')}</div>` : '') : '') +
       (distritos.length ? item('<span class="rotulo-distrito mini"><b>n</b></span>', '<b>Total do distrito</b> — soma de quem trabalha nas cidades dele; clique para ver tudo do distrito') : '') +
-      (porHub.size ? item(bola(COR_HUB, 14), 'Atuação móvel em todo o estado') : '') +
+      (distritos.length ? `<div id="legenda-sem-contorno" hidden>${item('<span class="legenda-circulo"></span>', '<b>Círculo tracejado</b> — município da microrregião sem contorno do IBGE (marca o centro da cidade)')}</div>` : '') +
+      (porHub.size ? item(bola(COR_HUB, 14), '<b>Sem cidade definida (todo o estado)</b> — cadastro antigo MÓVEL, sem cidade de trabalho') : '') +
       (todosSilos.length ? `<div class="legenda-secao">🌾 Unidades PDR (${todosSilos.length})</div>` +
         item(`<span class="silo-grupo" style="background:#16a34a;width:18px;height:18px;border-width:1.5px;box-shadow:none;flex-shrink:0"></span>`, 'Unidade — cor da microrregião da cidade') +
         item(bola(COR_SILO_FORA, 12), 'Fora das microrregiões cadastradas') +
-        Store.mapasPdr().map(m => item('<span style="width:12px;flex-shrink:0"></span>', `<span class="muted">${UI.esc(m.nome)} (${(m.pontos || []).length})</span>`)).join('')
+        (mapasComSilos.length > 1 ? mapasComSilos.map(m => item('<span style="width:12px;flex-shrink:0"></span>', `<span class="muted">${UI.esc(m.nome)} (${silosPorMapa.get(m.id)})</span>`)).join('') : '')
       : '') +
       (distritos.length ? `<div class="legenda-secao">Distritos e microrregiões <span style="font-weight:400;text-transform:none;letter-spacing:0">· total pela cidade de atuação · clique para aproximar</span></div>` +
         distritos.map(d =>
           `<a href="#" class="legenda-micro" data-d="${d.id}" style="padding-left:2px;font-weight:600">${bola(d.cor || '#2563eb', 10)}${UI.esc(d.nome)} <span class="muted small" style="font-weight:400">· <b>${UI.fmtNum(totaisDistrito.get(d.id) || 0)}</b> contratações · ${Store.cidadesDoDistrito(d).length} cid</span></a>` +
           (d.micros || []).map(m => `<a href="#" class="legenda-micro" data-d="${d.id}" data-m="${m.id}">${bola(m.cor || d.cor, 9)}${UI.esc(m.nome)} <span class="muted small">· <b>${UI.fmtNum(totaisMicro.get(m.id) || 0)}</b> · ${(m.cidadeIds || []).length} cid</span></a>`).join('')
         ).join('') : '') +
-      `<div class="muted small" style="margin-top:6px;border-top:1px solid var(--borda);padding-top:5px">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) · ${porOrigem.size} cid. de origem</div></div>`;
+      `<div class="muted small" style="margin-top:6px;border-top:1px solid var(--borda);padding-top:5px">${UI.esc(App.descricaoFiltro())}<br>${UI.fmtNum(regs.length)} contratação(ões) no mapa · ${porOrigem.size} cid. de origem</div></div>`;
     function atualizarLegendaOrigens() {
       const alvo = el.querySelector('#legenda-origens');
       if (!alvo) return;
       if (estilo === 'pintar') {
+        // faixas fixas (todas as origens), começando no menor valor real: nenhuma fica vazia
         const faixas = [];
-        let ini = 1;
+        let ini = minOrigem;
         cortesCoropleto.forEach(c => { faixas.push(ini === c ? `${c}` : `${ini}–${c}`); ini = c + 1; });
-        faixas.push(`${ini}+`);
-        alvo.innerHTML = item(bola(COR_ORIGEM, 12), '<b>De onde vêm</b> (cidade de origem) — município pintado') +
-          `<div class="legenda-item" style="gap:4px;flex-wrap:wrap;padding-left:20px">${faixas.map((f, i) => `<span class="legenda-faixa" style="background:${COR_CLASSES[Math.min(i, COR_CLASSES.length - 1)]}">${f}</span>`).join('')}</div>`;
+        faixas.push(ini >= maxOrigem ? `${maxOrigem}` : `${ini}–${maxOrigem}`);
+        alvo.innerHTML = item(bola(COR_ORIGEM, 12), '<b>De onde vêm</b> (cidade de origem) — município pintado, pessoas por cidade:') +
+          `<div class="legenda-item" style="gap:4px;flex-wrap:wrap;padding-left:20px">${faixas.map((f, i) => `<span class="legenda-faixa${i < 2 ? ' faixa-clara' : ''}" style="background:${COR_CLASSES[Math.min(i, COR_CLASSES.length - 1)]}">${f}</span>`).join('')}</div>`;
       } else if (estilo === 'pontos') {
         alvo.innerHTML = item(bola(COR_ORIGEM, 10), '<b>De onde vêm</b> (cidade de origem) — a quantidade aparece ao passar o mouse');
       } else {
@@ -1291,9 +1389,18 @@ Paginas.mapa = {
       });
     });
     // painéis recolhíveis (estado lembrado na sessão)
+    // em tela estreita (celular, < 900px) começam recolhidos, até o usuário abrir
+    const telaEstreita = () => !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
     for (const painelEl of [el.querySelector('#controles'), legenda]) {
       const chave = 'maparh:mapa-recolhido:' + painelEl.id;
-      const aplicar = () => { const rec = sessionStorage.getItem(chave) === '1'; painelEl.classList.toggle('painel-recolhido', rec); painelEl.querySelector('.painel-toggle').innerHTML = rec ? '&#43;' : '&#8722;'; };
+      const aplicar = () => {
+        const salvo = sessionStorage.getItem(chave);
+        const rec = salvo === null ? telaEstreita() : salvo === '1';
+        const bt = painelEl.querySelector('.painel-toggle');
+        painelEl.classList.toggle('painel-recolhido', rec);
+        bt.innerHTML = rec ? '&#43;' : '&#8722;';
+        bt.setAttribute('aria-expanded', rec ? 'false' : 'true');
+      };
       painelEl.querySelector('.painel-toggle').addEventListener('click', () => { sessionStorage.setItem(chave, painelEl.classList.contains('painel-recolhido') ? '0' : '1'); aplicar(); });
       aplicar();
     }
@@ -1312,8 +1419,8 @@ Paginas.mapa = {
     if (selectMapas) {
       const mapas = Store.mapasPdr();
       selectMapas.innerHTML = '<option value="">Todos os mapas (' + todosSilos.length + ' unidades)</option>' +
-        mapas.map(m => `<option value="${UI.esc(m.id)}">${UI.esc(m.nome)} (${(m.pontos || []).length})</option>`).join('');
-      selectMapas.hidden = mapas.length < 2;
+        mapasComSilos.map(m => `<option value="${UI.esc(m.id)}">${UI.esc(m.nome)} (${silosPorMapa.get(m.id)})</option>`).join('');
+      selectMapas.hidden = mapasComSilos.length < 2;
       selectMapas.addEventListener('change', renderSilos);
     }
     el.querySelector('#c-silos').addEventListener('change', renderSilos);
@@ -1342,10 +1449,15 @@ Paginas.mapa = {
       localStorage.setItem(CHAVE_CAMADAS, JSON.stringify(estado));
     }));
     function ajustar() { if (pontos.length) mapa.fitBounds(L.latLngBounds(pontos).pad(0.15), { maxZoom: 9 }); }
-    // enquadramento inicial: a área de trabalho (atuação, distritos, silos); origens distantes ficam fora, sem "encolher" o mapa
+    // enquadramento inicial: distritos + cidades onde as contratações trabalham + origens dentro dos estados do projeto.
+    // Origens de fora do estado ficam de fora para não "encolher" o mapa (o botão "Ajustar zoom" mostra tudo).
     function enquadrarInicial() {
-      const base = pontosDistritos.length ? pontosDistritos : (pontosFoco.length ? pontosFoco : pontos);
-      if (base.length) mapa.fitBounds(L.latLngBounds(base).pad(0.15), { maxZoom: 10 });
+      const base = pontosDistritos.slice();
+      for (const a of porAtuacao.values()) base.push([a.cidade.lat, a.cidade.lng]);
+      for (const g of porOrigem.values()) if (g.fluxos.some(f => !f.foraDoEstado)) base.push([g.cidade.lat, g.cidade.lng]);
+      if (!base.length) for (const h of porHub.values()) base.push([h.lat, h.lng]);
+      const lista = base.length ? base : (pontosFoco.length ? pontosFoco : pontos);
+      if (lista.length) mapa.fitBounds(L.latLngBounds(lista).pad(0.15), { maxZoom: 10 });
     }
     el.querySelector('#c-ajustar').addEventListener('click', ajustar);
     el.querySelector('#c-brasil').addEventListener('click', () => mapa.setView([-15.5, -52], 4));
@@ -1358,7 +1470,8 @@ Paginas.mapa = {
       kpis.innerHTML = (reg.micro || reg.distrito ? `<span class="kpi-chip kpi-chip-regiao">${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span>` : '') +
         chip(UI.fmtNum(r.total), 'contratações') + (r.total ? chip(UI.fmtPct(r.pctLocal, 0), 'local') : '') +
         chip(UI.fmtNum(r.cidadesOrigem), 'cidades de origem') + (r.distMedia != null ? chip(UI.fmtKm(r.distMedia), 'dist. média') : '') +
-        (todosSilos.length ? chip(UI.fmtNum(todosSilos.length), 'unidades') : '');
+        (todosSilos.length ? chip(UI.fmtNum(todosSilos.length), 'unidades') : '') +
+        (qtdSemCidade ? `<span class="kpi-chip kpi-chip-aviso" title="Essas contratações não têm cidade reconhecida e não aparecem no mapa"><b>${UI.fmtNum(qtdSemCidade)}</b> sem cidade (fora do mapa)</span>` : '');
     }
     // localizar cidade
     const buscaCidade = el.querySelector('#c-busca-cidade');
@@ -1370,7 +1483,8 @@ Paginas.mapa = {
           .bindTooltip(balao({ titulo: `${UI.esc(c.nome)}/${c.uf}`, tipo: 'cidade localizada' }), { ...TT, permanent: true }).addTo(mapa);
         mapa.setView([c.lat, c.lng], Math.max(mapa.getZoom(), 10));
         buscaCidade.value = '';
-        setTimeout(() => { if (marcadorBusca) { mapa.removeLayer(marcadorBusca); marcadorBusca = null; } }, 8000);
+        const esteMarcador = marcadorBusca;
+        setTimeout(() => { if (!ativo || marcadorBusca !== esteMarcador) return; mapa.removeLayer(marcadorBusca); marcadorBusca = null; }, 8000);
         abrirPainelCidade(c, { aproximar: true });
       }
     });
@@ -1380,20 +1494,36 @@ Paginas.mapa = {
       if (document.fullscreenElement) document.exitFullscreen(); else if (wrap.requestFullscreen) wrap.requestFullscreen();
     });
     document.addEventListener('fullscreenchange', aoMudarTelaCheia);
-    function aoMudarTelaCheia() { el.querySelector('#c-tela-cheia').textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia'; setTimeout(() => mapa.invalidateSize(), 100); }
+    function aoMudarTelaCheia() { if (!ativo) return; el.querySelector('#c-tela-cheia').textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia'; setTimeout(() => { if (ativo) mapa.invalidateSize(); }, 100); }
     [el.querySelector('.mapa-controles'), legenda, painel, kpis].forEach(x => { L.DomEvent.disableClickPropagation(x); L.DomEvent.disableScrollPropagation(x); });
 
     // Renderizar silos inicialmente
     renderSilos();
+
+    // Um único tratador de zoom, no próximo quadro de animação (antes eram 5 tratadores separados redesenhando cada um)
+    let rafZoom = 0;
+    mapa.on('zoomend', () => {
+      if (rafZoom) cancelAnimationFrame(rafZoom);
+      rafZoom = requestAnimationFrame(() => {
+        rafZoom = 0;
+        if (!ativo) return;
+        if (estilo === 'bolhas') desenharOrigens();
+        renderSilos();
+        if (el.querySelector('#c-sine').checked) montarCamadaSine();
+        atualizarSetas();
+        ajustarRotulos();
+      });
+    });
 
     let focoInicial = null;
     try { focoInicial = JSON.parse(sessionStorage.getItem('maparh:mapa-foco') || 'null'); } catch (e) { focoInicial = null; }
     sessionStorage.removeItem('maparh:mapa-foco');
     const distritoFoco = focoInicial && focoInicial.distritoId ? Store.distrito(focoInicial.distritoId) : null;
     setTimeout(() => {
+      if (!ativo) return; // saiu da página antes do mapa terminar de abrir
       mapa.invalidateSize();
       const cidadeFoco = focoInicial && focoInicial.cidadeId ? Store.cidade(focoInicial.cidadeId) : null;
-      if (distritoFoco && Store.cidadesDoDistrito(distritoFoco).length) { focar(Store.cidadesDoDistrito(distritoFoco)); if (selFoco) selFoco.value = 'd:' + distritoFoco.id; }
+      if (distritoFoco && Store.cidadesDoDistrito(distritoFoco).length) focar(Store.cidadesDoDistrito(distritoFoco));
       else if (cidadeFoco) { mapa.setView([cidadeFoco.lat, cidadeFoco.lng], 10); abrirPainelCidade(cidadeFoco, { aproximar: false }); }
       else enquadrarInicial();
       // vindo de Distritos ("Mapa" do distrito / da micro) ou com micro filtrada no topo: já abre o painel dela
@@ -1407,6 +1537,12 @@ Paginas.mapa = {
       UI.toast(Store.projetos().length ? 'Nenhuma contratação para o filtro atual.' : 'Cadastre um projeto e as contratações para ver o mapa.', 'aviso');
     }
 
-    return () => { ativo = false; document.removeEventListener('fullscreenchange', aoMudarTelaCheia); mapa.remove(); App.mapaAtual = null; };
+    return () => {
+      ativo = false;
+      if (rafZoom) cancelAnimationFrame(rafZoom);
+      document.removeEventListener('fullscreenchange', aoMudarTelaCheia);
+      document.removeEventListener('keydown', aoTeclar);
+      mapa.remove(); App.mapaAtual = null;
+    };
   }
 };

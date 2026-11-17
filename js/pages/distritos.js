@@ -54,7 +54,7 @@ Paginas.distritos = {
     // ---------- lista ----------
     let regsAtuais = [];
     function renderLista() {
-      regsAtuais = App.regs();
+      regsAtuais = Store.registrosFiltrados({ usuario: App.usuario });   // a tela não tem filtros no topo: conta tudo que o usuário vê
       App.atualizarFiltroDistrito(); App.atualizarFiltroUF(); // o topo acompanha o que foi salvo aqui
       const lista = Store.distritos().slice().sort((a, b) => (a.uf || '').localeCompare(b.uf || '') || a.nome.localeCompare(b.nome, 'pt-BR'));
       const cont = el.querySelector('#dist-lista');

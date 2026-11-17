@@ -124,13 +124,13 @@ Paginas.relatorios = {
           { titulo: 'MÓVEL/LOCAL', render: r => UI.badgeTipo(r.tipo) },
           { titulo: 'Cidade de origem', render: r => UI.esc(r.cidade.nome) },
           { titulo: 'Estado', render: r => r.cidade.uf },
-          { titulo: 'Cidade de atuação', render: r => r.atuacaoMovel ? '<span class="badge badge-roxo">MÓVEL · todo o estado</span>' : UI.esc(r.cidadeAtuacao.nome) },
+          { titulo: 'Cidade de atuação', render: r => r.atuacaoMovel ? '<span class="badge badge-roxo">MÓVEL · todo o estado</span>' : UI.esc(r.cidadeAtuacao ? r.cidadeAtuacao.nome : '—') },
           { titulo: 'Distância', classe: 'direita', render: r => UI.fmtKm(r.distancia) },
           { titulo: 'Cadastrado em', render: r => UI.fmtDataHora(r.criadoEm) },
           { titulo: 'Por', render: r => UI.esc(r.criadoPor || '—') }
         ],
         linhas: regs.slice().sort((a, b) => a.projeto.nome.localeCompare(b.projeto.nome, 'pt-BR') || a.cidade.nome.localeCompare(b.cidade.nome, 'pt-BR')),
-        csv: r => [UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf, r.atuacaoMovel ? 'MOVEL' : r.cidadeAtuacao.nome, r.projeto.nome, r.projeto.uf, r.projeto.ano || '', km(r.distancia), UI.fmtDataHora(r.criadoEm), r.criadoPor || ''],
+        csv: r => [UI.rotuloTipo(r.tipo), r.cidade.nome, r.cidade.uf, r.atuacaoMovel ? 'MOVEL' : (r.cidadeAtuacao ? r.cidadeAtuacao.nome : ''), r.projeto.nome, r.projeto.uf, r.projeto.ano || '', km(r.distancia), UI.fmtDataHora(r.criadoEm), r.criadoPor || ''],
         cabecalhoCsv: ['MOVEL/LOCAL', 'CIDADE DE ORIGEM', 'ESTADO', 'CIDADE DE ATUACAO', 'PROJETO', 'UF PROJETO', 'ANO', 'DISTANCIA KM', 'CADASTRADO EM', 'POR']
       }) },
       { id: 'mes', nome: 'Cadastros por mês', gerar: (regs) => ({

@@ -1,0 +1,52 @@
+/* Mapa: ajustes carregados DEPOIS do app.css (sobrescrevem regras de lá sem editá-lo) */
+
+/* ---------- balões: quebram linha e nunca passam da largura da tela ---------- */
+.leaflet-tooltip.tt-card { white-space: normal; width: max-content; max-width: min(300px, calc(100vw - 32px)); overflow-wrap: anywhere; }
+.tt-badges { flex-wrap: wrap; }
+
+/* ---------- contraste ---------- */
+/* faixas claras da legenda dos municípios pintados: texto escuro (branco sobre #fed7aa / #fdba74 não se lia) */
+.legenda-faixa.faixa-clara { color: #7c2d12; text-shadow: none; font-weight: 600; }
+/* bolha laranja: fundo mais escuro e sombra no número (branco pequeno sobre #ea580c tinha contraste baixo) */
+.bolha-origem { background: rgba(194, 65, 12, .95); text-shadow: 0 1px 1px rgba(0, 0, 0, .45); }
+.bolha-origem.varias { background: rgba(154, 52, 18, .97); }
+
+/* ---------- legenda ---------- */
+.legenda-aviso { background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; border-radius: 6px; padding: 5px 8px; margin: 0 0 6px; line-height: 1.35; }
+.legenda-projetos { display: flex; flex-wrap: wrap; gap: 4px 10px; padding-left: 26px; margin: 2px 0 4px; font-size: 11px; color: var(--muted); }
+.legenda-projetos span { display: inline-flex; align-items: center; gap: 4px; }
+.legenda-projetos .ponto-cor { margin: 0; }
+.legenda-circulo { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px dashed #0f172a; background: #86efac; flex-shrink: 0; }
+.kpi-chip.kpi-chip-aviso { background: #fff7ed; border-color: #fed7aa; color: #7c2d12; }
+.kpi-chip.kpi-chip-aviso b { color: #7c2d12; }
+
+/* painel recebe o foco ao abrir (teclado): sem contorno no clique, contorno visível só pelo teclado */
+.mapa-painel:focus { outline: none; }
+.mapa-painel:focus-visible { outline: 2px solid var(--primaria); outline-offset: 2px; }
+
+/* tabelas do painel: cabem na largura, sem rolagem lateral */
+.mapa-painel .tabela th { white-space: normal; letter-spacing: 0; }
+.mapa-painel .tabela td { overflow-wrap: anywhere; }
+
+/* ---------- celular / tela estreita ---------- */
+@media (max-width: 900px) {
+  /* controles e legenda (recolhidos por padrão, ver mapa.js) não passam da tela */
+  .mapa-controles { width: min(250px, calc(100% - 24px)); max-height: calc(100% - 24px); }
+  .mapa-legenda { width: min(250px, calc(100% - 24px)); bottom: 12px; max-height: 45%; }
+  .mapa-controles.painel-recolhido, .mapa-legenda.painel-recolhido { width: auto; }
+  /* painel vira uma gaveta embaixo, na largura toda */
+  .mapa-painel { left: 0; right: 0; bottom: 0; top: auto; width: 100%; max-height: 60%; border-radius: 14px 14px 0 0; padding: 12px 14px; box-shadow: 0 -6px 18px rgba(15, 23, 42, .18); }
+  /* com o painel aberto a legenda sai da frente (ele ocuparia o mesmo canto) */
+  .mapa-wrap.painel-aberto .mapa-legenda { display: none; }
+  .mapa-painel .tabela { font-size: 12px; }
+  .mapa-painel .tabela td, .mapa-painel .tabela th { padding: 4px 5px; }
+  .cidade-hover { max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; }
+  .malha-status { max-width: calc(100% - 24px); }
+}
+@media (max-width: 480px) {
+  .mapa-painel .ficha-grade { grid-template-columns: 1fr; }
+  .mapa-painel .grade { grid-template-columns: 1fr !important; } /* a grade do painel tem o estilo no próprio elemento */
+}
+
+/* aviso de carregamento/contorno embaixo, para não tapar os números do topo */
+.malha-status { top: auto; bottom: 34px; }

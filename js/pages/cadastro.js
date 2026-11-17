@@ -1,5 +1,5 @@
 Paginas.cadastro = {
-  titulo: 'Cadastro de contratações',
+  titulo: 'Contratações',
   filtrosUsados: ['regiao', 'tipo', 'uf'],
   render(el) {
     const projetos = App.projetosVisiveis();
@@ -9,13 +9,15 @@ Paginas.cadastro = {
       return;
     }
     let projetoId = App.filtros.projetoId && projetos.some(p => p.id === App.filtros.projetoId) ? App.filtros.projetoId : projetos[0].id;
-    const pref = JSON.parse(localStorage.getItem('maparh:cadastro-pref') || '{}');
+    let pref = {}; try { pref = JSON.parse(localStorage.getItem('maparh:cadastro-pref') || '{}') || {}; } catch (e) { pref = {}; }
     let tipoPadrao = pref.tipo || 'LOCAL';
     let ufPadrao = pref.uf || '';
     let busca = '';
     let pagina = 0;
     const TAM_PAGINA = 100;
     const selecionados = new Set();
+    // contratação que nasceu da admissão (Candidatos): só muda desfazendo a admissão
+    const daAdmissao = r => String(r.id).startsWith('adm-') || !!r.preadmissaoId;
     let editandoId = null;
     const MOVEL = Store.MOVEL;
 
@@ -205,15 +207,15 @@ Paginas.cadastro = {
         </tr>`;
       }
       return `<tr data-id="${r.id}">
-        <td><input type="checkbox" class="sel" value="${r.id}" ${selecionados.has(r.id) ? 'checked' : ''}></td>
-        <td>${UI.badgeTipo(r.tipo)}</td>
+        <td>${daAdmissao(r) ? '' : `<input type="checkbox" class="sel" value="${r.id}" ${selecionados.has(r.id) ? 'checked' : ''}>`}</td>
+        <td>${UI.badgeTipo(r.tipo)}${daAdmissao(r) ? ' <span class="badge badge-azul" title="Veio da admissão em Candidatos. Para mudar, desfaça a admissão lá.">admissão</span>' : ''}</td>
         <td>${UI.esc(r.cidade.nome)}${r.foraDoEstado ? ' <span class="badge badge-amarelo" title="Origem em outro estado">fora do estado</span>' : ''}</td>
         <td>${r.cidade.uf}</td>
         <td>${rotuloAtuacao(r)}</td>
         <td>${rotuloBase(r)}</td>
         <td class="direita">${UI.fmtKm(r.distancia)}</td>
         <td class="muted small" title="por ${UI.esc(r.criadoPor || '—')}">${UI.fmtDataHora(r.criadoEm)}</td>
-        <td class="acoes-col nao-imprimir">${App.podeEditar() ? `<button class="btn-link ed-editar">Editar</button> <button class="btn-link perigo ed-excluir">Excluir</button>` : ''}</td>
+        <td class="acoes-col nao-imprimir">${daAdmissao(r) ? '<span class="muted small" title="Para mudar, desfaça a admissão em Candidatos">pela admissão</span>' : App.podeEditar() ? `<button class="btn-link ed-editar">Editar</button> <button class="btn-link perigo ed-excluir">Excluir</button>` : ''}</td>
       </tr>`;
     }
 
@@ -221,9 +223,13 @@ Paginas.cadastro = {
       const lista = registrosDoProjeto();
       const inicio = pagina * TAM_PAGINA;
       const fatia = lista.slice(inicio, inicio + TAM_PAGINA);
+      // seleção só vale para o que está na lista atual (busca/filtro mudou: o que sumiu sai da seleção)
+      const naLista = new Set(lista.map(r => r.id));
+      for (const id of [...selecionados]) if (!naLista.has(id)) selecionados.delete(id);
+      const st = el.querySelector('#sel-todos'); if (st) st.checked = false;
       const corpo = el.querySelector('#cad-corpo');
       corpo.innerHTML = fatia.length ? fatia.map(linhaHTML).join('')
-        : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhuma contratação corresponde à busca.' : 'Ainda não há contratações neste projeto.' + (App.podeEditar() ? ' Lance a primeira no formulário acima ou importe a planilha.' : '')}</td></tr>`;
+        : `<tr><td colspan="9" class="vazio">${busca ? 'Nenhuma contratação corresponde à busca.' : (App.filtros.tipo || App.filtros.distritoId || App.filtros.microId || App.filtros.uf) ? 'Nenhuma contratação com os filtros do topo. Limpe os filtros para ver todas.' : 'Ainda não há contratações neste projeto. Elas nascem da admissão em Candidatos' + (App.podeEditar() ? '; também dá para lançar no formulário acima ou importar a planilha.' : '.')}</td></tr>`;
       el.querySelector('#cad-titulo-lista').innerHTML = `Contratações do projeto <span class="aba-num">${UI.fmtNum(lista.length)}</span>`;
       el.querySelector('#cad-tabela thead').hidden = !lista.length && !busca;
       corpo.querySelectorAll('input.sel').forEach(c => c.addEventListener('change', () => { if (c.checked) selecionados.add(c.value); else selecionados.delete(c.value); renderRodape(); }));
@@ -245,7 +251,8 @@ Paginas.cadastro = {
           try {
             const c = await resolverEntrada(cidEl, ufEl.value, 'cidade de origem');
             const at = await resolverEntrada(atEl, Store.ufsProjeto(projeto()), 'cidade de atuação');
-            const base = baseEl.value.trim() ? await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação') : at;
+            // LOCAL não tem base própria: a base é a cidade onde trabalha (a base antiga não fica para trás)
+            const base = tipoEl.value === 'LOCAL' || !baseEl.value.trim() ? at : await resolverEntrada(baseEl, Store.ufsProjeto(projeto()), 'base de contratação');
             Store.atualizarRegistro(editandoId, { tipo: tipoEl.value, cidadeId: c.id, atuacao: at.id, baseContratacao: base.id }, App.usuario);
             editandoId = null; renderLinhas(); UI.toast('Registro atualizado.', 'sucesso', 1500);
           } catch (e) { UI.toast(e.message, 'erro', 6000); }

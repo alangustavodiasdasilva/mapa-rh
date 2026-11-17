@@ -17,6 +17,8 @@ const ICONES = {
   sair: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
   menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
   vagas: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2M2 13h20"/>',
+  cargos: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13l2 2 4-4"/>',
+  preadmissao: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 11l2 2 4-4M9 17h6"/>',
   candidatos: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/><path d="m16 11 2 2 4-4"/>'
 };
 function icone(nome, tam = 18) {
@@ -41,6 +43,7 @@ const App = {
     { id: 'distritos', rotulo: 'Distritos e micros', grupo: 'cadastros' },
     { id: 'cidades', rotulo: 'Cidades', grupo: 'cadastros' },
     { id: 'pdrs', rotulo: 'Unidades (PDR)', grupo: 'cadastros' },
+    { id: 'cargos', rotulo: 'Cargos e documentos', grupo: 'cadastros' },
     { id: 'usuarios', rotulo: 'Usuários e acesso', grupo: 'sistema' },
     { id: 'auditoria', rotulo: 'Auditoria', grupo: 'sistema' },
     { id: 'backup', rotulo: 'Backup', grupo: 'sistema' }
@@ -234,9 +237,10 @@ const App = {
     const primeiro = form.querySelector('input'); if (primeiro) setTimeout(() => primeiro.focus(), 50);
   },
 
-  sair() {
+  async sair() {
     Store.logout();
-    if (this.nuvem()) Nuvem.sair();
+    if (this.nuvem()) { try { await Nuvem.sair(); } catch (e) { /* segue */ } }
+    this.filtros = { projetoId: '', distritoId: '', microId: '', tipo: '', uf: '' };
     this.usuario = null;
     if (this.destruirAtual) { try { this.destruirAtual(); } catch (e) { /* ignora */ } this.destruirAtual = null; }
     location.hash = '';
@@ -257,9 +261,9 @@ const App = {
           <div class="marca">${icone('mapa', 26)}<div><div>Mapa RH</div><small>Vagas, seleção e contratações</small></div></div>
           <nav>${itens}</nav>
           <div class="rodape">
-            <div class="usuario-nome">${UI.esc(u.nome)}</div>
-            <div class="usuario-perfil">${UI.esc(Store.PERFIS[u.perfil])}</div>
-            <div class="acoes"><a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">${icone('sair', 14)} Sair</a></div>
+            <div class="rodape-quem">${UI.avatar(u, 34)}<div><div class="usuario-nome">${UI.esc(u.nome)}</div>
+            <div class="usuario-perfil">${UI.esc(Store.PERFIS[u.perfil])}</div></div></div>
+            <div class="acoes">${this.nuvem() ? '<a href="#" id="link-foto">Minha foto</a>' : ''}<a href="#" id="link-senha">Minha senha</a><a href="#" id="link-sair">${icone('sair', 14)} Sair</a></div>
             ${this.nuvem() ? `<div class="muted small" id="nuvem-status" style="margin-top:6px">${UI.esc(Nuvem.textoEstado())}</div>` : ''}
             <div class="muted small" style="margin-top:6px" title="Se o número não bater com a versão publicada, aperte Ctrl+F5">versão ${UI.esc(App.versao())}</div>
           </div>
@@ -308,6 +312,16 @@ const App = {
       </div>`;
     document.getElementById('link-sair').addEventListener('click', e => { e.preventDefault(); this.sair(); });
     document.getElementById('link-senha').addEventListener('click', e => { e.preventDefault(); this.modalSenha(); });
+    const lf = document.getElementById('link-foto');
+    if (lf) lf.addEventListener('click', e => {
+      e.preventDefault();
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+      inp.addEventListener('change', async () => {
+        try { const foto = await UI.reduzirImagem(inp.files[0]); const eu = await Nuvem.minhaFoto(foto); if (eu) this.usuario = eu; this.renderShell(); this.rotear(true); UI.toast('Foto atualizada.', 'sucesso'); }
+        catch (err) { UI.toast(err.message, 'erro'); }
+      });
+      inp.click();
+    });
     // Menu lateral: em telas largas o botão recolhe/expande (lembrado); em telas pequenas abre por cima
     const telaLarga = () => window.innerWidth > 900;
     document.body.classList.toggle('menu-recolhido', localStorage.getItem('maparh:menu-recolhido') === '1');
@@ -420,6 +434,7 @@ const App = {
   // ---------- navegação ----------
   rotear(forcar = false) {
     let nome = (location.hash || '').replace(/^#\/?/, '').split('?')[0] || 'dashboard';
+    if (nome === 'preadmissao') nome = 'candidatos'; // as duas telas viraram uma
     if (!Paginas[nome] || !Store.pode(this.usuario, nome)) {
       const primeira = this.MENU.find(m => Paginas[m.id] && Store.pode(this.usuario, m.id));
       if (!primeira) { document.getElementById('pagina').innerHTML = '<div class="card">Seu usuário não tem acesso a nenhuma tela. Peça a um administrador para revisar o seu perfil.</div>'; return; }
@@ -476,7 +491,7 @@ const App = {
     if (ufs) lista = lista.filter(s => { const c = Store.cidadeDoSilo(s, ''); const uf = (c && c.uf) || s.uf; return !uf || ufs.includes(uf); });
     return lista;
   },
-  distritosFiltrados() { return Store.distritos().filter(d => this.ufNoFiltro(d.uf)); },
+  distritosFiltrados() { return Store.distritos().filter(d => this.ufNoFiltro(d.uf) || Store.cidadesDoDistrito(d).some(c => this.ufNoFiltro(c.uf))); },
   projetosVisiveis() { return Store.projetosVisiveis(this.usuario); },
   podeEditar() { return this.usuario.perfil === 'admin' || this.usuario.perfil === 'gestor'; },
   descricaoFiltro() {
