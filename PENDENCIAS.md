@@ -135,13 +135,13 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [ ] Candidatos abrir já filtrado em "parados" (chip da vaga hoje abre só na vaga).
 
 ## v150 (18/11, ainda não publicado) — 3 agentes; banco já aplicado (só acrescenta)
-- [x] Inscrição própria: inscricao.html?v=<vaga> (celular) e ?p=<projeto>; cai na Triagem com o RH da vaga; validação e limites no banco (maparh_vaga_publica, maparh_vagas_publicas, maparh_inscrever); "Link de inscrição" + QR em Vagas; anúncio usa o link.
+- [x] ~~Inscrição própria pelo link~~ — CANCELADA em v151 a pedido (página e funções do banco removidas).
 - [x] Banco de talentos: avaliação de fim de safra (sim/talvez/não, nota, obs) na ficha, Lista e Contratações (em lote); lista "Banco de talentos" com Trazer para esta safra; selo "Já trabalhou" (migração banco-talentos-avaliacao.sql; testes/regras-banco-talentos.sql 22/22).
 - [x] "Não é a mesma pessoa" no aviso de duplicado.
 - [x] Planilha para o DP (eSocial S-2200): 46 colunas, preenchidas as que temos, resto em branco; sem dado bancário; auditoria e CPF mascarado/completo.
 - [x] Metas por RH: meta semanal em Usuários e no Por RH (admin/gestor, função maparh_definir_meta); barra no Seu dia.
 - [x] Visitante sem login não executa admitir/desfazer (anon-sem-admitir.sql).
-- [ ] Inscrição: limite por IP/captcha (edge function); CPF de outra pessoa cria triagem (fica anotado no histórico); coluna origem própria; aviso na hora para o RH; selo "veio pelo link".
+
 - [ ] Ajustar a planilha do DP ao modelo que o DP usa (pedir o arquivo).
 - [ ] Meta de entrevistas (precisa data da entrevista no andamento); auditoria de membros com antes/depois da meta; desmarcar "não é duplicado".
 - [ ] Regerar supabase/esquema-atual.sql.

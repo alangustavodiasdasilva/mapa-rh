@@ -293,7 +293,6 @@ Paginas.vagas = {
       const it = (acao, rot, extra = '') => `<button type="button" class="${extra}" data-acao="${acao}">${rot}</button>`;
       if (emAberto && podeMexer(v) && canais) menu.push(it('divulgar', 'Divulgar'));
       if (emAberto) menu.push(it('copiar', 'Copiar anúncio (WhatsApp)'));
-      if (emAberto) menu.push(it('link', 'Link de inscrição'));
       if (v.aprovada || podeMexer(v)) menu.push(it('obs', `Observações${(v.anotacoes || []).length ? ` (${v.anotacoes.length})` : ''}`));
       if (v.aprovada && podeVerCandidatos && !principal.includes('candidatos')) menu.push(it('candidatos', 'Ver candidatos'));
       if (emAberto) menu.push(it('procurar', 'Procurar candidatos na internet'));
@@ -345,7 +344,6 @@ Paginas.vagas = {
     function fazer(v, acao, b) {
       if (acao === 'aprovar') aprovar(v);
       else if (acao === 'copiar') copiarTexto(anuncio(v, 'whatsapp'), 'Anúncio copiado. Cole no WhatsApp ou no grupo.');
-      else if (acao === 'link') modalLink(v);
       else if (acao === 'recusar') recusar(v);
       else if (acao === 'divulgar') modalDivulgar(v);
       else if (acao === 'candidatos') { try { if (b && b.dataset.etapa) sessionStorage.setItem('maparh:cand-seg', b.dataset.etapa); } catch (err) { /* ok */ } localStorage.setItem('maparh:cand-vaga', v.id); localStorage.setItem('maparh:cand-projeto', v.projetoId); App.ir('candidatos'); }
@@ -565,12 +563,10 @@ Paginas.vagas = {
     // ---------- anúncio pronto, um formato para cada lugar ----------
     const FORMATOS = [['whatsapp', 'WhatsApp'], ['facebook', 'Facebook / grupos'], ['sine', 'SINE'], ['radio', 'Rádio'], ['completo', 'Completo']];
     // o que ainda não foi preenchido no pedido e faz falta no anúncio
-    // sem "como se candidatar", o link de inscrição faz esse papel (não conta como faltando)
-    const faltaNoAnuncio = v => [['descricao', 'atividades'], ['requisitos', 'requisitos'], ['salario', 'salário'], ['jornada', 'jornada'], ['beneficios', 'benefícios'], ['contato', 'como se candidatar']].filter(([k]) => !String(v[k] || '').trim() && !(k === 'contato' && recebeInscricao(v))).map(x => x[1]);
+    const faltaNoAnuncio = v => [['descricao', 'atividades'], ['requisitos', 'requisitos'], ['salario', 'salário'], ['jornada', 'jornada'], ['beneficios', 'benefícios'], ['contato', 'como se candidatar']].filter(([k]) => !String(v[k] || '').trim()).map(x => x[1]);
     function anuncio(v, formato) {
       if (formato === 'completo') {
-        const txt = Store.textoAnuncio(v);
-        return !String(v.contato || '').trim() && recebeInscricao(v) ? txt.replace(/Interessados: entrar em contato com o RH$/, `Inscreva-se pelo link: ${linkInscricao(v)}`) : txt;
+        return Store.textoAnuncio(v);
       }
       const t = k => String(v[k] || '').trim();
       const umaLinha = s => s.replace(/\s*\n+\s*/g, '; ').replace(/;\s*;/g, ';');
@@ -579,7 +575,7 @@ Paginas.vagas = {
       const onde = v.porDistrito && v.porDistrito.length ? 'região de ' + eLista(v.porDistrito.map(x => x.distrito.nome)) : (c ? c.nome + '/' + c.uf : '');
       const movel = v.porDistrito && v.porDistrito.length ? v.moveis > 0 : v.tipo === 'MOVEL';
       const n = v.quantidade || 1, vagasTxt = n === 1 ? '1 vaga' : n + ' vagas';
-      const contato = t('contato') || (recebeInscricao(v) ? `inscreva-se pelo link ${linkInscricao(v)}` : 'fale com o RH');
+      const contato = t('contato') || 'fale com o RH';
       const prazo = v.prazo ? fmtDia(v.prazo) : '';
       const L = [];
       if (formato === 'whatsapp') {
@@ -666,7 +662,6 @@ Paginas.vagas = {
               <a class="btn" href="https://wa.me/?text=${enc(texto)}" data-txt="https://wa.me/?text=" target="_blank" rel="noopener">Abrir WhatsApp</a>
               <a class="btn" href="mailto:?subject=${enc('Vaga: ' + v.titulo)}&body=${enc(texto)}" data-txt="mailto:?subject=${enc('Vaga: ' + v.titulo)}&body=">E-mail</a>
               <button class="btn" data-imprimir>Imprimir cartaz</button></div>
-            ${blocoLink(v)}
             ${faltaNoAnuncio(v).length ? `<div class="vgn-falta-anuncio"><span>O anúncio está sem: <b>${faltaNoAnuncio(v).join(', ')}</b>.</span>${podeEditar ? '<button type="button" class="btn-link" id="d-completar">Completar no pedido</button>' : '<span class="muted">Peça ao gestor para completar o pedido.</span>'}</div>` : ''}
             ${info && (info.canais || info.contatos) ? `<div class="caixa caixa-aviso"><b>Anotações do RH sobre ${UI.esc(c.nome)}:</b><br>${UI.esc([info.canais, info.contatos].filter(Boolean).join(' · '))}</div>` : ''}
           </div>
@@ -685,7 +680,6 @@ Paginas.vagas = {
         </div>`;
       const m = UI.modal({ titulo: `Divulgar: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '960px', corpo, botoes: [{ texto: 'Fechar' }], aoFechar: () => App.recarregar() });
       const ta = m.corpo.querySelector('#d-texto');
-      ligarBlocoLink(m.corpo, v);
       m.corpo.querySelector('#d-copiar').addEventListener('click', () => copiarTexto(ta.value, 'Texto copiado. Cole na plataforma.'));
       // formato do anúncio: troca o texto (se já foi editado, pergunta antes de refazer)
       let gerado = texto;
@@ -747,61 +741,6 @@ Paginas.vagas = {
       w.document.close();
     }
 
-    // ---------- link de inscrição: página pública inscricao.html (o candidato se inscreve sozinho pelo celular) ----------
-    // A inscrição cai em Candidatos, na Triagem desta vaga, com o RH principal da vaga e "como soube" preenchido.
-    const recebeInscricao = v => !!(v && v.aprovada && !fechada(v) && v.status !== 'aguardando');
-    const linkInscricao = v => location.origin + location.pathname.replace(/[^/]*$/, '') + 'inscricao.html?v=' + encodeURIComponent(v.id);
-    function blocoLink(v) {
-      if (!recebeInscricao(v)) return '';
-      const url = linkInscricao(v);
-      return `<div class="caixa" data-link-insc style="background:var(--primaria-suave);border:1px solid var(--primaria-clara);color:var(--texto)">
-        <b>Link de inscrição</b> <span class="muted">— o candidato preenche pelo celular e já cai na Triagem desta vaga.</span>
-        <div class="linha" style="margin-top:8px;gap:6px;flex-wrap:nowrap"><input readonly value="${UI.esc(url)}" data-link-url aria-label="Link de inscrição" style="flex:1;min-width:0;font-size:12px" onfocus="this.select()">
-          <button type="button" class="btn btn-pequeno btn-primario" data-link-copiar>Copiar link</button>
-          <a class="btn btn-pequeno" href="${UI.esc(url)}" target="_blank" rel="noopener">Abrir</a>
-          <button type="button" class="btn btn-pequeno" data-link-qr>QR code</button></div>
-        <div data-link-qr-area hidden style="margin-top:10px;text-align:center"><div data-link-qr-img style="display:inline-block;padding:8px;background:#fff;border-radius:8px"></div>
-          <div class="small muted" style="margin-top:4px">Aponte a câmera do celular. Bom para cartaz e grupo.</div>
-          <a class="btn btn-pequeno" data-link-qr-baixar download="inscricao-${UI.esc(String(v.titulo || 'vaga').toLowerCase().replace(/[^a-z0-9]+/gi, '-'))}.png" style="margin-top:6px" hidden>Baixar imagem</a></div>
-      </div>`;
-    }
-    let qrLib = null;   // a biblioteca do QR só carrega quando alguém pede o QR (cdnjs, versão fixa)
-    const carregarQR = () => qrLib || (qrLib = new Promise((ok, falha) => {
-      if (window.QRCode) return ok(window.QRCode);
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.crossOrigin = 'anonymous';
-      s.onload = () => window.QRCode ? ok(window.QRCode) : falha(new Error('QR indisponível'));
-      s.onerror = () => { qrLib = null; falha(new Error('Não foi possível carregar o QR code (sem internet?).')); };
-      document.head.appendChild(s);
-    }));
-    function ligarBlocoLink(raiz, v) {
-      const b = raiz.querySelector('[data-link-insc]'); if (!b) return;
-      const url = linkInscricao(v);
-      b.querySelector('[data-link-copiar]').addEventListener('click', () => copiarTexto(url, 'Link copiado. Cole no WhatsApp, no grupo ou na plataforma.'));
-      b.querySelector('[data-link-qr]').addEventListener('click', async () => {
-        const area = b.querySelector('[data-link-qr-area]');
-        if (!area.hidden) { area.hidden = true; return; }
-        area.hidden = false;
-        const alvo = b.querySelector('[data-link-qr-img]');
-        if (alvo.childElementCount) return;
-        alvo.textContent = 'Gerando…';
-        try {
-          const QR = await carregarQR();
-          alvo.textContent = '';
-          new QR(alvo, { text: url, width: 180, height: 180, correctLevel: QR.CorrectLevel.M });
-          // a biblioteca desenha num canvas; o link de baixar usa a imagem dele
-          setTimeout(() => { const c = alvo.querySelector('canvas'), bx = b.querySelector('[data-link-qr-baixar]');
-            if (c && bx) { try { bx.href = c.toDataURL('image/png'); bx.hidden = false; } catch (e) { /* segue sem baixar */ } } }, 50);
-        } catch (e) { alvo.textContent = ''; area.hidden = true; UI.toast(e.message, 'erro'); }
-      });
-    }
-    function modalLink(v) {
-      if (!recebeInscricao(v)) { UI.toast('Só vaga aprovada e em andamento recebe inscrição pelo link.', 'aviso'); return; }
-      const m = UI.modal({ titulo: `Link de inscrição: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '620px',
-        corpo: blocoLink(v) + '<p class="small muted" style="margin-top:10px">Quem se inscreve aparece em <b>Candidatos</b>, na Triagem desta vaga, com o RH principal dela. O anúncio (Divulgar) já usa este link quando a vaga não tem "como se candidatar".</p>',
-        botoes: [{ texto: 'Fechar' }] });
-      ligarBlocoLink(m.corpo, v);
-    }
 
     const contar = () => {
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) return;
