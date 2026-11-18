@@ -24,11 +24,6 @@
 .cd-coluna .coluna-cab { margin-bottom: 10px; cursor: default; }
 .cd-prontos { font-size: 12px; font-weight: 600; color: #047857; }
 .cd-coluna-lista { min-height: 150px; }
-.cd-card { padding: 10px 12px; }
-.cd-card-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.cd-card-topo .cand-nome { line-height: 1.3; overflow-wrap: anywhere; }
-.cd-card-topo .badge { flex-shrink: 0; font-size: 10px; }
-.cd-card-l { font-size: 12.5px; line-height: 1.4; margin-top: 3px; overflow-wrap: anywhere; }
 .cd-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .cd-chip { font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
 button.cd-chip { cursor: pointer; }
@@ -39,14 +34,9 @@ button.cd-chip:hover { filter: brightness(.96); }
 .cd-chip-ruim { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
 .cd-alertas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .cd-alertas span { font-size: 11.5px; padding: 0 6px; border-radius: 6px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
-.cd-card .cand-acoes .btn-pequeno { margin-left: auto; }
 .cd-fora { padding: 0 18px 16px; background: #f8fafc; }
 .cd-fora summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 4px 0; }
 
-/* LISTA: quem ainda não chegou na documentação mostra a etapa no lugar dos documentos */
-.pre-cel .cd-etapa { padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; }
-.cd-etapa-triagem { background: #f1f5f9; color: #334155; }
-.cd-etapa-entrevista { background: #ede9fe; color: #5b21b6; }
 
 /* POR RH: uma linha por RH, uma coluna por etapa */
 .cd-rh { padding-bottom: 14px; }
@@ -132,7 +122,6 @@ button.cd-chip:hover { filter: brightness(.96); }
 .cd-card.cd-st-barrada { border-left-color: #ef4444; }
 .cd-card.cd-st-adm { border-left-color: #10b981; }
 .cd-card.cd-st-fora { border-left-color: #cbd5e1; background: #fbfbfc; }
-.cd-card.cd-com-menu { z-index: 5; }
 .cd-nome { font-weight: 700; font-size: 14px; line-height: 1.3; color: var(--texto); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .cd-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 12px; color: var(--muted); min-width: 0; }
 .cd-meta .badge { font-size: 11px; padding: 1px 6px; flex-shrink: 0; }
@@ -152,7 +141,6 @@ button.cd-chip:hover { filter: brightness(.96); }
 .cd-doc .cd-chips { margin-top: 6px; }
 .cd-chega { font-size: 11.5px; font-weight: 600; color: #1e40af; padding: 1px 0; }
 .cd-pe { display: flex; align-items: center; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #eef2f6; min-height: 28px; }
-.cd-rh-ini { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; background: var(--primaria-clara); color: var(--primaria-escura); font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .cd-pe .btn-pequeno { white-space: nowrap; }
 .cd-mais { position: relative; }
 .cd-mais-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--borda); background: #fff; color: #475569; font-size: 16px; line-height: 1; cursor: pointer; }
@@ -179,14 +167,6 @@ button.cd-chip:hover { filter: brightness(.96); }
 .fi-trilha .atual b { background: #fff; color: var(--primaria); }
 .fi-trilha button:disabled { cursor: default; }
 .fi-trilha .fi-adm { cursor: default; border-style: dashed; color: #94a3b8; }
-.fi-trilha-fim { grid-template-columns: 1fr; }
-.fi-trilha-fim .atual.ok { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; cursor: default; }
-.fi-trilha-fim .atual.fora { background: #f1f5f9; border-color: #e2e8f0; color: #475569; cursor: default; }
-.fi-abas { display: flex; gap: 4px; }
-.fi-abas button { border: none; background: none; padding: 9px 14px; font: inherit; font-size: 14px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.fi-abas button:hover { color: var(--texto); }
-.fi-abas .ativa { color: var(--primaria); border-bottom-color: var(--primaria); }
-.fi-abas .ativa .aba-num { background: var(--primaria-clara); color: var(--primaria-escura); }
 .fi-modal section[hidden] { display: none; }
 .fi-linha-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .fi-modal .doc-progresso .btn-link { margin-left: 8px; font-size: 12.5px; white-space: nowrap; text-decoration: none; font-weight: 600; }
@@ -207,11 +187,12 @@ button.cd-chip:hover { filter: brightness(.96); }
 
 /* ----- Lista por etapa ----- */
 .cd-lista-top { padding: 12px 20px 0; border-bottom: 1px solid var(--borda); }
-.cd-segs { display: flex; gap: 6px; flex-wrap: wrap; padding-bottom: 12px; }
-.cd-seg { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border: 1px solid var(--borda); border-radius: 999px; background: #fff; font: inherit; font-size: 13.5px; font-weight: 600; color: #475569; cursor: pointer; }
-.cd-seg:hover { border-color: var(--primaria); color: var(--primaria); }
-.cd-seg.ativa { background: var(--primaria); border-color: var(--primaria); color: #fff; }
-.cd-seg.ativa .aba-num { background: rgba(255,255,255,.25); color: #fff; }
+/* etapas da Lista como seletor segmentado (não disputa com o botão azul principal) */
+.cd-segs { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 12px; background: var(--superficie-2); border-radius: 10px; }
+.cd-seg { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px; border: none; border-radius: 8px; background: transparent; font: inherit; font-size: 13.5px; font-weight: 600; color: #475569; cursor: pointer; transition: background-color var(--t), color var(--t), box-shadow var(--t); }
+.cd-seg:hover { background: rgba(255, 255, 255, .7); color: var(--primaria); }
+.cd-seg.ativa { background: #fff; color: var(--primaria); box-shadow: 0 1px 3px rgba(15, 23, 42, .14); }
+.cd-seg.ativa .aba-num { background: var(--primaria-clara); color: var(--primaria-escura); }
 .cd-lista-sub { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
 .cd-pends { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .cd-pend { height: 28px; padding: 0 10px; border: 1px solid var(--borda); border-radius: 8px; background: #f8fafc; font: inherit; font-size: 12.5px; color: #475569; cursor: pointer; }
@@ -273,13 +254,6 @@ button.cd-chip:hover { filter: brightness(.96); }
 .cd-card.cd-levantado:hover { transform: none; }
 .cd-coluna .coluna-vazia { border: 1.5px dashed #cbd5e1; border-radius: 8px; padding: 24px 8px; font-size: 12px; color: #64748b; }
 .cd-coluna .coluna-cab { position: sticky; top: var(--topo-h, 46px); z-index: 2; background: #e8edf3; padding: 6px 0; margin-top: -6px; }
-.cd-mais-btn { width: 28px; height: 28px; }
-/* etapas da Lista como seletor segmentado (não disputa com o botão azul principal) */
-.cd-segs { display: inline-flex; gap: 2px; padding: 3px; background: #f1f5f9; border-radius: 10px; margin-bottom: 12px; padding-bottom: 3px; }
-.cd-seg { border: none; background: transparent; height: 32px; border-radius: 8px; }
-.cd-seg:hover { background: rgba(255, 255, 255, .7); color: var(--primaria); }
-.cd-seg.ativa { background: #fff; color: var(--primaria); box-shadow: 0 1px 3px rgba(15, 23, 42, .14); }
-.cd-seg.ativa .aba-num { background: var(--primaria-clara); color: var(--primaria-escura); }
 .cd-pend { border-radius: 999px; }
 /* trilha da ficha: etapa feita ganha ✓ e a atual se destaca */
 .fi-trilha .feita b { font-size: 0; }
@@ -394,7 +368,6 @@ button.cd-chip:hover { filter: brightness(.96); }
 .fi-dest-aviso { padding: 10px 12px; border-radius: 8px; background: #f8fafc; border: 1px dashed #cbd5e1; font-size: 13px; color: #334155; }
 
 /* lote 4: WhatsApp, faixa do dia, conflito na agenda */
-.cd-wa { font-size: 11.5px; font-weight: 700; color: #15803d; text-decoration: none; border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
 .cd-wa:hover { background: #dcfce7; }
 .cd-hoje { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 20px; }
 .cd-hoje:not(:empty) { padding: 10px 20px; border-bottom: 1px solid var(--borda); background: #fbfdff; }
@@ -407,7 +380,7 @@ button.cd-chip:hover { filter: brightness(.96); }
 .cd-ag-ev.cd-ag-conf { box-shadow: 0 0 0 2px #fca5a5; }
 .cd-ag-conf-tx { font-style: normal; color: #b91c1c; }
 
-.cd-wa { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; margin-left: 6px; border-radius: 999px; flex-shrink: 0; }
+.cd-wa { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; margin-left: 6px; flex-shrink: 0; border: 1px solid #bbf7d0; border-radius: 999px; background: #f0fdf4; color: #15803d; font-size: 11.5px; font-weight: 700; text-decoration: none; }
 .cd-pe { min-width: 0; }
 .cd-pe .btn { white-space: nowrap; }
 
@@ -553,4 +526,93 @@ button.cd-nome:focus-visible { outline: 2px solid var(--primaria); outline-offse
   .cd-marca::after { content: ''; position: absolute; inset: -9px; }
   .cd-chegada .btn-pequeno { min-height: 36px; padding: 4px 12px; }
   .fi-modal .modal-rodape .fi-esq + :not(.fi-esq) { margin-left: 0; }
+}
+
+
+/* ==================================================================================================
+   ACABAMENTO (18/11/2026) — usa os tokens do app.css. Fica no fim para valer por cima das regras antigas.
+   ================================================================================================== */
+/* barra de cima: os quatro filtros encolhem juntos e os botões ficam na mesma linha em 1366px */
+.cd-barra { gap: 12px 14px; }
+.cd-barra .cad-proj { flex: 0 1 clamp(120px, 9vw, 200px); min-width: 0; }
+.cd-barra .cad-proj:first-child { flex-basis: clamp(170px, 13.5vw, 240px); }   /* o nome do projeto é o mais comprido */
+.cd-barra .cad-proj select, .cd-barra .cad-proj:first-child select { width: 100%; min-width: 0; }
+.cd-faixa .busca { width: 300px; }
+.cd-abas .aba { margin-bottom: -1px; }
+.cd-aviso { padding: 9px 20px; }
+.cd-vazio { padding: 48px 20px; }
+.cd-hoje:not(:empty) { background: var(--superficie); }
+.cd-hoje button { transition: filter var(--t), box-shadow var(--t); font-variant-numeric: tabular-nums; }
+.cd-hoje button:hover { box-shadow: var(--sombra); }
+
+/* quadro */
+.cd-quadro { gap: 14px; padding: 16px 20px 18px; background: var(--superficie); }
+.cd-fora { padding: 0 20px 16px; background: var(--superficie); }
+.cd-coluna { background: #ecf0f6; border-radius: var(--raio); padding: 10px; }
+.cd-coluna .coluna-cab { background: #ecf0f6; font-size: 13.5px; letter-spacing: -.005em; }
+.cd-coluna.cd-sobre .coluna-cab { background: transparent; }
+.cd-coluna .coluna-cab .aba-num { box-shadow: 0 0 0 1px var(--borda); }
+.cd-card { border-radius: 10px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+.cd-card:hover { box-shadow: 0 6px 16px rgba(15, 23, 42, .12); transform: translateY(-1px); }
+.cd-arrastando .cd-card:hover, .cd-card.cd-levantado:hover { transform: none; }
+.cd-chip { border-radius: var(--raio-pill); font-variant-numeric: tabular-nums; }
+.cd-km, .cd-chega, .cd-prazo { font-variant-numeric: tabular-nums; }
+.cd-pe { border-top-color: #edf1f6; }
+.cd-mais-btn { border-radius: 8px; border-color: var(--borda-forte); transition: border-color var(--t), color var(--t), background-color var(--t); }
+.cd-mais-btn:hover { background: var(--primaria-suave); }
+.cd-wa { transition: background-color var(--t), box-shadow var(--t); }
+.cd-wa:hover { box-shadow: 0 0 0 3px rgba(22, 163, 74, .15); }
+.cd-ver-mais { border-color: var(--borda-forte); border-radius: 10px; transition: background-color var(--t), border-color var(--t); }
+.cd-solta-fora { border-radius: var(--raio); }
+.cd-menu button:hover { background: var(--superficie-2); }
+.btn-wa { box-shadow: 0 1px 2px rgba(22, 163, 74, .35); }
+
+/* lista */
+.cd-lista-top { padding: 14px 20px 0; }
+.cd-pend { transition: border-color var(--t), background-color var(--t); font-variant-numeric: tabular-nums; }
+.cd-lote { box-shadow: 0 1px 0 #bfdbfe, 0 6px 14px rgba(15, 23, 42, .06); }
+.cd-marca { transition: border-color var(--t), background-color var(--t); }
+.cd-bloco { position: relative; }
+.cd-rh-num, .cd-rh-grade > span, .cd-rh-doc { font-variant-numeric: tabular-nums; }
+.cd-rh-num { transition: background-color var(--t); }
+.cd-rh-linha:hover { background: #f6f9ff; }
+
+/* agenda */
+.cd-ag-grade { border-radius: var(--raio); box-shadow: var(--sombra); }
+.cd-ag-dcab { background: var(--superficie); }
+.cd-ag-ev { border-radius: 8px; }
+.cd-ag-chip { transition: border-color var(--t), background-color var(--t); }
+
+/* ficha */
+.fi-cab { margin: 0 -20px 16px; padding: 12px 20px 12px; }
+.fi-trilha > * { height: 36px; border-color: var(--borda-forte); transition: border-color var(--t), background-color var(--t), color var(--t), box-shadow var(--t); }
+.fi-trilha .feita { background: var(--primaria-suave); border-color: #bfdbfe; }
+.fi-trilha .atual { background: var(--primaria); border-color: var(--primaria); }
+.fi-nota-txt { background: var(--superficie); border-color: var(--borda); }
+.fi-estrelas button { transition: color var(--t), transform .08s ease; }
+.fi-estrelas button:hover { transform: scale(1.12); }
+.cd-opcao { transition: border-color var(--t), background-color var(--t); }
+.cd-opcao:hover { border-color: #94a3b8; }
+.cd-opcao:has(input:checked) { border-color: var(--primaria); background: var(--primaria-suave); box-shadow: inset 0 0 0 1px var(--primaria); }
+.cd-enq-linha, .cd-reserva-l, .cd-imp-dist { border-radius: 10px; }
+.msg-tipos button { transition: border-color var(--t), background-color var(--t), color var(--t); }
+.msg-tipos button:hover:not(.ativa) { border-color: var(--primaria); color: var(--primaria); }
+
+@media (max-width: 900px) {
+  .cd-barra .cad-proj, .cd-barra .cad-proj:first-child { flex: 1 1 40%; }
+  .cd-faixa { padding-left: 12px; padding-right: 12px; }
+  .cd-faixa .busca { width: 100%; }
+  .cd-quadro { padding: 12px; gap: 10px; }
+  .cd-fora { padding: 0 12px 14px; }
+  .cd-lista-top { padding: 12px 12px 0; }
+  .cd-hoje:not(:empty), .cd-aviso { padding-left: 12px; padding-right: 12px; }
+  .cd-segs { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .cd-segs::-webkit-scrollbar { display: none; }
+  .cd-seg { flex-shrink: 0; }
+  .cd-ag { padding: 12px; }
+}
+@media (max-width: 560px) { .cd-barra .cad-proj, .cd-barra .cad-proj:first-child { flex: 1 1 100%; } }
+@media (max-width: 760px) {
+  .fi-cab { margin: 0 -14px 14px; padding: 10px 14px; }
+  .cd-card:hover { transform: none; }
 }

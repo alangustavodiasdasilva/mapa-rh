@@ -7,53 +7,73 @@ Paginas.mapa = {
         <div class="card mapa-controles nao-imprimir" id="controles">
           <div class="painel-cab"><b>Mostrar no mapa</b><button class="btn-icone painel-toggle" title="Recolher / expandir" aria-label="Recolher ou expandir as opções do mapa" aria-expanded="true">&#8722;</button></div>
           <div class="painel-corpo">
-          <p class="muted small" style="margin:0 0 8px">Os filtros do topo escolhem <b>quais contratações</b> entram. Aqui você liga e desliga <b>o que aparece</b>.</p>
-          <div style="margin-bottom:8px"><input id="c-busca-cidade" placeholder="Localizar cidade no mapa…" autocomplete="off" style="font-size:12px;padding:5px 8px"></div>
-          <div class="linha" style="gap:6px;margin-bottom:8px;flex-wrap:nowrap"><span class="muted small" style="white-space:nowrap">Fundo:</span>
-            <select id="c-fundo" style="font-size:12px;padding:3px 6px">
+          <div class="mpn-busca"><input id="c-busca-cidade" placeholder="Localizar cidade no mapa…" autocomplete="off" aria-label="Localizar cidade no mapa"></div>
+          <details class="mpn-grupo" data-g="pessoas" data-conta open>
+            <summary><span>Pessoas contratadas</span><small></small></summary>
+            <label title="Losango azul com o número de pessoas que trabalham na cidade"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
+            <label title="Cidade de origem: de onde a pessoa vem (laranja; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>De onde vêm <span class="muted small">(origem)</span></label>
+            <label class="sub" style="display:block">Mostrar as origens como
+              <select id="c-estilo" style="margin-top:2px">
+                <option value="bolhas">Bolhas com a quantidade</option>
+                <option value="pontos">Pontos pequenos</option>
+                <option value="pintar">Municípios pintados (mais escuro = mais gente)</option>
+              </select></label>
+            <label class="sub" style="display:block">Tamanho dos marcadores
+              <select id="c-tamanho" style="margin-top:2px">
+                <option value="p">Pequeno</option>
+                <option value="m">Médio</option>
+                <option value="g">Grande</option>
+              </select></label>
+          </details>
+          <details class="mpn-grupo" data-g="vagas" open>
+            <summary><span>Vagas</span><small id="c-falta-selo"></small></summary>
+            <label title="Cada distrito pintado pela parte do pedido já preenchida nas vagas aprovadas (verde = completo, vermelho = falta muito)"><input type="checkbox" id="c-falta"> <span class="ponto-cor" style="background:linear-gradient(90deg,#dc2626,#16a34a)"></span>Falta contratar <span class="muted small">(por distrito)</span></label>
+            <div id="c-falta-opcoes" class="mpn-falta" hidden>
+              <select id="c-falta-rh" aria-label="Filtrar as vagas por RH responsável" hidden></select>
+              <select id="c-falta-vaga" aria-label="Filtrar por vaga"></select>
+              <div id="c-falta-resumo" class="mpn-falta-resumo"></div>
+            </div>
+          </details>
+          <details class="mpn-grupo" data-g="regioes" data-conta open>
+            <summary><span>Regiões</span><small></small></summary>
+            <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> <span class="ponto-cor" style="background:#16a34a"></span>Microrregiões (malha)</label>
+            <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
+            <label class="sub" title="Etiqueta azul com o total de contratados de cada distrito (aparece com o mapa afastado)"><input type="checkbox" id="c-tot-dist" checked> Totais por distrito (etiquetas azuis)</label>
+            <label title="Contorno dos estados dos projetos"><input type="checkbox" id="c-limites" checked> Limite dos estados</label>
+            <label title="Contorno de todos os municípios da área que está na tela (aparece ao aproximar o zoom). Clique em qualquer cidade para abrir a ficha."><input type="checkbox" id="c-divisas" checked> Divisas dos municípios</label>
+          </details>
+          <details class="mpn-grupo" data-g="apoio" data-conta>
+            <summary><span>Unidades e SINE</span><small></small></summary>
+            <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> 🌾 Unidades PDR (<span id="qtd-silos">0</span>)</label>
+            <select id="mapa-filtro-silos-mapa" class="sub" style="width:calc(100% - 18px);font-size:11px;padding:2px 4px" hidden>
+              <option value="">Todos os mapas</option>
+            </select>
+            <label id="c-sine-wrap" title="Agências do SINE dos estados em uso (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
+          </details>
+          <details class="mpn-grupo" data-g="linhas">
+            <summary><span>Linhas e mapa de calor</span><small></small></summary>
+            <div class="mpn-rot">Linhas: de onde vêm → onde trabalham</div>
+            <select id="c-modo-linhas">
+              <option value="selecionada">Só da cidade que eu clicar</option>
+              <option value="todas">Todas as linhas</option>
+              <option value="nenhuma">Nenhuma linha</option>
+            </select>
+            <div class="muted small" id="c-aviso-linhas" style="margin:4px 0 8px"></div>
+            <label><input type="checkbox" id="c-calor"> Ligar mapa de calor</label>
+            <select id="c-modo-calor" class="sub" style="width:calc(100% - 18px)" hidden>
+              <option value="origem">Concentração por cidade de origem</option>
+              <option value="atuacao">Concentração por cidade de atuação</option>
+            </select>
+          </details>
+          <details class="mpn-grupo" data-g="fundo">
+            <summary><span>Fundo do mapa</span><small id="c-fundo-selo"></small></summary>
+            <select id="c-fundo" aria-label="Fundo do mapa">
               <option value="claro">Claro (limpo)</option>
               <option value="ruas">Ruas (OpenStreetMap)</option>
               <option value="satelite">Satélite</option>
-            </select></div>
-          <label title="Losango azul com o número de pessoas que trabalham na cidade"><input type="checkbox" id="c-atuacao" checked> <span class="marc-atuacao mini"><span></span></span>Onde trabalham <span class="muted small">(atuação)</span></label>
-          <label title="Cidade de origem: de onde a pessoa vem (laranja; cidades próximas se juntam no zoom baixo)"><input type="checkbox" id="c-origens" checked> <span class="ponto-cor" style="background:#ea580c"></span>De onde vêm <span class="muted small">(origem)</span></label>
-          <label class="sub" style="display:block">Mostrar as origens como
-            <select id="c-estilo" style="margin-top:2px">
-              <option value="bolhas">Bolhas com a quantidade</option>
-              <option value="pontos">Pontos pequenos</option>
-              <option value="pintar">Municípios pintados (mais escuro = mais gente)</option>
-            </select></label>
-          <label class="sub" style="display:block">Tamanho dos marcadores
-            <select id="c-tamanho" style="margin-top:2px">
-              <option value="p">Pequeno</option>
-              <option value="m">Médio</option>
-              <option value="g">Grande</option>
-            </select></label>
-          <label title="Municípios pintados com o tom da microrregião"><input type="checkbox" id="c-distritos" checked> <span class="ponto-cor" style="background:#16a34a"></span>Microrregiões (malha)</label>
-          <label class="sub"><input type="checkbox" id="c-rotulos" checked> Nomes das microrregiões</label>
-          <label class="sub" title="Etiqueta azul com o total de contratados de cada distrito (aparece com o mapa afastado)"><input type="checkbox" id="c-tot-dist" checked> Totais por distrito (etiquetas azuis)</label>
-          <label title="Unidades importadas dos mapas KML, na cor da microrregião"><input type="checkbox" id="c-silos" checked> 🌾 Unidades PDR (<span id="qtd-silos">0</span>)</label>
-          <select id="mapa-filtro-silos-mapa" class="sub" style="width:calc(100% - 18px);font-size:11px;padding:2px 4px" hidden>
-            <option value="">Todos os mapas</option>
-          </select>
-          <label title="Contorno dos estados dos projetos"><input type="checkbox" id="c-limites" checked> Limite dos estados</label>
-          <label title="Contorno de todos os municípios da área que está na tela (aparece ao aproximar o zoom). Clique em qualquer cidade para abrir a ficha."><input type="checkbox" id="c-divisas" checked> Divisas dos municípios</label>
-          <label id="c-sine-wrap" title="Agências do SINE dos estados em uso (endereço e telefone na ficha da cidade)"><input type="checkbox" id="c-sine"> <span class="sine-mini">S</span>Agências do SINE (<span id="qtd-sine">0</span>)</label>
-          <label title="Cada distrito pintado pela parte do pedido já preenchida nas vagas aprovadas (verde = completo, vermelho = falta muito)"><input type="checkbox" id="c-falta"> <span class="ponto-cor" style="background:linear-gradient(90deg,#16a34a,#dc2626)"></span>Falta contratar <span class="muted small">(vagas)</span></label>
-          <div class="secao">Linhas: de onde vêm → onde trabalham</div>
-          <select id="c-modo-linhas">
-            <option value="selecionada">Só da cidade que eu clicar</option>
-            <option value="todas">Todas as linhas</option>
-            <option value="nenhuma">Nenhuma linha</option>
-          </select>
-          <div class="muted small" id="c-aviso-linhas" style="margin-top:4px"></div>
-          <div class="secao">Mapa de calor</div>
-          <label><input type="checkbox" id="c-calor"> Ligar mapa de calor</label>
-          <select id="c-modo-calor" class="sub" style="width:calc(100% - 18px)" hidden>
-            <option value="origem">Concentração por cidade de origem</option>
-            <option value="atuacao">Concentração por cidade de atuação</option>
-          </select>
-          <div class="linha mt" style="gap:6px">
+            </select>
+          </details>
+          <div class="mpn-botoes">
             <button class="btn btn-pequeno" id="c-ajustar" title="Enquadrar tudo, inclusive origens distantes">Ajustar zoom</button>
             <button class="btn btn-pequeno" id="c-brasil">Ver Brasil</button>
             <button class="btn btn-pequeno" id="c-tela-cheia" title="Mapa ocupando a tela inteira (Esc para sair)">Tela cheia</button>
@@ -61,8 +81,10 @@ Paginas.mapa = {
           </div>
         </div>
         <div class="card mapa-legenda nao-imprimir" id="legenda"></div>
-        <div class="malha-status nao-imprimir" id="malha-status" hidden></div>
-        <div class="cidade-hover nao-imprimir" id="cidade-hover" hidden></div>
+        <div class="mpn-rodape nao-imprimir" aria-live="polite">
+          <div class="cidade-hover" id="cidade-hover" hidden></div>
+          <div class="malha-status" id="malha-status" hidden></div>
+        </div>
         <div class="mapa-kpis nao-imprimir" id="mapa-kpis"></div>
         <div class="card mapa-painel" id="painel" role="dialog" aria-label="Detalhes da seleção" tabindex="-1" hidden></div>
       </div>`;
@@ -771,20 +793,30 @@ Paginas.mapa = {
       if (!ativo || vez !== montandoFalta) return;
       const fT = App.filtros.tipo;
       const porD = new Map();
-      for (const v of Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(v => v.aprovada && v.status !== 'cancelada')) {
+      const doFiltro = opcoesFalta();
+      for (const v of doFiltro) {
         for (const x of v.porDistrito) {
-          const a = porD.get(x.distrito.id) || { pl: 0, pm: 0, al: 0, am: 0 };
-          if (fT !== 'MOVEL') { a.pl += x.locais; a.al += Math.min(x.admLoc, x.locais); }
-          if (fT !== 'LOCAL') { a.pm += x.moveis; a.am += Math.min(x.admMov, x.moveis); }
+          const a = porD.get(x.distrito.id) || { pl: 0, pm: 0, al: 0, am: 0, vagas: [] };
+          let f = 0;
+          if (fT !== 'MOVEL') { a.pl += x.locais; a.al += Math.min(x.admLoc, x.locais); f += Math.max(0, x.locais - x.admLoc); }
+          if (fT !== 'LOCAL') { a.pm += x.moveis; a.am += Math.min(x.admMov, x.moveis); f += Math.max(0, x.moveis - x.admMov); }
+          a.vagas.push({ titulo: v.titulo, falta: f });
           porD.set(x.distrito.id, a);
         }
       }
-      let pintados = 0;
+      // 1º: as contas e o resumo no painel (sai na hora); 2º: a pintura (espera a malha dos municípios)
+      const itens = [];
       for (const d of distritos) {
         const a = porD.get(d.id); if (!a || !(a.pl + a.pm)) continue;
         const cids = Store.cidadesDoDistrito(d); if (!cids.length) continue;
-        const ped = a.pl + a.pm, adm = a.al + a.am, fl = a.pl - a.al, fm = a.pm - a.am, falta = fl + fm, p = adm / ped, cor = corFalta(p);
-        const tip = balao({ cor, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'pedido das vagas aprovadas', sub: `${adm} de ${ped} admitidos (${Math.round(100 * p)}%) · locais ${a.al}/${a.pl} · móveis ${a.am}/${a.pm}`, dica: falta ? `faltam ${falta}` : 'pedido completo' });
+        const ped = a.pl + a.pm, adm = a.al + a.am, fl = a.pl - a.al, fm = a.pm - a.am;
+        itens.push({ d, a, cids, ped, adm, fl, fm, falta: fl + fm, p: adm / ped, cor: corFalta(adm / ped) });
+      }
+      resumirFalta(itens, doFiltro.length);
+      for (const { d, a, cids, ped, adm, fl, fm, falta, p, cor } of itens) {
+        const quais = a.vagas.filter(x => x.falta).sort((x, y) => y.falta - x.falta);
+        const tip = balao({ cor, titulo: `Distrito ${UI.esc(d.nome)}`, tipo: 'pedido das vagas aprovadas', sub: `${adm} de ${ped} admitidos (${Math.round(100 * p)}%) · locais ${a.al}/${a.pl} · móveis ${a.am}/${a.pm}` +
+          (quais.length ? '<br>' + quais.slice(0, 4).map(x => `${UI.esc(x.titulo)}: faltam ${x.falta}`).join('<br>') + (quais.length > 4 ? `<br>e mais ${quais.length - 4}` : '') : ''), dica: falta ? `faltam ${falta}` : 'pedido completo' });
         const porUF = new Map(); for (const c of cids) { if (!porUF.has(c.uf)) porUF.set(c.uf, []); porUF.get(c.uf).push(c); }
         for (const [uf, lista] of porUF) {
           let dadosUF = null; try { dadosUF = await Malha.carregarUF(uf); } catch (e) { /* sem malha: círculos */ }
@@ -799,10 +831,46 @@ Paginas.mapa = {
         const lat = cids.reduce((t, c) => t + c.lat, 0) / cids.length, lng = cids.reduce((t, c) => t + c.lng, 0) / cids.length;
         camadaFalta.addLayer(L.marker([lat, lng], { pane: 'rotulos', interactive: false, keyboard: false,
           icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="rotulo-falta" style="background:${cor}">${falta ? `faltam ${falta} (${fl}/${fm})` : 'completo'}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }) }));
-        pintados++;
       }
-      if (!pintados && el.querySelector('#c-falta').checked) UI.toast('Nenhuma vaga aprovada com distrito neste filtro.', 'info', 3500);
     }
+    // filtros da camada: RH responsável e vaga (só as vagas aprovadas com distrito, do filtro do topo). Devolve as vagas que entram na conta.
+    const selFaltaRh = el.querySelector('#c-falta-rh'), selFaltaVaga = el.querySelector('#c-falta-vaga'), resumoFalta = el.querySelector('#c-falta-resumo');
+    function opcoesFalta() {
+      const todas = Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(v => v.aprovada && v.status !== 'cancelada' && v.porDistrito.length);
+      const rhs = new Map();
+      for (const v of todas) for (const l of (v.responsaveis || [])) { const u = Store.usuarioPorLogin(l); rhs.set(l, u ? u.nome : l); }
+      const rhAtual = selFaltaRh.value, vagaAtual = selFaltaVaga.value;
+      selFaltaRh.innerHTML = '<option value="">Todos os RHs</option>' + [...rhs.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).map(([l, n]) => `<option value="${UI.esc(l)}">RH: ${UI.esc(n)}</option>`).join('');
+      selFaltaRh.value = rhs.has(rhAtual) ? rhAtual : '';
+      selFaltaRh.hidden = rhs.size < 2;
+      const doRh = todas.filter(v => !selFaltaRh.value || (v.responsaveis || []).includes(selFaltaRh.value)).sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'));
+      selFaltaVaga.innerHTML = `<option value="">Todas as vagas (${doRh.length})</option>` + doRh.map(v => `<option value="${UI.esc(v.id)}">${UI.esc(v.titulo)}${v.contagemCarregada ? (v.faltam ? ` · faltam ${v.faltam}` : ' · completa') : ''}</option>`).join('');
+      selFaltaVaga.value = doRh.some(v => v.id === vagaAtual) ? vagaAtual : '';
+      selFaltaVaga.hidden = !doRh.length;
+      return doRh.filter(v => !selFaltaVaga.value || v.id === selFaltaVaga.value);
+    }
+    // resumo no painel: total que falta e os distritos, do que mais falta para o que menos falta (clique aproxima)
+    function resumirFalta(itens, nVagas) {
+      const selo = el.querySelector('#c-falta-selo');
+      if (!itens.length) {
+        resumoFalta.innerHTML = `<div class="muted small">${nVagas ? 'As vagas deste filtro não têm distrito na região mostrada.' : 'Nenhuma vaga aprovada com distrito neste filtro.'}</div>`;
+        if (selo) selo.textContent = ''; return;
+      }
+      const falta = itens.reduce((n, x) => n + x.falta, 0), ped = itens.reduce((n, x) => n + x.ped, 0);
+      if (selo) selo.textContent = falta ? `faltam ${UI.fmtNum(falta)}` : 'completo';
+      resumoFalta.innerHTML = `<div class="mpn-falta-total">${falta ? `Faltam <b>${UI.fmtNum(falta)}</b> de ${UI.fmtNum(ped)} pessoas` : `Pedido completo: <b>${UI.fmtNum(ped)}</b> pessoas`}</div>` +
+        itens.slice().sort((a, b) => b.falta - a.falta || a.d.nome.localeCompare(b.d.nome, 'pt-BR', { numeric: true })).map(x =>
+          `<button type="button" class="mpn-falta-linha" data-d="${UI.esc(x.d.id)}" title="${x.adm} de ${x.ped} admitidos · locais ${x.a.al}/${x.a.pl} · móveis ${x.a.am}/${x.a.pm}. Clique para aproximar."><i style="background:${x.cor}"></i><span>${UI.esc(x.d.nome)}</span><b>${x.falta ? `faltam ${x.falta}` : 'completo'}</b></button>`).join('') +
+        '<div class="mpn-escala"><span>falta tudo</span><i></i><span>completo</span></div>';
+    }
+    resumoFalta.addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; const d = Store.distrito(b.dataset.d); if (d) focar(Store.cidadesDoDistrito(d)); });
+    selFaltaRh.addEventListener('change', () => { selFaltaVaga.value = ''; montarCamadaFalta(); });
+    selFaltaVaga.addEventListener('change', montarCamadaFalta);
+    el.querySelector('#c-falta').addEventListener('change', e => {
+      el.querySelector('#c-falta-opcoes').hidden = !e.target.checked;
+      const lg = el.querySelector('#legenda-falta'); if (lg) lg.hidden = !e.target.checked;
+      if (e.target.checked) { camadaFalta.addTo(mapa); montarCamadaFalta(); } else { montandoFalta++; mapa.removeLayer(camadaFalta); const selo = el.querySelector('#c-falta-selo'); if (selo) selo.textContent = ''; }
+    });
     el.querySelector('#c-falta').addEventListener('change', e => {
       if (e.target.checked) { camadaFalta.addTo(mapa); montarCamadaFalta(); } else { montandoFalta++; mapa.removeLayer(camadaFalta); }
     });
@@ -1368,7 +1436,9 @@ Paginas.mapa = {
       return Object.keys(cont).sort((a, b2) => cont[b2] - cont[a]).slice(0, 6);
     }
     async function atualizarDivisas() {
-      const ligada = el.querySelector('#c-divisas').checked && mapa.getZoom() >= ZOOM_MIN_DIVISAS;
+      const cx = el.querySelector('#c-divisas');
+      if (!ativo || !cx) return;   // saiu da tela do mapa
+      const ligada = cx.checked && mapa.getZoom() >= ZOOM_MIN_DIVISAS;
       if (!ligada) { if (mapa.hasLayer(camadaDivisas)) mapa.removeLayer(camadaDivisas); return; }
       if (!mapa.hasLayer(camadaDivisas)) camadaDivisas.addTo(mapa);
       const satelite = el.querySelector('#c-fundo').value === 'satelite';
@@ -1443,6 +1513,8 @@ Paginas.mapa = {
     const bola = (cor, tam = 12) => `<span class="ponto-cor" style="background:${UI.esc(cor)};width:${tam}px;height:${tam}px"></span>`;
     legenda.innerHTML = `<div class="painel-cab"><b>Legenda</b><span class="linha" style="gap:6px"><button class="btn-link small" id="legenda-ajuda" title="Como ler o mapa">como ler?</button><button class="btn-icone painel-toggle" title="Recolher / expandir" aria-label="Recolher ou expandir a legenda" aria-expanded="true">&#8722;</button></span></div><div class="painel-corpo">` +
       (qtdSemCidade ? `<div class="legenda-aviso small"><b>${UI.fmtNum(qtdSemCidade)}</b> contratação(ões) sem cidade reconhecida não aparecem no mapa. Corrija a cidade no cadastro ou baixe a lista do IBGE em Cidades.</div>` : '') +
+      `<div id="legenda-falta" hidden><div class="legenda-secao">Falta contratar (vagas aprovadas)</div><div class="mpn-escala"><span>falta tudo</span><i></i><span>completo</span></div>` +
+      item('<span class="rotulo-falta mpn-rot-ex">faltam n (l/m)</span>', 'Distrito pintado pela parte do pedido já admitida; a etiqueta diz quantos faltam (locais/móveis)') + `</div>` +
       `<div class="legenda-secao">Em cada cidade</div>` +
       item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique: quem são e de onde vêm') +
       `<div id="legenda-origens"></div>` +
@@ -1559,6 +1631,21 @@ Paginas.mapa = {
       const estado = {}; caixasCamadas.forEach(c => { estado[c.id] = c.checked; });
       localStorage.setItem(CHAVE_CAMADAS, JSON.stringify(estado));
     }));
+    // grupos do painel (Pessoas, Vagas, Regiões…): lembra quais ficaram abertos e mostra quantas opções estão ligadas em cada um
+    {
+      const CH = 'maparh:mapa-grupos'; let salvo = {};
+      try { salvo = JSON.parse(localStorage.getItem(CH) || '{}') || {}; } catch (e) { salvo = {}; }
+      const grupos = [...el.querySelectorAll('#controles details[data-g]')];
+      const contarLigados = () => {
+        for (const g of grupos) { if (!g.hasAttribute('data-conta')) continue; const cbs = [...g.querySelectorAll('input[type=checkbox]')]; g.querySelector('summary small').textContent = `${cbs.filter(c => c.checked).length} de ${cbs.length}`; }
+        const sf = el.querySelector('#c-fundo'), selo = el.querySelector('#c-fundo-selo'); if (selo && sf.selectedOptions[0]) selo.textContent = sf.selectedOptions[0].textContent.split(' (')[0].toLowerCase();
+      };
+      for (const g of grupos) {
+        if (g.dataset.g in salvo) g.open = !!salvo[g.dataset.g];
+        g.addEventListener('toggle', () => { salvo[g.dataset.g] = g.open; try { localStorage.setItem(CH, JSON.stringify(salvo)); } catch (e) { /* ok */ } });
+      }
+      el.querySelector('#controles').addEventListener('change', contarLigados); contarLigados();
+    }
     function ajustar() { if (pontos.length) mapa.fitBounds(L.latLngBounds(pontos).pad(0.15), { maxZoom: 9 }); }
     // enquadramento inicial: distritos + cidades onde as contratações trabalham + origens dentro dos estados do projeto.
     // Origens de fora do estado ficam de fora para não "encolher" o mapa (o botão "Ajustar zoom" mostra tudo).

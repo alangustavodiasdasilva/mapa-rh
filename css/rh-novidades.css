@@ -1,0 +1,148 @@
+/* Novidades do RH na tela Candidatos: possível duplicado, "Para avançar" na ficha, copiar para a folha,
+   ficha imprimível e atalhos do teclado. Só acrescenta; não muda o que já existe em candidatos.css. */
+
+/* ----- possível duplicado (cartão do Quadro e linha da Lista) ----- */
+.rhn-dup { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; }
+.rhn-dup-b { font: inherit; font-size: 11.5px; line-height: 1.5; padding: 0 7px; border-radius: 6px; cursor: pointer;
+  background: #f5f3ff; border: 1px solid #ddd6fe; color: #5b21b6; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rhn-dup-b::before { content: "⧉ "; }
+.rhn-dup-b:hover { background: #ede9fe; }
+.rhn-dup-b:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+
+/* ----- ficha: Para avançar / Possível duplicado ----- */
+.rhn-pend { margin: 0 0 16px; padding: 10px 14px; border: 1px solid #bfdbfe; border-left: 4px solid var(--primaria); border-radius: var(--raio); background: #f8fbff; }
+.rhn-pend-tit { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--primaria-escura); margin-bottom: 4px; }
+.rhn-pend-tit.rhn-dup-tit { color: #5b21b6; margin-top: 8px; }
+.rhn-pend-tit:first-child { margin-top: 0; }
+.rhn-pend ul { list-style: none; margin: 0; padding: 0; }
+.rhn-pend li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px dashed #dbeafe; font-size: 13px; min-height: 30px; }
+.rhn-pend li .btn-pequeno { padding-top: 2px; padding-bottom: 2px; }
+.rhn-pend li:first-child { border-top: 0; }
+.rhn-pend li > span { min-width: 0; overflow-wrap: anywhere; }
+.rhn-pend li > span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--aviso); margin-right: 8px; vertical-align: 1px; }
+.rhn-pend li.rhn-grave > span::before { background: var(--perigo); }
+.rhn-pend li .btn { flex-shrink: 0; }
+
+/* ficha: Copiar para a folha / Imprimir ficha, ao lado do resumo */
+.rhn-ferr { display: inline-flex; gap: 12px; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
+.rhn-ferr .btn-link { font-size: 12.5px; }
+
+/* Lista > Admitidos: botão Copiar para a folha */
+.rhn-folha-lista { margin-left: auto; }
+
+/* ----- atalhos do teclado ----- */
+.rhn-atalhos-btn { flex-shrink: 0; width: 30px; height: 30px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--borda); background: #fff; color: var(--muted);
+  font: inherit; font-weight: 700; cursor: pointer; }
+.rhn-atalhos-btn:hover { color: var(--primaria); border-color: #bfdbfe; background: var(--primaria-clara); }
+.rhn-atalhos { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.rhn-atalhos td { padding: 6px 4px; border-bottom: 1px solid var(--borda); font-size: 13px; vertical-align: middle; }
+.rhn-atalhos td:first-child { white-space: nowrap; width: 1%; padding-right: 14px; }
+.rhn-atalhos kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #f8fafc;
+  font: 600 12px/1.5 ui-monospace, Consolas, monospace; text-align: center; color: var(--texto); }
+/* candidato marcado pelo teclado (J/K) */
+.cd-card.rhn-foco, .pre-pessoa.rhn-foco { outline: 2px solid var(--primaria); outline-offset: 2px; }
+@media (max-width: 760px) { .rhn-atalhos-btn { display: none; } .rhn-ferr { display: flex; margin: 6px 0 0; } }
+
+/* ----- ficha imprimível ----- */
+#rhn-impressao { display: none; }
+@media print {
+  body.rhn-imprimindo > *:not(#rhn-impressao) { display: none !important; }
+  body.rhn-imprimindo { background: #fff !important; }
+  body.rhn-imprimindo #rhn-impressao { display: block; color: #000; font-size: 11.5px; line-height: 1.4; }
+  @page { margin: 14mm 12mm; }
+}
+#rhn-impressao h1 { font-size: 20px; margin: 2px 0 2px; }
+#rhn-impressao h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #1e3a8a; margin: 0 0 4px; padding-bottom: 3px; border-bottom: 1.5px solid #1e3a8a; }
+.rhn-i-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 2px solid #000; }
+.rhn-i-proj { font-size: 10.5px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
+.rhn-i-sit { font-weight: 600; }
+.rhn-i-quando { font-size: 10px; color: #475569; text-align: right; }
+.rhn-i-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.rhn-i-bloco { margin-bottom: 10px; break-inside: avoid; }
+.rhn-i-bloco table { width: 100%; border-collapse: collapse; }
+.rhn-i-bloco th { text-align: left; font-weight: 600; color: #475569; width: 38%; padding: 2px 6px 2px 0; vertical-align: top; }
+.rhn-i-bloco td { padding: 2px 0; vertical-align: top; overflow-wrap: anywhere; }
+.rhn-i-bloco p { margin: 2px 0 0; white-space: pre-wrap; }
+.rhn-i-vazio { color: #94a3b8; }
+.rhn-i-pend { border: 1.5px solid #b45309; padding: 6px 10px; border-radius: 6px; }
+.rhn-i-pend h2 { color: #92400e; border-color: #b45309; }
+.rhn-i-pend ul { margin: 0; padding-left: 18px; }
+.rhn-i-notas { font-style: italic; }
+.rhn-i-docs { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 18px; }
+.rhn-i-docs li { break-inside: avoid; padding: 1px 0; }
+.rhn-i-docs em { font-style: normal; color: #475569; font-size: 10px; }
+.rhn-i-caixa { display: inline-block; width: 12px; height: 12px; line-height: 11px; text-align: center; border: 1px solid #000; margin-right: 6px; font-size: 10px; vertical-align: -1px; }
+.rhn-i-d-falta em, .rhn-i-d-recusado em { color: #b91c1c; font-weight: 600; }
+.rhn-i-hist th { width: 22%; white-space: nowrap; font-weight: 400; }
+
+/* ===== 18/11/2026: avaliação de fim de safra, banco de talentos, "não é a mesma pessoa", planilha do DP ===== */
+/* selo da avaliação (Contratações, Lista de admitidos, cartão) */
+.rhs-selo { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; line-height: 1.6; padding: 0 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.rhs-selo i { font-style: normal; color: #f59e0b; letter-spacing: -1px; font-size: 11px; }
+.rhs-sim { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.rhs-talvez { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.rhs-nao { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.rhs-selo-b { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+.rhs-selo-b:hover .rhs-selo { box-shadow: 0 0 0 2px var(--primaria-clara); }
+.rhs-selo-b:focus-visible { outline: 2px solid var(--primaria); outline-offset: 2px; border-radius: 999px; }
+/* "Já trabalhou: recontrataria ✓ / ✗" */
+.rhs-selos { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+.rhs-ja { display: inline-block; font-size: 11.5px; font-weight: 600; line-height: 1.6; padding: 0 7px; border-radius: 6px; border: 1px solid; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rhs-ja-sim { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.rhs-ja-talvez { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.rhs-ja-nao { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.fi-resumo .rhs-ja { vertical-align: 1px; }
+
+/* bloco da avaliação: 3 botões grandes + estrelas + observação */
+.rhs-aval { display: grid; gap: 10px; }
+.rhs-pergunta { font-weight: 600; font-size: 14px; }
+.rhs-botoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rhs-b { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border: 2px solid var(--borda); border-radius: 10px; background: #fff;
+  font: inherit; font-size: 15px; font-weight: 700; color: #475569; cursor: pointer; transition: background-color .12s, border-color .12s, color .12s; }
+.rhs-b b { font-size: 18px; }
+.rhs-b:hover:not(:disabled) { border-color: #93c5fd; }
+.rhs-b:focus-visible { outline: 2px solid var(--primaria); outline-offset: 2px; }
+.rhs-b:disabled { cursor: default; opacity: .75; }
+.rhs-b-sim.on { background: #ecfdf5; border-color: #10b981; color: #047857; }
+.rhs-b-talvez.on { background: #fffbeb; border-color: #f59e0b; color: #92400e; }
+.rhs-b-nao.on { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+.rhs-linha { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rhs-rot { font-size: 13px; color: var(--muted); }
+.rhs-estrelas { margin-top: 0; }
+.rhs-estrelas button:disabled { cursor: default; }
+.rhs-obs { width: 100%; }
+.fi-aval { margin-top: 18px; padding: 12px 14px; border: 1px solid #bfdbfe; border-radius: var(--raio); background: #f8fbff; }
+.fi-aval .pre-form-titulo { margin-top: 0; }
+.rhs-salvar-l { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+/* Contratações: coluna "Fim de safra" (mesma grade + 1 coluna; sem rolagem lateral) */
+.ct-lista-aval .ct-linha { grid-template-columns: minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.8fr) 92px 112px minmax(70px,.6fr) 110px 52px; gap: 10px; }
+.ct-aval .btn-pequeno { white-space: nowrap; }
+@media (max-width: 900px) { .ct-lista-aval .ct-linha { grid-template-columns: 1fr 1fr; } }
+
+/* Lista > Admitidos: ações do lado direito */
+.rhs-sub-acoes { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+
+/* possível duplicado: "não é ✕" ao lado do aviso */
+.rhn-dup-nao { font: inherit; font-size: 11px; line-height: 1.5; padding: 0 6px; border-radius: 6px; cursor: pointer; background: #fff; border: 1px dashed #c4b5fd; color: #6d28d9; white-space: nowrap; }
+.rhn-dup-nao:hover { background: #f5f3ff; border-style: solid; }
+.rhn-dup-nao:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.rhn-dup-acoes { display: inline-flex; gap: 6px; flex-shrink: 0; }
+
+/* banco de talentos */
+.rhs-banco-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.rhs-banco-topo .cd-segs { margin-bottom: 0; }
+.rhs-banco-topo .busca { flex: 1 1 220px; min-width: 0; }
+.rhs-banco { max-height: 58vh; overflow-y: auto; border: 1px solid var(--borda); border-radius: var(--raio); }
+.rhs-bl { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eef2f6; font-size: 13.5px; }
+.rhs-bl:last-child { border-bottom: 0; }
+.rhs-bl:nth-child(even) { background: #fafbfd; }
+.rhs-bl > div { min-width: 0; overflow-wrap: anywhere; }
+.rhs-bl-obs { color: #475569; margin-top: 2px; }
+.rhs-bl-acoes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.rhs-bl-acoes .btn { white-space: nowrap; }
+@media (max-width: 760px) {
+  .rhs-bl { grid-template-columns: 1fr; gap: 4px; }
+  .rhs-bl-acoes { justify-content: flex-start; margin-top: 4px; }
+  .rhs-botoes { grid-template-columns: 1fr; }
+}

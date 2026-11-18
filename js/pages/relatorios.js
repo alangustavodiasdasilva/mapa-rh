@@ -146,9 +146,10 @@ Paginas.relatorios = {
         const taxas = new Map(), taxasDe = pid => { if (!taxas.has(pid)) taxas.set(pid, Store.taxasAproveitamento(l.filter(p => p.projeto_id === pid))); return taxas.get(pid); };
         const etapa = (v, did, e) => l.filter(p => p.vaga_id === v.id && p.situacao === 'em_andamento' && p.etapa === e && (did === null || (p.distrito_id || null) === did)).length;
         const nomeRh = login => { const u = Store.usuarioPorLogin(login); return u ? u.nome : login; };
-        const linhas = [];
+        const linhas = [], selos = { no_prazo: 0, risco: 0, nao_fecha: 0 };
         for (const v of vagas) {
           const pv = Store.previsaoVaga(v, l, taxasDe(v.projetoId));
+          if (pv && selos[pv.selo] != null) selos[pv.selo]++;
           const base = { v, pv, rhs: (v.responsaveis || []).map(nomeRh).join(', ') };
           if (v.porDistrito.length) {
             for (const d of v.porDistrito) if (!fD || d.distrito.id === fD) linhas.push({ ...base, distrito: d.distrito.nome, pl: d.locais, pm: d.moveis, al: d.admLoc, am: d.admMov,
@@ -162,7 +163,18 @@ Paginas.relatorios = {
         linhas.sort((a, b) => (a.v.dataNecessidade || '9999').localeCompare(b.v.dataNecessidade || '9999') || a.v.titulo.localeCompare(b.v.titulo, 'pt-BR') || a.distrito.localeCompare(b.distrito, 'pt-BR'));
         const dataBR = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '';
         const situacao = r => r.pv ? r.pv.rotulo : (Store.STATUS_VAGA[r.v.status] || r.v.status);
+        // resumo no topo (sai também no PDF): pedido x admitido (admitido conta até o pedido, local e móvel separados), em processo e previsão
+        const tot = linhas.reduce((t, r) => { t.ped += r.pl + r.pm; t.adm += Math.min(r.al, r.pl) + Math.min(r.am, r.pm); t.proc += r.tri + r.ent + r.doc; t.doc += r.doc; return t; }, { ped: 0, adm: 0, proc: 0, doc: 0 });
+        const pctT = tot.ped ? Math.round(100 * tot.adm / tot.ped) : 0;
+        const resumo = vagas.length ? `<div class="in-rel-resumo">
+            <div><b>${UI.fmtNum(vagas.length)}</b>${vagas.length === 1 ? 'vaga aprovada' : 'vagas aprovadas'}</div>
+            <div><b>${UI.fmtNum(tot.adm)} de ${UI.fmtNum(tot.ped)}</b>contratados (${pctT}%)<i class="in-rel-barra"><i style="width:${tot.ped ? Math.max(1, pctT) : 0}%"></i></i></div>
+            <div><b>${UI.fmtNum(Math.max(0, tot.ped - tot.adm))}</b>faltam contratar</div>
+            <div><b>${UI.fmtNum(tot.proc)}</b>em processo · ${UI.fmtNum(tot.doc)} na documentação</div>
+            <div><b><span class="in-txt-ok">${selos.no_prazo}</span> · <span class="in-txt-meio">${selos.risco}</span> · <span class="in-txt-ruim">${selos.nao_fecha}</span></b>no prazo · em risco · não fecha</div>
+          </div>` : '';
         return {
+          resumo,
           colunas: [
             { titulo: 'Cargo', render: r => `${UI.esc(r.v.titulo)}${r.v.projeto && !App.filtros.projetoId ? `<div class="muted small">${UI.esc(r.v.projeto.nome)}</div>` : ''}` },
             { titulo: 'Distrito', render: r => UI.esc(r.distrito) },
@@ -247,6 +259,21 @@ Paginas.relatorios = {
       }) }
     ];
 
+    // planilha do Excel (biblioteca XLSX já carregada no index): título e filtro no topo, números como número,
+    // colunas na largura do conteúdo e filtro no cabeçalho. Sem a biblioteca (sem internet), cai para o CSV.
+    function baixarPlanilha(nome, titulo, cab, linhas) {
+      if (typeof XLSX === 'undefined') { UI.baixarCSV(nome + '.csv', [cab].concat(linhas)); return; }
+      const num = v => typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim()) && !/^0\d/.test(v.trim()) ? Number(v) : (v == null ? '' : v);
+      const corpo = linhas.map(r => r.map(num));
+      const topo = [[`Safra RH — ${titulo}`], [`${App.descricaoFiltro()} · gerado em ${UI.fmtDataHora(new Date().toISOString())}`], []];
+      const ws = XLSX.utils.aoa_to_sheet(topo.concat([cab], corpo));
+      ws['!cols'] = cab.map((c, i) => { let m = String(c).length; for (const r of corpo) { const t = String(r[i] == null ? '' : r[i]).length; if (t > m) m = t; } return { wch: Math.min(48, m + 2) }; });
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: topo.length, c: 0 }, e: { r: topo.length + corpo.length, c: cab.length - 1 } }) };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, titulo.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
+      XLSX.writeFile(wb, nome + '.xlsx');
+    }
+
     let atual = localStorage.getItem('maparh:relatorio') || 'origem';
     if (!RELATORIOS.some(r => r.id === atual)) atual = 'origem';
 
@@ -284,12 +311,18 @@ Paginas.relatorios = {
         <div class="cabecalho-impressao"><h2>Safra RH — ${UI.esc(rel.nome)}</h2><div class="muted">${UI.esc(App.descricaoFiltro())} · gerado em ${UI.fmtDataHora(new Date().toISOString())}</div></div>
         <div class="card-titulo nao-imprimir">
           <div><h2 style="margin:0">${UI.esc(rel.nome)}</h2><div class="muted small">${UI.esc(App.descricaoFiltro())} · ${dados.total || UI.fmtNum(regs.length) + ' contratação(ões)'}${dados.nota ? ' · ' + UI.esc(dados.nota) : ''}</div></div>
-          <div class="linha"><button class="btn btn-pequeno" id="rel-csv">Exportar CSV</button><button class="btn btn-pequeno" id="rel-imprimir">Imprimir / PDF</button></div>
+          <div class="linha"><button class="btn btn-pequeno btn-primario" id="rel-xlsx" title="Planilha do Excel, com título, filtro e colunas no tamanho certo">Planilha (Excel)</button><button class="btn btn-pequeno" id="rel-csv" title="Arquivo de texto separado por ponto e vírgula">CSV</button><button class="btn btn-pequeno" id="rel-imprimir">Imprimir / PDF</button></div>
         </div>
-        ${UI.tabela({ colunas: dados.colunas, linhas: dados.linhas, vazio: 'Nenhum dado para o filtro atual.' })}${dados.extra || ''}`;
+        ${dados.resumo || ''}
+        ${UI.tabela({ colunas: dados.colunas, linhas: dados.linhas, vazio: rel.id === 'vagas' ? 'Nenhuma vaga aprovada para o filtro atual. Vagas aguardando aprovação ou canceladas não entram neste relatório.' : 'Nenhum dado para o filtro atual.' })}${dados.extra || ''}`;
       cont.querySelector('#rel-csv').addEventListener('click', () => {
         UI.baixarCSV(`relatorio-${rel.id}.csv`, [dados.cabecalhoCsv].concat(dados.linhas.map(dados.csv)));
         Store.auditar('relatorio.exportar', rel.nome, App.usuario);
+      });
+      cont.querySelector('#rel-xlsx').addEventListener('click', () => {
+        if (!dados.linhas.length) { UI.toast('Nada para exportar com o filtro atual.', 'aviso'); return; }
+        baixarPlanilha(`relatorio-${rel.id}-${RH.hoje()}`, rel.nome, dados.cabecalhoCsv, dados.linhas.map(dados.csv));
+        Store.auditar('relatorio.exportar', rel.nome + ' (planilha)', App.usuario);
       });
       cont.querySelector('#rel-imprimir').addEventListener('click', () => window.print());
     }

@@ -45,6 +45,44 @@ Paginas.vagas = {
       return Store.previsaoVaga(v, andam, taxasPorProjeto.get(v.projetoId));
     }
 
+    // ---------- o que falta em cada vaga (pendências) ----------
+    // candidato "parado": em andamento e sem nenhuma mudança há DIAS_PARADO dias ou mais (pelo andamento, sem dado pessoal)
+    const DIAS_PARADO = 7;
+    const diasDesde = iso => { const t = iso ? new Date(iso).getTime() : NaN; return isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 86400000)); };
+    let paradosPorVaga = new Map();
+    function contarParados() {
+      paradosPorVaga = new Map();
+      for (const p of andam || []) {
+        if (!p.vaga_id || p.situacao !== 'em_andamento') continue;
+        const d = diasDesde(p.atualizado_em || p.etapa_em || p.criado_em);
+        if (d != null && d >= DIAS_PARADO) paradosPorVaga.set(p.vaga_id, (paradosPorVaga.get(p.vaga_id) || 0) + 1);
+      }
+    }
+    const parados = v => paradosPorVaga.get(v.id) || 0;
+    // há quantos dias foi a última marcação de divulgação
+    const diasUltimaDivulgacao = v => { const ds = Object.values(v.divulgacao || {}).map(d => d && d.em).filter(Boolean).sort(); return ds.length ? diasDesde(ds[ds.length - 1]) : null; };
+    const ROT_FOCO = { atrasadas: 'atrasadas', semdiv: 'sem divulgação', semcand: 'sem ninguém em processo', parados: 'com candidatos parados', vence7: 'que vencem em 7 dias', semrh: 'sem RH responsável' };
+    const noFoco = {
+      atrasadas: v => v.atrasada,
+      semdiv: v => v.aprovada && !fechada(v) && !v.canaisDivulgados,
+      semcand: v => v.aprovada && !fechada(v) && v.contagemCarregada && !!v.canaisDivulgados && !v.emProcesso && v.faltam > 0,
+      parados: v => v.aprovada && !fechada(v) && parados(v) > 0,
+      vence7: v => { if (!v.aprovada || fechada(v) || v.atrasada || !v.dataNecessidade || !v.faltam) return false; const n = diasAte(v.dataNecessidade); return n >= 0 && n <= 7; },
+      semrh: v => v.aprovada && !fechada(v) && !(v.responsaveis || []).length
+    };
+    // lista do que falta na vaga, da mais urgente para a menos: [{ tipo, txt, cls, acao, rot }]
+    function pendencias(v) {
+      if (!v.aprovada || fechada(v)) return [];
+      const l = [];
+      if (noFoco.atrasadas(v)) l.push({ tipo: 'atrasadas', cls: 'ruim', txt: `atrasada ${qtd(v.diasAtraso, 'dia', 'dias')}` });
+      if (noFoco.vence7(v)) { const n = diasAte(v.dataNecessidade); l.push({ tipo: 'vence7', cls: 'alerta', txt: n === 0 ? 'precisa para hoje' : `vence em ${qtd(n, 'dia', 'dias')}` }); }
+      if (noFoco.semdiv(v)) l.push({ tipo: 'semdiv', cls: 'alerta', txt: `sem divulgação${v.diasAberta ? ` há ${qtd(v.diasAberta, 'dia', 'dias')}` : ''}`, acao: 'divulgar', rot: 'Divulgar' });
+      if (noFoco.semcand(v)) { const d = diasUltimaDivulgacao(v); l.push({ tipo: 'semcand', cls: 'alerta', txt: `ninguém em processo${d ? ` · divulgada há ${qtd(d, 'dia', 'dias')}` : ''}`, acao: 'divulgar', rot: 'Divulgar de novo' }); }
+      if (noFoco.parados(v)) { const n = parados(v); l.push({ tipo: 'parados', cls: 'alerta', txt: `${qtd(n, 'candidato parado', 'candidatos parados')} há ${DIAS_PARADO}+ dias`, acao: 'candidatos', rot: 'Ver candidatos' }); }
+      if (noFoco.semrh(v)) l.push({ tipo: 'semrh', cls: 'alerta', txt: 'sem RH responsável', acao: podeEditar ? 'editar' : '', rot: 'Escolher RH' });
+      return l;
+    }
+
     // vagas que o usuário enxerga, já com os filtros do topo do sistema (projeto, região, tipo)
     function visiveis() {
       let vagas = Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId });
@@ -88,6 +126,7 @@ Paginas.vagas = {
           <div class="linha nao-imprimir">${podeEditar ? '<button class="btn btn-primario" id="vg-nova">+ Pedir vaga</button>' : ''}</div>
         </div>
         <div class="vg-resumo2" id="vg-resumo"></div>
+        <div class="vgn-pend nao-imprimir" id="vg-pend" hidden></div>
         <div class="abas vg-abas" id="vg-abas"></div>
         <b id="vg-titulo" hidden></b>
         <div class="tabela-wrap" id="vg-tabela"></div>
@@ -106,7 +145,36 @@ Paginas.vagas = {
         (sem ? `<option value="(sem)" ${recrutador === '(sem)' ? 'selected' : ''}>Sem RH responsável (${sem})</option>` : '');
     }
 
-    let foco = '';   // atrasadas | semdiv: vindo dos cartões do resumo
+    let foco = '';   // atrasadas | semdiv | semcand | parados | vence7 | semrh: vindo dos cartões do resumo e do quadro "o que falta"
+    let pendFechado = false, pendTudo = false;
+    try { pendFechado = localStorage.getItem('maparh:vagas-pend-fechado') === '1'; } catch (e) { /* ok */ }
+    // Quadro "o que falta fazer": só as vagas em andamento com alguma pendência, uma linha cada, com a ação na própria linha.
+    // Os botões do cabeçalho filtram a lista de vagas logo abaixo.
+    function desenharPendencias(base) {
+      const box = q('#vg-pend');
+      const abertas = ordenar(base.filter(naAba.abertas));
+      const itens = abertas.map(v => ({ v, p: pendencias(v) })).filter(x => x.p.length);
+      if (!itens.length) { box.hidden = true; box.innerHTML = ''; foco = ''; return; }
+      const cont = t => abertas.filter(noFoco[t]).length;
+      if (foco && !cont(foco)) foco = '';
+      const chips = Object.keys(ROT_FOCO).map(t => [t, cont(t)]).filter(x => x[1]).map(([t, n]) =>
+        `<button type="button" class="vgn-chip ${foco === t ? 'on' : ''} ${t === 'atrasadas' ? 'ruim' : ''}" data-foco="${t}" aria-pressed="${foco === t}" title="Mostrar só as vagas ${ROT_FOCO[t]}"><b>${n}</b> ${ROT_FOCO[t]}</button>`).join('');
+      const eu = App.usuario.perfil === 'analista';
+      const LIM = 5, mostrar = pendTudo ? itens : itens.slice(0, LIM);
+      box.hidden = false;
+      box.classList.toggle('fechado', pendFechado);
+      box.innerHTML = `<div class="vgn-pend-cab">
+          <button type="button" class="vgn-pend-tit" data-pend-toggle aria-expanded="${!pendFechado}" title="${pendFechado ? 'Abrir' : 'Recolher'}"><i>${pendFechado ? '▸' : '▾'}</i><b>${eu ? 'Minhas vagas: o que falta fazer' : 'O que falta fazer nas vagas'}</b><span class="aba-num">${itens.length}</span></button>
+          <div class="vgn-chips">${chips}</div>
+        </div>` + (pendFechado ? '' : `<div class="vgn-pend-lista">${mostrar.map(({ v, p }) => {
+          const a = p.find(x => x.acao && (x.acao !== 'divulgar' || podeMexer(v)) && (x.acao !== 'candidatos' || podeVerCandidatos));
+          return `<div class="vgn-pend-linha" data-id="${v.id}">
+            <button type="button" class="vgn-pend-vaga" data-ir title="Ir para a vaga na lista"><b>${UI.esc(v.titulo)}</b><span>${UI.esc(ondeTexto(v) || 'sem distrito')}</span></button>
+            <span class="vgn-pend-falta">${v.contagemCarregada ? `faltam <b>${v.faltam}</b> de ${v.quantidade}` : `${qtd(v.quantidade, 'pessoa', 'pessoas')}`}</span>
+            <span class="vgn-pend-itens">${p.map(x => `<span class="vgn-tag ${x.cls}">${UI.esc(x.txt)}</span>`).join('')}</span>
+            <span class="vgn-pend-acao">${a ? `<button type="button" class="btn btn-pequeno ${a.acao === 'divulgar' ? 'btn-primario' : ''}" data-acao="${a.acao}">${a.rot}</button>` : ''}</span>
+          </div>`; }).join('')}${itens.length > LIM ? `<button type="button" class="btn-link vgn-pend-mais" data-pend-tudo>${pendTudo ? 'Mostrar menos' : `Mostrar as outras ${itens.length - LIM}`}</button>` : ''}</div>`);
+    }
     function desenhar() {
       UI.fecharMenus();
       const todas = visiveis();
@@ -132,17 +200,17 @@ Paginas.vagas = {
 
       q('#vg-abas').innerHTML = ABAS.map(([id, rot]) => `<button class="aba ${aba === id ? 'ativa' : ''} ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'vg-aba-alerta' : ''}" data-aba="${id}" ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'title="Pedidos esperando a sua decisão"' : ''}>${rot} <span class="aba-num">${UI.fmtNum(base.filter(naAba[id]).length)}</span></button>`).join('');
 
+      desenharPendencias(base);
       let lista = base.filter(naAba[aba]);
-      if (foco === 'atrasadas') lista = lista.filter(v => v.atrasada);
-      if (foco === 'semdiv') lista = lista.filter(v => v.aprovada && !fechada(v) && !v.canaisDivulgados);
+      if (foco && noFoco[foco]) lista = lista.filter(noFoco[foco]);
       if (busca) {
         const b = Store.normalizar(busca);
         lista = lista.filter(v => Store.normalizar([v.titulo, ondeTexto(v), v.unidade, v.solicitante, v.recrutador, v.projeto ? v.projeto.nome : ''].join(' ')).includes(b));
       }
       lista = ordenar(lista);
       q('#vg-titulo').innerHTML = `Vagas <span class="aba-num">${UI.fmtNum(lista.length)}</span>`;
-      if (!lista.length) { q('#vg-tabela').innerHTML = `<div class="vazio">${textoVazio(todas, base, ind)}</div>`; return; }
-      q('#vg-tabela').innerHTML = (foco ? `<div class="cd-aviso vg-foco"><span>Mostrando só as vagas <b>${foco === 'atrasadas' ? 'atrasadas' : 'sem divulgação'}</b> (${lista.length}).</span><button type="button" class="btn-link" data-foco-limpar>Ver todas</button></div>` : '') + `<div class="vg-lista">${lista.map(linha).join('')}</div>`;
+      if (!lista.length) { q('#vg-tabela').innerHTML = foco ? `<div class="vazio">Nenhuma vaga ${ROT_FOCO[foco] || ''} nesta aba. <button type="button" class="btn-link" data-foco-limpar>Ver todas</button></div>` : `<div class="vazio">${textoVazio(todas, base, ind)}</div>`; return; }
+      q('#vg-tabela').innerHTML = (foco ? `<div class="cd-aviso vg-foco"><span>Mostrando só as vagas <b>${ROT_FOCO[foco] || ''}</b> (${lista.length}).</span><button type="button" class="btn-link" data-foco-limpar>Ver todas</button></div>` : '') + `<div class="vg-lista">${lista.map(linha).join('')}</div>`;
     }
 
     // estado vazio: sempre diz o que fazer em seguida
@@ -179,7 +247,7 @@ Paginas.vagas = {
           .sort((a, b) => String(a.d.em || '').localeCompare(String(b.d.em || '')));
         detalhe = lista.length ? `<span class="vg-canais">Divulgada: ${lista.map(x => { const u = x.d.por && Store.usuarioPorLogin(x.d.por);
           return `<span class="vg-canal" title="${UI.esc(x.c.nome + (x.d.em ? ' · ' + UI.fmtData(x.d.em) : '') + (u ? ' · por ' + u.nome : x.d.por ? ' · por ' + x.d.por : ''))}">${UI.esc(curto(x.c.nome))}</span>`; }).join('')}</span>`
-          : '<span class="vg-alerta">ainda não divulgada</span>';
+          : `<span class="vg-alerta">ainda não divulgada${v.diasAberta ? ` · há ${qtd(v.diasAberta, 'dia', 'dias')}` : ''}</span>`;
       }
       else if (v.aprovacao && v.aprovacao.situacao === 'aprovada' && v.aprovacao.em) detalhe = `aprovada em ${UI.fmtData(v.aprovacao.em)}`;
 
@@ -212,6 +280,8 @@ Paginas.vagas = {
       const etapasTxt = !v.aprovada ? '<span class="muted">Candidatos depois da aprovação</span>' : !v.contagemCarregada ? '<span class="muted">…</span>'
         : !v.emProcesso ? '<span class="muted">Ninguém em processo ainda</span>'
         : `<span class="vg-k-rot2">Em processo</span>${[['triagem', 'triagem'], ['entrevista', 'entrevista'], ['documentos', 'documentação']].filter(([e]) => v.etapas[e]).map(([e, r]) => `<${podeVerCandidatos ? `button type="button" data-acao="candidatos" data-etapa="${e}"` : 'span'} class="vg-et"><b>${v.etapas[e]}</b> na ${r}</${podeVerCandidatos ? 'button' : 'span'}>`).join('')}`;
+      const np = emAberto ? parados(v) : 0;
+      const paradosTxt = !np ? '' : `<${podeVerCandidatos ? 'button type="button" data-acao="candidatos"' : 'span'} class="vg-et vgn-et-parado" title="Em andamento sem nenhuma mudança há ${DIAS_PARADO} dias ou mais">${qtd(np, 'parado', 'parados')} há ${DIAS_PARADO}+ dias</${podeVerCandidatos ? 'button' : 'span'}>`;
       const semDist = conta && v.semDistrito ? `<span class="vg-alerta" title="Defina o distrito na ficha desses candidatos">${v.semDistrito === 1 ? '1 candidato sem distrito' : v.semDistrito + ' candidatos sem distrito'}</span>` : '';
 
       // uma ação principal + menu
@@ -222,6 +292,8 @@ Paginas.vagas = {
       const menu = [];
       const it = (acao, rot, extra = '') => `<button type="button" class="${extra}" data-acao="${acao}">${rot}</button>`;
       if (emAberto && podeMexer(v) && canais) menu.push(it('divulgar', 'Divulgar'));
+      if (emAberto) menu.push(it('copiar', 'Copiar anúncio (WhatsApp)'));
+      if (emAberto) menu.push(it('link', 'Link de inscrição'));
       if (v.aprovada || podeMexer(v)) menu.push(it('obs', `Observações${(v.anotacoes || []).length ? ` (${v.anotacoes.length})` : ''}`));
       if (v.aprovada && podeVerCandidatos && !principal.includes('candidatos')) menu.push(it('candidatos', 'Ver candidatos'));
       if (emAberto) menu.push(it('procurar', 'Procurar candidatos na internet'));
@@ -247,7 +319,7 @@ Paginas.vagas = {
             ${detalhe ? `<div class="vg-k-sub">${detalhe}</div>` : ''}</div>
         </div>
         <div class="vg-card-pe">
-          <div class="vg-etapas">${etapasTxt}${semDist}</div>
+          <div class="vg-etapas">${etapasTxt}${paradosTxt}${semDist}</div>
           <div class="vg-acoes nao-imprimir">${principal}${menu.length ? `<div class="vg-mais"><button type="button" class="vg-mais-btn" data-menu aria-label="Mais ações" title="Mais ações">⋯</button><div class="vg-menu" hidden>${menu.join('')}</div></div>` : ''}</div>
         </div>
       </article>`;
@@ -263,11 +335,20 @@ Paginas.vagas = {
       const b = e.target.closest('[data-acao]'); if (!b) return;
       const v = Store.vagasVisiveis(App.usuario).find(x => x.id === b.closest('[data-id]').dataset.id);
       if (!v) return;
-      const acao = b.dataset.acao;
+      fazer(v, b.dataset.acao, b);
+    });
+    async function copiarTexto(txt, msg) {
+      try { await navigator.clipboard.writeText(txt); }
+      catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } finally { ta.remove(); } }
+      UI.toast(msg, 'sucesso');
+    }
+    function fazer(v, acao, b) {
       if (acao === 'aprovar') aprovar(v);
+      else if (acao === 'copiar') copiarTexto(anuncio(v, 'whatsapp'), 'Anúncio copiado. Cole no WhatsApp ou no grupo.');
+      else if (acao === 'link') modalLink(v);
       else if (acao === 'recusar') recusar(v);
       else if (acao === 'divulgar') modalDivulgar(v);
-      else if (acao === 'candidatos') { try { if (b.dataset.etapa) sessionStorage.setItem('maparh:cand-seg', b.dataset.etapa); } catch (err) { /* ok */ } localStorage.setItem('maparh:cand-vaga', v.id); localStorage.setItem('maparh:cand-projeto', v.projetoId); App.ir('candidatos'); }
+      else if (acao === 'candidatos') { try { if (b && b.dataset.etapa) sessionStorage.setItem('maparh:cand-seg', b.dataset.etapa); } catch (err) { /* ok */ } localStorage.setItem('maparh:cand-vaga', v.id); localStorage.setItem('maparh:cand-projeto', v.projetoId); App.ir('candidatos'); }
       else if (acao === 'procurar') { if (v.cidade) UI.modalBuscaCandidatos(v.cidade.nome, v.cidade.uf, v.titulo); }
       else if (acao === 'editar') formVaga(v);
       else if (acao === 'obs') observacoes(v);
@@ -275,6 +356,23 @@ Paginas.vagas = {
       else if (acao === 'cancelar') mudarStatus(v, 'cancelada');
       else if (acao === 'reabrir') mudarStatus(v, v.aprovada ? 'aberta' : 'aguardando');
       else if (acao === 'excluir') excluir(v);
+    }
+    // quadro "o que falta": filtros, recolher e a ação da linha
+    q('#vg-pend').addEventListener('click', e => {
+      const f = e.target.closest('[data-foco]');
+      if (f) { foco = foco === f.dataset.foco ? '' : f.dataset.foco; if (foco) { aba = 'abertas'; try { localStorage.setItem('maparh:vagas-status', aba); } catch (err) { /* ok */ } } return desenhar(); }
+      if (e.target.closest('[data-pend-toggle]')) { pendFechado = !pendFechado; try { localStorage.setItem('maparh:vagas-pend-fechado', pendFechado ? '1' : '0'); } catch (err) { /* ok */ } return desenhar(); }
+      if (e.target.closest('[data-pend-tudo]')) { pendTudo = !pendTudo; return desenhar(); }
+      const ln = e.target.closest('[data-id]'); if (!ln) return;
+      const v = Store.vagasVisiveis(App.usuario).find(x => x.id === ln.dataset.id); if (!v) return;
+      const b = e.target.closest('[data-acao]');
+      if (b) return fazer(v, b.dataset.acao, b);
+      if (e.target.closest('[data-ir]')) {
+        // leva até o cartão da vaga (tira o filtro que a esconderia) e pisca
+        let card = q(`#vg-tabela [data-id="${v.id}"]`);
+        if (!card) { foco = ''; busca = ''; q('#vg-busca').value = ''; aba = 'abertas'; desenhar(); card = q(`#vg-tabela [data-id="${v.id}"]`); }
+        if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.remove('vgn-pisca'); void card.offsetWidth; card.classList.add('vgn-pisca'); }
+      }
     });
     q('#vg-resumo').addEventListener('click', e => { const b = e.target.closest('[data-aba]'); if (!b) return; aba = b.dataset.aba; foco = foco === b.dataset.foco ? '' : (b.dataset.foco || ''); try { localStorage.setItem('maparh:vagas-status', aba); } catch (err) { /* ok */ } desenhar(); });
     q('#vg-abas').addEventListener('click', e => {
@@ -464,11 +562,65 @@ Paginas.vagas = {
       setTimeout(() => g('#v-titulo').focus(), 60);
     }
 
+    // ---------- anúncio pronto, um formato para cada lugar ----------
+    const FORMATOS = [['whatsapp', 'WhatsApp'], ['facebook', 'Facebook / grupos'], ['sine', 'SINE'], ['radio', 'Rádio'], ['completo', 'Completo']];
+    // o que ainda não foi preenchido no pedido e faz falta no anúncio
+    // sem "como se candidatar", o link de inscrição faz esse papel (não conta como faltando)
+    const faltaNoAnuncio = v => [['descricao', 'atividades'], ['requisitos', 'requisitos'], ['salario', 'salário'], ['jornada', 'jornada'], ['beneficios', 'benefícios'], ['contato', 'como se candidatar']].filter(([k]) => !String(v[k] || '').trim() && !(k === 'contato' && recebeInscricao(v))).map(x => x[1]);
+    function anuncio(v, formato) {
+      if (formato === 'completo') {
+        const txt = Store.textoAnuncio(v);
+        return !String(v.contato || '').trim() && recebeInscricao(v) ? txt.replace(/Interessados: entrar em contato com o RH$/, `Inscreva-se pelo link: ${linkInscricao(v)}`) : txt;
+      }
+      const t = k => String(v[k] || '').trim();
+      const umaLinha = s => s.replace(/\s*\n+\s*/g, '; ').replace(/;\s*;/g, ';');
+      const c = v.cidade;
+      const eLista = l => l.length > 1 ? l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1] : (l[0] || '');
+      const onde = v.porDistrito && v.porDistrito.length ? 'região de ' + eLista(v.porDistrito.map(x => x.distrito.nome)) : (c ? c.nome + '/' + c.uf : '');
+      const movel = v.porDistrito && v.porDistrito.length ? v.moveis > 0 : v.tipo === 'MOVEL';
+      const n = v.quantidade || 1, vagasTxt = n === 1 ? '1 vaga' : n + ' vagas';
+      const contato = t('contato') || (recebeInscricao(v) ? `inscreva-se pelo link ${linkInscricao(v)}` : 'fale com o RH');
+      const prazo = v.prazo ? fmtDia(v.prazo) : '';
+      const L = [];
+      if (formato === 'whatsapp') {
+        L.push('*ESTAMOS CONTRATANDO*', `*${v.titulo}* (${vagasTxt})`);
+        if (onde) L.push(`Onde: ${onde}${movel ? ' (há posições com deslocamento)' : ''}`);
+        if (t('descricao')) L.push('', '*O que vai fazer:* ' + umaLinha(t('descricao')));
+        if (t('requisitos')) L.push('*Requisitos:* ' + umaLinha(t('requisitos')));
+        const cond = [t('salario') && 'Salário: ' + t('salario'), t('jornada') && 'Jornada: ' + t('jornada'), t('beneficios') && 'Benefícios: ' + t('beneficios')].filter(Boolean);
+        if (cond.length) L.push('', ...cond);
+        if (prazo) L.push(`Inscrições até ${prazo}`);
+        L.push('', `*Como se candidatar:* ${contato}`, '', 'Conhece alguém? Encaminhe esta mensagem.');
+      } else if (formato === 'facebook') {
+        L.push(`VAGA DE EMPREGO${onde ? ' — ' + onde.toUpperCase() : ''}`, '', `Estamos contratando: ${v.titulo} (${vagasTxt}).${movel ? ' Há posições com deslocamento.' : ''}`);
+        if (t('descricao')) L.push('', 'Atividades:', t('descricao'));
+        if (t('requisitos')) L.push('', 'Requisitos:', t('requisitos'));
+        const cond = [t('salario') && 'Salário: ' + t('salario'), t('jornada') && 'Jornada: ' + t('jornada'), t('beneficios') && 'Benefícios: ' + t('beneficios')].filter(Boolean);
+        if (cond.length) L.push('', ...cond);
+        if (prazo) L.push('', `Inscrições até ${prazo}.`);
+        L.push('', `Interessados: ${contato}`, '', 'Marque ou compartilhe com quem está procurando trabalho.');
+      } else if (formato === 'sine') {
+        L.push(`Ocupação: ${v.titulo}`, `Quantidade de vagas: ${n}`, `Local de trabalho: ${onde || '—'}${movel ? ' (com deslocamento / atuação móvel)' : ''}`);
+        L.push(`Atividades: ${t('descricao') ? umaLinha(t('descricao')) : '—'}`, `Requisitos: ${t('requisitos') ? umaLinha(t('requisitos')) : '—'}`);
+        L.push(`Jornada: ${t('jornada') || '—'}`, `Salário: ${t('salario') || '—'}`, `Benefícios: ${t('beneficios') || '—'}`);
+        if (prazo) L.push(`Receber candidatos até: ${prazo}`);
+        L.push(`Contato do empregador: ${contato}`);
+      } else {   // rádio: frases curtas para ler em voz alta, cerca de 30 segundos
+        L.push(`Atenção, ${onde ? 'moradores de ' + onde.replace(/^região de /, '') + ' e região' : 'ouvintes'}: oportunidade de emprego.`);
+        L.push(`${n === 1 ? 'Há uma vaga' : 'São ' + vagasTxt} para ${v.titulo}.${movel ? ' Algumas com deslocamento.' : ''}`);
+        if (t('requisitos')) L.push(`Requisitos: ${umaLinha(t('requisitos'))}.`);
+        if (t('beneficios')) L.push(`Benefícios: ${t('beneficios')}.`);
+        L.push(t('contato') ? `Os interessados devem procurar: ${contato}.` : 'Os interessados devem procurar o RH da empresa.', `Repetindo: vaga para ${v.titulo}.${t('contato') ? ' ' + contato + '.' : ''}`);
+      }
+      return L.join('\n');
+    }
+
     // ---------- divulgação ----------
     async function modalDivulgar(v) {
       if (!v.aprovada || v.status === 'aguardando' || v.status === 'recusada') { UI.toast('Esta vaga ainda não foi aprovada: não pode ser divulgada.', 'aviso'); return; }
       if (v.cidade && Store.BASES_SINE.includes(v.cidade.uf)) await Store.carregarBaseSine(v.cidade.uf);
-      const texto = Store.textoAnuncio(v);
+      let formato = 'whatsapp'; try { const f = localStorage.getItem('maparh:vagas-formato'); if (FORMATOS.some(x => x[0] === f)) formato = f; } catch (e) { /* ok */ }
+      const texto = anuncio(v, formato);
       const c = v.cidade;
       // Estado sem base embutida e cidade sem agência: procura na internet aqui mesmo (antes mandava abrir o mapa)
       if (c && !Store.BASES_SINE.includes(c.uf) && !Store.sineDaCidade(c).length && !Store.buscaSineRecente(c.id)) {
@@ -483,8 +635,11 @@ Paginas.vagas = {
       const grupos = [...new Set(Store.CANAIS.map(k => k.grupo))];
       const botoesCanal = k => {
         const abrir = (url, rot) => `<a class="btn btn-pequeno" href="${url}" target="_blank" rel="noopener">${rot}</a>`;
-        if (k.id === 'whatsapp') return abrir('https://wa.me/?text=' + enc(texto), 'Abrir WhatsApp com o texto');
-        if (k.id === 'linkedin') return abrir('https://www.linkedin.com/feed/?shareActive=true&text=' + enc(texto), 'Publicar no feed') + abrir(k.url, 'Anunciar vaga');
+        // data-txt: o endereço é refeito no clique com o texto que está na caixa (já editado)
+        const comTexto = (base, rot) => `<a class="btn btn-pequeno" href="${base + enc(texto)}" data-txt="${base}" target="_blank" rel="noopener">${rot}</a>`;
+        if (k.id === 'whatsapp') return comTexto('https://wa.me/?text=', 'Abrir WhatsApp com o texto');
+        if (k.id === 'linkedin') return comTexto('https://www.linkedin.com/feed/?shareActive=true&text=', 'Publicar no feed') + abrir(k.url, 'Anunciar vaga');
+        if (k.id === 'facebook') return `<button type="button" class="btn btn-pequeno" data-copiar-abrir="${k.url}">Copiar texto e abrir o Facebook</button>`;
         if (k.id === 'radio') return abrir('https://www.google.com/search?q=' + enc('rádio ' + nomeCidade + ' telefone'), 'Achar a rádio no Google');
         if (k.id === 'prefeitura') return abrir('https://www.google.com/search?q=' + enc('prefeitura ' + nomeCidade + ' assistência social telefone'), 'Achar a prefeitura no Google');
         if (k.id === 'sine') {
@@ -504,13 +659,19 @@ Paginas.vagas = {
       const corpo = `
         <div class="divulgar">
           <div>
-            <label>Texto do anúncio (edite à vontade antes de copiar)<textarea id="d-texto" rows="14">${UI.esc(texto)}</textarea></label>
+            <div class="vgn-formatos" id="d-formatos" role="tablist" aria-label="Formato do anúncio">${FORMATOS.map(([id, rot]) => `<button type="button" role="tab" class="${id === formato ? 'on' : ''}" aria-selected="${id === formato}" data-formato="${id}">${rot}</button>`).join('')}</div>
+            <label>Texto do anúncio (edite à vontade antes de copiar)<textarea id="d-texto" rows="13">${UI.esc(texto)}</textarea></label>
+            <div class="vgn-conta muted small" id="d-conta"></div>
             <div class="linha"><button class="btn btn-primario" id="d-copiar">Copiar texto</button>
-              <a class="btn" href="mailto:?subject=${enc('Vaga: ' + v.titulo)}&body=${enc(texto)}">Enviar por e-mail</a>
+              <a class="btn" href="https://wa.me/?text=${enc(texto)}" data-txt="https://wa.me/?text=" target="_blank" rel="noopener">Abrir WhatsApp</a>
+              <a class="btn" href="mailto:?subject=${enc('Vaga: ' + v.titulo)}&body=${enc(texto)}" data-txt="mailto:?subject=${enc('Vaga: ' + v.titulo)}&body=">E-mail</a>
               <button class="btn" data-imprimir>Imprimir cartaz</button></div>
+            ${blocoLink(v)}
+            ${faltaNoAnuncio(v).length ? `<div class="vgn-falta-anuncio"><span>O anúncio está sem: <b>${faltaNoAnuncio(v).join(', ')}</b>.</span>${podeEditar ? '<button type="button" class="btn-link" id="d-completar">Completar no pedido</button>' : '<span class="muted">Peça ao gestor para completar o pedido.</span>'}</div>` : ''}
             ${info && (info.canais || info.contatos) ? `<div class="caixa caixa-aviso"><b>Anotações do RH sobre ${UI.esc(c.nome)}:</b><br>${UI.esc([info.canais, info.contatos].filter(Boolean).join(' · '))}</div>` : ''}
           </div>
           <div>
+            <div class="vgn-prog" id="d-prog"></div>
             <p class="muted small" style="margin-bottom:8px">Marque onde já divulgou. A vaga passa para <b>Em divulgação</b> na primeira marcação.</p>
             ${grupos.map(g => `<div class="etiqueta-grupo">${UI.esc(g)}</div>` + Store.CANAIS.filter(k => k.grupo === g).map(k => {
               const feito = v.divulgacao && v.divulgacao[k.id];
@@ -522,22 +683,41 @@ Paginas.vagas = {
             }).join('')).join('')}
           </div>
         </div>`;
-      const m = UI.modal({ titulo: `Divulgar: ${v.titulo} — ${c ? c.nome : ''}`, largura: '960px', corpo, botoes: [{ texto: 'Fechar' }], aoFechar: () => App.recarregar() });
+      const m = UI.modal({ titulo: `Divulgar: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '960px', corpo, botoes: [{ texto: 'Fechar' }], aoFechar: () => App.recarregar() });
       const ta = m.corpo.querySelector('#d-texto');
-      m.corpo.querySelector('#d-copiar').addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(ta.value); UI.toast('Texto copiado. Cole na plataforma.', 'sucesso'); }
-        catch (e) { ta.select(); document.execCommand('copy'); UI.toast('Texto copiado.', 'sucesso'); }
+      ligarBlocoLink(m.corpo, v);
+      m.corpo.querySelector('#d-copiar').addEventListener('click', () => copiarTexto(ta.value, 'Texto copiado. Cole na plataforma.'));
+      // formato do anúncio: troca o texto (se já foi editado, pergunta antes de refazer)
+      let gerado = texto;
+      const conta = () => { const n = ta.value.length; m.corpo.querySelector('#d-conta').textContent = `${UI.fmtNum(n)} caracteres${formato === 'radio' ? ` · cerca de ${Math.max(5, Math.round(ta.value.trim().split(/\s+/).length / 2.5 / 5) * 5)} segundos de locução` : ''}`; };
+      ta.addEventListener('input', conta); conta();
+      m.corpo.querySelector('#d-formatos').addEventListener('click', async e => {
+        const b = e.target.closest('[data-formato]'); if (!b || b.dataset.formato === formato) return;
+        if (ta.value !== gerado && !await UI.confirmar('Você editou o texto. Trocar de formato refaz o texto e apaga o que foi editado.', { titulo: 'Trocar o formato', textoOk: 'Trocar' })) return;
+        formato = b.dataset.formato; try { localStorage.setItem('maparh:vagas-formato', formato); } catch (err) { /* ok */ }
+        gerado = ta.value = anuncio(v, formato); conta();
+        m.corpo.querySelectorAll('#d-formatos [data-formato]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
       });
+      // links que levam o texto (WhatsApp, e-mail, LinkedIn): sempre o que está na caixa agora
+      m.corpo.addEventListener('click', e => {
+        const a = e.target.closest('a[data-txt]'); if (a) { a.href = a.dataset.txt + enc(ta.value); return; }
+        const ca = e.target.closest('[data-copiar-abrir]'); if (ca) { copiarTexto(ta.value, 'Texto copiado. Cole na publicação.'); window.open(ca.dataset.copiarAbrir, '_blank', 'noopener'); }
+      });
+      const bc = m.corpo.querySelector('#d-completar'); if (bc) bc.addEventListener('click', () => { m.fechar ? m.fechar() : null; formVaga(v); });
+      // quanto já foi divulgado
+      const prog = () => { const tot = Store.CANAIS.length, n = m.corpo.querySelectorAll('.canal.feito').length;
+        m.corpo.querySelector('#d-prog').innerHTML = `<div class="vgn-prog-txt"><b>${n ? `Divulgada em ${n} de ${tot} lugares` : 'Ainda não divulgada'}</b><span class="muted small">${n ? '' : 'comece pelo WhatsApp e pelo SINE'}</span></div><div class="vg-barra"><i style="width:${Math.round(100 * n / tot)}%"></i></div>`; };
+      prog();
       m.corpo.querySelectorAll('[data-imprimir]').forEach(b => b.addEventListener('click', () => imprimirCartaz(v, ta.value)));
       m.corpo.querySelectorAll('.canal input[type="checkbox"]').forEach(ch => ch.addEventListener('change', () => {
         const canal = ch.closest('.canal');
         if (App.nuvem() && Nuvem.rh.divulgarVaga) {
           ch.disabled = true;
-          Nuvem.rh.divulgarVaga(v.id, canal.dataset.canal, ch.checked).then(() => canal.classList.toggle('feito', ch.checked))
+          Nuvem.rh.divulgarVaga(v.id, canal.dataset.canal, ch.checked).then(() => { canal.classList.toggle('feito', ch.checked); prog(); })
             .catch(e => { UI.toast(e.message, 'erro'); ch.checked = !ch.checked; }).finally(() => { ch.disabled = false; });
           return;
         }
-        try { Store.marcarDivulgacao(v.id, canal.dataset.canal, ch.checked, App.usuario); canal.classList.toggle('feito', ch.checked); }
+        try { Store.marcarDivulgacao(v.id, canal.dataset.canal, ch.checked, App.usuario); canal.classList.toggle('feito', ch.checked); prog(); }
         catch (e) { UI.toast(e.message, 'erro'); ch.checked = !ch.checked; }
       }));
     }
@@ -567,10 +747,66 @@ Paginas.vagas = {
       w.document.close();
     }
 
+    // ---------- link de inscrição: página pública inscricao.html (o candidato se inscreve sozinho pelo celular) ----------
+    // A inscrição cai em Candidatos, na Triagem desta vaga, com o RH principal da vaga e "como soube" preenchido.
+    const recebeInscricao = v => !!(v && v.aprovada && !fechada(v) && v.status !== 'aguardando');
+    const linkInscricao = v => location.origin + location.pathname.replace(/[^/]*$/, '') + 'inscricao.html?v=' + encodeURIComponent(v.id);
+    function blocoLink(v) {
+      if (!recebeInscricao(v)) return '';
+      const url = linkInscricao(v);
+      return `<div class="caixa" data-link-insc style="background:var(--primaria-suave);border:1px solid var(--primaria-clara);color:var(--texto)">
+        <b>Link de inscrição</b> <span class="muted">— o candidato preenche pelo celular e já cai na Triagem desta vaga.</span>
+        <div class="linha" style="margin-top:8px;gap:6px;flex-wrap:nowrap"><input readonly value="${UI.esc(url)}" data-link-url aria-label="Link de inscrição" style="flex:1;min-width:0;font-size:12px" onfocus="this.select()">
+          <button type="button" class="btn btn-pequeno btn-primario" data-link-copiar>Copiar link</button>
+          <a class="btn btn-pequeno" href="${UI.esc(url)}" target="_blank" rel="noopener">Abrir</a>
+          <button type="button" class="btn btn-pequeno" data-link-qr>QR code</button></div>
+        <div data-link-qr-area hidden style="margin-top:10px;text-align:center"><div data-link-qr-img style="display:inline-block;padding:8px;background:#fff;border-radius:8px"></div>
+          <div class="small muted" style="margin-top:4px">Aponte a câmera do celular. Bom para cartaz e grupo.</div>
+          <a class="btn btn-pequeno" data-link-qr-baixar download="inscricao-${UI.esc(String(v.titulo || 'vaga').toLowerCase().replace(/[^a-z0-9]+/gi, '-'))}.png" style="margin-top:6px" hidden>Baixar imagem</a></div>
+      </div>`;
+    }
+    let qrLib = null;   // a biblioteca do QR só carrega quando alguém pede o QR (cdnjs, versão fixa)
+    const carregarQR = () => qrLib || (qrLib = new Promise((ok, falha) => {
+      if (window.QRCode) return ok(window.QRCode);
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.crossOrigin = 'anonymous';
+      s.onload = () => window.QRCode ? ok(window.QRCode) : falha(new Error('QR indisponível'));
+      s.onerror = () => { qrLib = null; falha(new Error('Não foi possível carregar o QR code (sem internet?).')); };
+      document.head.appendChild(s);
+    }));
+    function ligarBlocoLink(raiz, v) {
+      const b = raiz.querySelector('[data-link-insc]'); if (!b) return;
+      const url = linkInscricao(v);
+      b.querySelector('[data-link-copiar]').addEventListener('click', () => copiarTexto(url, 'Link copiado. Cole no WhatsApp, no grupo ou na plataforma.'));
+      b.querySelector('[data-link-qr]').addEventListener('click', async () => {
+        const area = b.querySelector('[data-link-qr-area]');
+        if (!area.hidden) { area.hidden = true; return; }
+        area.hidden = false;
+        const alvo = b.querySelector('[data-link-qr-img]');
+        if (alvo.childElementCount) return;
+        alvo.textContent = 'Gerando…';
+        try {
+          const QR = await carregarQR();
+          alvo.textContent = '';
+          new QR(alvo, { text: url, width: 180, height: 180, correctLevel: QR.CorrectLevel.M });
+          // a biblioteca desenha num canvas; o link de baixar usa a imagem dele
+          setTimeout(() => { const c = alvo.querySelector('canvas'), bx = b.querySelector('[data-link-qr-baixar]');
+            if (c && bx) { try { bx.href = c.toDataURL('image/png'); bx.hidden = false; } catch (e) { /* segue sem baixar */ } } }, 50);
+        } catch (e) { alvo.textContent = ''; area.hidden = true; UI.toast(e.message, 'erro'); }
+      });
+    }
+    function modalLink(v) {
+      if (!recebeInscricao(v)) { UI.toast('Só vaga aprovada e em andamento recebe inscrição pelo link.', 'aviso'); return; }
+      const m = UI.modal({ titulo: `Link de inscrição: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '620px',
+        corpo: blocoLink(v) + '<p class="small muted" style="margin-top:10px">Quem se inscreve aparece em <b>Candidatos</b>, na Triagem desta vaga, com o RH principal dela. O anúncio (Divulgar) já usa este link quando a vaga não tem "como se candidatar".</p>',
+        botoes: [{ texto: 'Fechar' }] });
+      ligarBlocoLink(m.corpo, v);
+    }
+
     const contar = () => {
       if (typeof Nuvem === 'undefined' || !Nuvem.ativa) return;
       Nuvem.rh.contagemVagas().then(m => { Store.definirContagemVagas(m); if (ativo) desenhar(); }).catch(() => {});
-      if (Nuvem.rh.andamento) Nuvem.rh.andamento(App.filtros.projetoId).then(l => { andam = l || []; taxasPorProjeto = new Map(); if (ativo) desenhar(); }).catch(() => {});
+      if (Nuvem.rh.andamento) Nuvem.rh.andamento(App.filtros.projetoId).then(l => { andam = l || []; taxasPorProjeto = new Map(); contarParados(); if (ativo) desenhar(); }).catch(() => {});
     };
     desenhar(); contar();
     // mudou algo (aqui ou em outro computador): redesenha a lista e recontam os candidatos, sem apagar a tela

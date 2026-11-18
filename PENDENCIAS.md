@@ -122,3 +122,26 @@ Início com pedido x admitido por local/móvel e respeitando filtros, agenda com
 - [ ] Mapa: controles agrupados, zoom não coberto, avisos de rodapé num lugar só.
 - [ ] Padrão único de ações nas linhas (Editar / Excluir), sidebar com contraste melhor, status da nuvem visível.
 - [ ] Limpar CSS morto/duplicado (vagas.css, candidatos.css).
+
+## v149 (18/11, ainda não publicado) — 4 agentes: visual, Candidatos, Início/Relatórios, Vagas/Mapa
+- [x] Visual: tokens novos, barra lateral com item ativo evidente, status da nuvem em selo, botões/campos/tabelas/modais num padrão só, números alinhados, CSS morto removido; sem rolagem lateral em 1366 e 375.
+- [x] Candidatos: possível duplicado (mesmo CPF/telefone) no cartão, Lista, Hoje e ficha; "Para avançar" na ficha com botões (Cobrar documentos no WhatsApp lista o que falta); Copiar para a folha (DP) e lista em colunas; Imprimir ficha; atalhos de teclado (/, J/K, Enter, W, N, ?).
+- [x] Lote B já estava pronto no código (cobrar de novo, mensagem em lote, confirmou, urgência da vaga, ASO/treinamento, avançar em lote).
+- [x] Início: "Seu dia" como lista do que fazer hoje; Pendências da diretoria clicáveis; previsão de fechamento no bloco principal; Por RH com "Semana"; Início refaz só o que mudou.
+- [x] Relatórios: botão Planilha (Excel) em todos; Situação das vagas com resumo. Contratações: filtros rápidos clicáveis e "Onde trabalha".
+- [x] Vagas: quadro "O que falta fazer" com ação na linha e filtros rápidos; parados há 7+ dias no cartão; anúncio em 5 formatos (WhatsApp, Facebook, SINE, Rádio, Completo) e links levando o texto editado.
+- [x] Mapa: painel em grupos recolhíveis com busca; Falta contratar com filtro por RH/vaga e lista de distritos; zoom não coberto; avisos do rodapé juntos; erro ao sair do mapa corrigido.
+- [ ] Depende de banco: duplicado entre todos os RHs/projetos (função que só diga "já existe"); marcar "não é duplicado"; data/resultado da entrevista no andamento; histórico de divulgações; nome da empresa e WhatsApp padrão no anúncio; e-mail diário de pendências.
+- [ ] Candidatos abrir já filtrado em "parados" (chip da vaga hoje abre só na vaga).
+
+## v150 (18/11, ainda não publicado) — 3 agentes; banco já aplicado (só acrescenta)
+- [x] Inscrição própria: inscricao.html?v=<vaga> (celular) e ?p=<projeto>; cai na Triagem com o RH da vaga; validação e limites no banco (maparh_vaga_publica, maparh_vagas_publicas, maparh_inscrever); "Link de inscrição" + QR em Vagas; anúncio usa o link.
+- [x] Banco de talentos: avaliação de fim de safra (sim/talvez/não, nota, obs) na ficha, Lista e Contratações (em lote); lista "Banco de talentos" com Trazer para esta safra; selo "Já trabalhou" (migração banco-talentos-avaliacao.sql; testes/regras-banco-talentos.sql 22/22).
+- [x] "Não é a mesma pessoa" no aviso de duplicado.
+- [x] Planilha para o DP (eSocial S-2200): 46 colunas, preenchidas as que temos, resto em branco; sem dado bancário; auditoria e CPF mascarado/completo.
+- [x] Metas por RH: meta semanal em Usuários e no Por RH (admin/gestor, função maparh_definir_meta); barra no Seu dia.
+- [x] Visitante sem login não executa admitir/desfazer (anon-sem-admitir.sql).
+- [ ] Inscrição: limite por IP/captcha (edge function); CPF de outra pessoa cria triagem (fica anotado no histórico); coluna origem própria; aviso na hora para o RH; selo "veio pelo link".
+- [ ] Ajustar a planilha do DP ao modelo que o DP usa (pedir o arquivo).
+- [ ] Meta de entrevistas (precisa data da entrevista no andamento); auditoria de membros com antes/depois da meta; desmarcar "não é duplicado".
+- [ ] Regerar supabase/esquema-atual.sql.

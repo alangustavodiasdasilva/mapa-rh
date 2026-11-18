@@ -3,7 +3,7 @@ Paginas.usuarios = {
   semFiltros: true,
   render(el) {
     const nuvem = App.nuvem();
-    if (nuvem) Nuvem.carregarMembros().then(() => { if (App.paginaAtual === 'usuarios' && !document.querySelector('.modal-overlay')) renderLista(); }).catch(() => {});
+    if (nuvem) Nuvem.carregarMembros().then(() => { if (App.paginaAtual === 'usuarios' && !document.querySelector('.modal-overlay') && !(document.activeElement && document.activeElement.classList.contains('us-meta'))) renderLista(); }).catch(() => {});
     function renderLista() {
       const usuarios = Store.usuarios().slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
       el.innerHTML = `
@@ -24,6 +24,10 @@ Paginas.usuarios = {
               { titulo: 'Login', render: u => UI.esc(u.login) },
               { titulo: 'Perfil', render: u => UI.esc(Store.PERFIS[u.perfil]) + (u.rh && u.perfil === 'gestor' ? ' <span class="badge badge-azul" title="Acessa Candidatos (dados pessoais) e vê os candidatos de todos os RHs">candidatos</span>' : '') },
               { titulo: 'Projetos', render: u => u.projetos == null ? '<span class="muted">todos</span>' : (u.projetos.map(id => Store.projeto(id)).filter(Boolean).map(p => UI.esc(p.nome)).join(', ') || '<span class="status-erro">nenhum</span>') },
+              // meta semanal de admissões: só para quem trabalha candidatos (RH); muda direto na linha
+              ...(nuvem ? [{ titulo: 'Meta semanal (admissões)', render: u => u.ativo !== false && Store.podeRh(u)
+                ? `<input type="number" class="us-meta" data-id="${u.id}" min="0" max="999" step="1" inputmode="numeric" placeholder="sem meta" value="${u.metaSemanal == null ? '' : u.metaSemanal}" aria-label="Meta semanal de admissões de ${UI.esc(u.nome)}" title="Quantas admissões por semana (segunda a domingo). Deixe vazio para ficar sem meta.">`
+                : '<span class="muted" title="Só para quem trabalha candidatos">—</span>' }] : []),
               { titulo: 'Situação', render: u => u.ativo ? '<span class="badge badge-verde">ativo</span>' : '<span class="badge badge-cinza">inativo</span>' },
               { titulo: 'Criado em', render: u => UI.fmtData(u.criadoEm) },
               { titulo: '', classe: 'acoes-col', render: u => `<button class="btn btn-pequeno ed" data-id="${u.id}">Editar</button> ${u.id !== App.usuario.id ? `<button class="btn btn-pequeno btn-perigo ex" data-id="${u.id}">Excluir</button>` : ''}` }
@@ -34,6 +38,21 @@ Paginas.usuarios = {
         <p class="muted small mt">${nuvem ? 'Os usuários e os dados ficam no banco central: cada pessoa entra com o próprio login em qualquer computador e todos veem os mesmos dados. Só quem está nesta lista (e ativo) consegue ler ou gravar; o Visualizador não grava nada.'
           : 'Observação: nesta versão os dados ficam no navegador de quem usa o sistema. O controle de acesso organiza o uso, mas a proteção real dos dados depende do computador/navegador. Para vários usuários em máquinas diferentes, é preciso publicar o sistema com um servidor central.'}</p>`;
       el.querySelector('#btn-novo').addEventListener('click', () => abrirForm(null));
+      // meta semanal: grava ao sair do campo ou no Enter; vazio = sem meta
+      el.querySelectorAll('.us-meta').forEach(inp => {
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { const u = Store.usuarios().find(x => x.id === inp.dataset.id); inp.value = u && u.metaSemanal != null ? u.metaSemanal : ''; inp.blur(); } });
+        inp.addEventListener('change', async () => {
+          const u = Store.usuarios().find(x => x.id === inp.dataset.id); if (!u) return;
+          const antes = u.metaSemanal == null ? null : u.metaSemanal, txt = inp.value.trim();
+          const nova = txt === '' ? null : Number(txt);
+          if (nova !== null && (!Number.isInteger(nova) || nova < 0 || nova > 999)) { UI.toast('A meta é um número inteiro de 0 a 999. Deixe vazio para ficar sem meta.', 'erro', 6000); inp.value = antes == null ? '' : antes; return; }
+          if (nova === antes) return;
+          inp.disabled = true;
+          try { await Nuvem.definirMeta(u.id, nova); UI.toast(nova == null ? `${u.nome} ficou sem meta.` : `Meta de ${u.nome}: ${nova === 1 ? '1 admissão' : nova + ' admissões'} por semana.`, 'sucesso'); }
+          catch (e) { UI.toast(e.message, 'erro', 6000); inp.value = antes == null ? '' : antes; }
+          finally { inp.disabled = false; }
+        });
+      });
       el.querySelectorAll('.ed').forEach(b => b.addEventListener('click', () => abrirForm(Store.usuarios().find(u => u.id === b.dataset.id))));
       el.querySelectorAll('.ex').forEach(b => b.addEventListener('click', async () => {
         const u = Store.usuarios().find(x => x.id === b.dataset.id);

@@ -250,7 +250,7 @@ const Nuvem = (() => {
   async function carregarMembros() {
     const { data, error } = await sb.from('maparh_membros').select('*').order('nome');
     if (error) throw error;
-    const lista = data.map(m => ({ id: m.user_id, nome: m.nome, login: m.login, perfil: m.perfil, ativo: m.ativo, projetos: m.projetos, rh: !!m.rh, foto: m.foto || null, mensagens: m.mensagens || null, criadoEm: m.criado_em, senhaPadrao: false }));
+    const lista = data.map(m => ({ id: m.user_id, nome: m.nome, login: m.login, perfil: m.perfil, ativo: m.ativo, projetos: m.projetos, rh: !!m.rh, foto: m.foto || null, mensagens: m.mensagens || null, metaSemanal: m.meta_semanal == null ? null : m.meta_semanal, criadoEm: m.criado_em, senhaPadrao: false }));
     const meu = lista.find(u => u.id === eu);
     if (!meu || !meu.ativo) return null;
     perfil = meu.perfil;
@@ -278,6 +278,12 @@ const Nuvem = (() => {
   async function minhaFoto(foto) {
     const { error } = await sb.rpc('maparh_definir_foto', { p_usuario: eu, p_foto: foto || null });
     if (error) throw new Error(/foto_check/.test(error.message) ? 'Foto grande demais. Escolha outra imagem.' : error.message);
+    return carregarMembros();
+  }
+  // meta semanal de admissões de um RH (só administrador ou gestor; o banco confere). null = sem meta
+  async function definirMeta(usuarioId, meta) {
+    const { error } = await sb.rpc('maparh_definir_meta', { p_usuario: usuarioId, p_meta: meta == null ? null : meta });
+    if (error) throw new Error(error.message);
     return carregarMembros();
   }
   async function excluirUsuario(u) {
@@ -467,6 +473,25 @@ const Nuvem = (() => {
       return data;
     },
     async desfazer(lote) { const { data, error } = await sb.rpc('maparh_desfazer_importacao', { p_lote: lote }); if (error) throw erroRh(error); return data; },
+    // banco de talentos (18/11/2026): avaliados "sim"/"talvez" em outras safras que não estão neste projeto (sem CPF; regra no banco)
+    async bancoTalentos(projetoId) {
+      const { data, error } = await sb.rpc('maparh_banco_talentos', { p_projeto: projetoId });
+      if (error) throw erroRh(error);
+      return data || [];
+    },
+    // avaliação anterior (outra safra) de quem já está neste projeto: { pessoa_id, recontrataria, nota, observacao, cargo, projeto_nome, avaliado_em }
+    async jaTrabalhou(projetoId) {
+      const { data, error } = await sb.rpc('maparh_ja_trabalhou', { p_projeto: projetoId });
+      if (error) throw erroRh(error);
+      return data || [];
+    },
+    // cria o candidato na safra atual reaproveitando a pessoa (triagem, fonte "recontratacao"); devolve o id novo
+    async trazerDoBanco(preId, projetoId) {
+      const { data, error } = await sb.rpc('maparh_trazer_do_banco', { p_pre: preId, p_projeto: projetoId });
+      if (error) throw erroRh(error);
+      cacheCandidatos.delete(projetoId || '');
+      return data;
+    },
     async importacoes(projetoId) {
       const { data, error } = await sb.from('maparh_importacoes').select('id, arquivo, criado_em, criado_login, importadas, ignoradas, desfeita_em').eq('projeto_id', projetoId).order('criado_em', { ascending: false }).limit(8);
       if (error) throw erroRh(error);
@@ -803,5 +828,5 @@ const Nuvem = (() => {
   if (ativa) Store.definirGanchoSalvar(mudou);
 
   return { ativa, iniciar, entrar, sair, temAdmin, criarPrimeiroAdmin, salvarUsuario, excluirUsuario, alterarSenha, incluirProjeto, limparAuditoria,
-    carregarMembros, minhaFoto, minhasMensagens, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, onde, olhando, presentes, aoMudarPresenca, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
+    carregarMembros, minhaFoto, minhasMensagens, definirMeta, puxar, enviarAgora, aoReceber, aoMudarRh, pararDeOuvir, onde, olhando, presentes, aoMudarPresenca, auditoriaBanco, rh, colab, textoEstado, get pendentes() { return fila.size; } };
 })();

@@ -40,36 +40,129 @@ Paginas.dashboard = {
 
     const rec = Store.resumoRecrutamento(App.usuario, App.filtros.projetoId);
     const temAno = regs.some(x => x.projeto.ano);
-    // pendências (refeitas depois que chega a contagem dos candidatos, para não dizer "sem candidato" sem saber)
-    const textoPendencias = (rc, extra = []) => {
-      const l2 = [...extra];
-      if (rc.aguardandoAprovacao) l2.push(`<a href="#/vagas">${rc.aguardandoAprovacao === 1 ? '1 vaga aguardando aprovação' : rc.aguardandoAprovacao + ' vagas aguardando aprovação'}</a>`);
-      if (rc.atrasadas) l2.push(`<a href="#/vagas">${rc.atrasadas === 1 ? '1 vaga atrasada' : rc.atrasadas + ' vagas atrasadas'}</a>`);
-      if (rc.semDivulgacao) l2.push(`<a href="#/vagas">${rc.semDivulgacao === 1 ? '1 vaga aberta' : rc.semDivulgacao + ' vagas abertas'} sem divulgação</a>`);
-      if (rc.prazoVencido) l2.push(`<a href="#/vagas">${rc.prazoVencido} vaga(s) com prazo vencido</a>`);
-      if (rc.semCandidatos && rc.contagemPronta) l2.push(`<a href="#/vagas">${rc.semCandidatos} vaga(s) divulgada(s) ainda sem candidato</a>`);
-      if (!Store.temIBGE()) l2.push(`<a href="#/cidades">baixar a lista de cidades do IBGE</a> (uma vez só, reconhece qualquer cidade do Brasil)`);
-      return l2.length ? `<div class="caixa caixa-aviso mb" style="margin-top:0"><b>Pendências:</b> ${l2.join(' · ')}.</div>` : '';
+    const podeCand = Store.pode(App.usuario, 'candidatos');
+    const diretoria = Store.rhVeTudo(App.usuario);
+    // quem tem o "Seu dia" (RH que vê só o dele) já vê ali o que é de candidato: as pendências ficam só com as vagas
+    const temDia = !diretoria && podeCand && typeof Nuvem !== 'undefined' && Nuvem.ativa && !!Nuvem.rh;
+    // itens de pendência / do dia: { n, txt, nivel, alvo: { href } | { seg, pend }, dica }; vermelho primeiro, depois hoje, prontos e o resto
+    const ORD_NIVEL = { ruim: 0, hoje: 1, ok: 2, meio: 3 };
+    const itemP = (n, um, varios, nivel, alvo, dica) => n ? { n, txt: n === 1 ? um : varios, nivel, alvo, dica } : null;
+    const linhaItem = o => {
+      const miolo = `<b>${UI.fmtNum(o.n)}</b><span>${UI.esc(o.txt)}${o.dica ? `<small>${UI.esc(o.dica)}</small>` : ''}</span>`;
+      if (o.alvo && o.alvo.href) return `<a class="in-item in-${o.nivel}" href="${o.alvo.href}">${miolo}<em>Abrir →</em></a>`;
+      if (o.alvo && o.alvo.seg !== undefined && podeCand) return `<a class="in-item in-${o.nivel}" href="#/candidatos" data-cand-seg="${o.alvo.seg}" data-cand-pend="${o.alvo.pend || ''}" title="Abre Candidatos já filtrado">${miolo}<em>Abrir →</em></a>`;
+      return `<div class="in-item in-${o.nivel}">${miolo}</div>`;
+    };
+    const ordenarItens = l2 => l2.filter(Boolean).sort((a, b) => ORD_NIVEL[a.nivel] - ORD_NIVEL[b.nivel] || b.n - a.n);
+    // pendências (refeitas depois que chega a contagem dos candidatos, para não dizer "sem candidato" nem "nada pendente" sem saber)
+    const cardPendencias = (rc, extra = []) => {
+      const l2 = ordenarItens([...extra,
+        itemP(rc.atrasadas, 'vaga atrasada', 'vagas atrasadas', 'ruim', { href: '#/vagas' }, 'passou da data em que precisava das pessoas'),
+        itemP(rc.prazoVencido, 'vaga com prazo de divulgação vencido', 'vagas com prazo de divulgação vencido', 'ruim', { href: '#/vagas' }),
+        itemP(rc.aguardandoAprovacao, 'vaga aguardando aprovação', 'vagas aguardando aprovação', 'meio', { href: '#/vagas' }, App.usuario.perfil === 'admin' ? 'aprove ou recuse o pedido' : 'o administrador precisa aprovar'),
+        itemP(rc.semDivulgacao, 'vaga aberta sem divulgação', 'vagas abertas sem divulgação', 'meio', { href: '#/vagas' }, 'marque onde foi divulgada'),
+        rc.contagemPronta && itemP(rc.semCandidatos, 'vaga divulgada ainda sem candidato', 'vagas divulgadas ainda sem candidato', 'meio', { href: '#/vagas' }, 'divulgue em mais canais')]);
+      const ibge = Store.temIBGE() ? '' : `<div class="caixa caixa-aviso mb" style="margin-top:0"><a href="#/cidades">Baixar a lista de cidades do IBGE</a> (uma vez só, reconhece qualquer cidade do Brasil).</div>`;
+      const tit = App.usuario.perfil === 'analista' ? 'Pendências das suas vagas' : 'Pendências da diretoria';
+      if (!l2.length) return (rc.contagemPronta ? `<div class="card in-pend in-pend-ok mb"><b>✓ ${tit}: nada pendente agora.</b> <span class="muted">Vagas aprovadas e divulgadas, ninguém parado além do normal.</span></div>` : '') + ibge;
+      const vermelhos = l2.filter(o => o.nivel === 'ruim').length;
+      return `<section class="card in-pend mb"><div class="in-cab"><h2>${tit}</h2><span class="muted small">${l2.length === 1 ? '1 ponto' : l2.length + ' pontos'}${vermelhos ? ` · <span class="in-txt-ruim">${vermelhos} urgente${vermelhos > 1 ? 's' : ''}</span>` : ''}${rc.contagemPronta ? '' : ' · conferindo os candidatos…'}</span></div>
+        <div class="in-lista">${l2.map(linhaItem).join('')}</div></section>` + ibge;
+    };
+    // ----- Metas por RH: admissões da semana (segunda a domingo) contra a meta semanal definida pelo administrador/gestor.
+    // A meta é da pessoa, não do projeto: conta o andamento de todos os projetos que o usuário vê (com filtro de projeto
+    // no topo, busca o andamento geral à parte). Sem meta definida, mostra só "sem meta".
+    const nuvemOn = typeof Nuvem !== 'undefined' && Nuvem.ativa && !!Nuvem.rh;
+    const semanaM = (() => { const h = RH.hoje(), seg = RH.segundaDaSemana(h), d = new Date(seg + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return { hoje: h, seg, dom: d.toISOString().slice(0, 10) }; })();
+    const diaLocal = ts => { if (!ts) return ''; const s = String(ts); if (s.length <= 10) return s; const d = new Date(s); return isNaN(d) ? s.slice(0, 10) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const admNaSemana = p => { if (p.situacao !== 'admitido') return false; const d = diaLocal(p.admitido_em); return d >= semanaM.seg && d <= semanaM.dom; };
+    let geral = null, rhAtual = null;   // andamento de todos os projetos; linhas do "Por RH" já calculadas
+    const admSemanaDe = login => geral ? geral.filter(p => p.analista_login === login && admNaSemana(p)).length : null;
+    const temMeta = m => m != null && m > 0;
+    const podeMeta = nuvemOn && ['admin', 'gestor'].includes(App.usuario.perfil);
+    const adms = x => x === 1 ? '1 admissão' : UI.fmtNum(x) + ' admissões';
+    // recado da meta: batida, no ritmo (pelo que já devia ter saído até ontem, em dias úteis) ou quanto falta
+    const recadoMeta = (feito, meta) => {
+      if (feito >= meta) return { cls: 'ok', txt: feito > meta ? `Meta batida, ${feito - meta} a mais` : 'Meta batida' };
+      const dSem = (new Date(semanaM.hoje + 'T12:00:00Z').getUTCDay() + 6) % 7;   // 0 = segunda
+      const esperado = Math.floor(meta * Math.min(dSem, 5) / 5), falta = meta - feito;
+      return feito >= esperado ? { cls: 'ritmo', txt: `No ritmo · ${falta === 1 ? 'falta 1' : 'faltam ' + falta}` } : { cls: 'meio', txt: `${falta === 1 ? 'Falta 1' : 'Faltam ' + falta} até domingo` };
+    };
+    // barra do "Seu dia" (só para o RH logado)
+    const htmlMetaDia = () => {
+      const u = Store.usuarios().find(x => x.id === App.usuario.id) || App.usuario, feito = admSemanaDe(u.login);
+      if (feito == null) return '';
+      const periodo = `${RH.fmtDia(semanaM.seg)} a ${RH.fmtDia(semanaM.dom)}`;
+      if (!temMeta(u.metaSemanal)) return `<div class="in-meta in-meta-sem"><span>Nesta semana (${periodo}): <b>${adms(feito)}</b></span><span class="muted small">sem meta definida</span></div>`;
+      const meta = u.metaSemanal, r = recadoMeta(feito, meta);
+      return `<div class="in-meta" title="Admissões suas de segunda a domingo, em todos os seus projetos. A meta é definida pelo administrador ou gestor.">
+        <div class="in-meta-cab"><span>Meta da semana: <b>${UI.fmtNum(feito)} de ${adms(meta)}</b> <span class="muted small">${periodo}</span></span><span class="in-meta-rec in-meta-${r.cls}">${r.cls === 'ok' ? '✓ ' : ''}${UI.esc(r.txt)}</span></div>
+        <div class="dr-barra in-meta-barra ${feito >= meta ? 'dr-ok' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="${meta}" aria-valuenow="${Math.min(feito, meta)}"><i style="width:${feito ? Math.max(3, Math.min(100, Math.round(100 * feito / meta))) : 0}%"></i></div></div>`;
+    };
+    // "Por RH": colunas ordenáveis (clicar de novo inverte) e a célula da meta
+    const ORD_RH = { sem: 'Semana', proc: 'Em proc.', parado: 'Parado', aprov: 'Aprov.', faltam: 'Faltam', meta: 'Meta' };
+    const DICA_RH = { sem: 'Admitidos nos últimos 7 dias', proc: 'Candidatos em processo agora', parado: 'O candidato em processo há mais tempo sem mudança', aprov: 'Admitidos ÷ (admitidos + não seguiram)', faltam: 'Pessoas que faltam nas vagas abertas em que ele é responsável', meta: 'Admissões desta semana (segunda a domingo) ÷ meta semanal' };
+    const usuarioDaLinha = a => a.u ? Store.usuarioPorLogin(a.u.login) : null;
+    const metaDaLinha = a => { const u = usuarioDaLinha(a); if (!u || (!diretoria && u.id !== App.usuario.id)) return null; return { u, meta: temMeta(u.metaSemanal) ? u.metaSemanal : null, feito: admSemanaDe(u.login) }; };
+    const htmlPorRh = () => {
+      if (!rhAtual) return '';
+      const ord = Paginas.dashboard._ordRh || { k: 'sem', inv: false }, pctA = a => a.adm + a.fora ? a.adm / (a.adm + a.fora) : -1;
+      const prog = a => { const m = metaDaLinha(a); return m && m.meta != null ? (m.feito || 0) / m.meta : -1; };
+      const padrao = (a, b) => b.sem - a.sem || b.faltam - a.faltam || b.proc - a.proc || a.nome.localeCompare(b.nome, 'pt-BR');
+      const CMP = { sem: padrao, proc: (a, b) => b.proc - a.proc, parado: (a, b) => (b.proc ? b.parado : -1) - (a.proc ? a.parado : -1), aprov: (a, b) => pctA(b) - pctA(a), faltam: (a, b) => b.faltam - a.faltam,
+        meta: (a, b) => prog(b) - prog(a) };
+      // quem não tem o dado da coluna (sem meta, sem encerrados…) fica sempre no fim, mesmo invertendo
+      const semDado = { meta: a => prog(a) < 0, aprov: a => pctA(a) < 0, parado: a => !a.proc }[ord.k] || (() => false);
+      const linhas = [...rhAtual.values()].sort((a, b) => (semDado(a) - semDado(b)) || (ord.inv ? -1 : 1) * CMP[ord.k](a, b) || padrao(a, b));
+      const pc = (a, b) => b ? Math.round(100 * a / b) : 0;
+      const celMeta = a => {
+        const m = metaDaLinha(a); if (!m) return '<span class="in-rhm in-rhm-nada">—</span>';
+        const pode = podeMeta && m.u.ativo !== false && (App.usuario.perfil === 'admin' || m.u.id !== App.usuario.id);
+        const miolo = m.meta == null ? '<small>sem meta</small>'
+          : `<em>${m.feito == null ? '…' : m.feito}/${m.meta}</em><span class="dr-barra in-rhm-barra ${m.feito >= m.meta ? 'dr-ok' : ''}"><i style="width:${m.feito ? Math.max(6, Math.min(100, pc(m.feito, m.meta))) : 0}%"></i></span>`;
+        const dica = m.meta == null ? 'Sem meta semanal definida' : `${adms(m.feito || 0)} nesta semana, meta de ${m.meta}`;
+        return pode ? `<button type="button" class="in-rhm in-rhm-btn" data-meta="${UI.esc(m.u.login)}" title="${dica}. Clique para ${m.meta == null ? 'definir' : 'mudar'} a meta.">${miolo}</button>` : `<span class="in-rhm" title="${dica}">${miolo}</span>`;
+      };
+      return `<div class="dr-tab dr-tab-rh in-rh6 in-rh7 dr-tab-cab"><span>RH</span>${Object.keys(ORD_RH).map(k => `<button type="button" class="in-ord ${ord.k === k ? 'ativo' : ''}" data-ord="${k}" title="${DICA_RH[k]}. Clique para ordenar.">${ORD_RH[k]}${ord.k === k ? `<i>${ord.inv ? '▴' : '▾'}</i>` : ''}</button>`).join('')}</div>
+        ${linhas.map(a => `<div class="dr-tab dr-tab-rh in-rh6 in-rh7"><b class="com-avatar">${a.u ? UI.avatar(a.u, 22) : ''}<span title="${UI.esc(a.nome)}">${UI.esc(a.nome)}</span></b><span class="${a.sem ? 'ok' : ''}" title="${a.sem} admitido(s) nos últimos 7 dias · ${a.adm} no total">${a.sem}</span><span>${a.proc}</span><span class="${a.parado >= 8 ? 'ruim' : a.parado >= 4 ? 'alerta' : ''}">${a.proc ? a.parado + ' d' : '—'}</span><span title="${a.adm} admitidos, ${a.fora} não seguiram">${a.adm + a.fora ? pc(a.adm, a.adm + a.fora) + '%' : '—'}</span><span class="${a.faltam ? 'ruim' : 'ok'}">${a.faltam}</span>${celMeta(a)}</div>`).join('')}`;
+    };
+    // redesenha só o que depende da meta (barra do Seu dia e linhas do Por RH), sem mexer no resto da tela
+    const pintarMetas = () => {
+      if (App.paginaAtual !== 'dashboard' || !document.body.contains(el)) return;
+      const bd = el.querySelector('#in-meta-box'); if (bd) bd.innerHTML = htmlMetaDia();
+      const br = el.querySelector('#dr-rh-corpo'); if (br) br.innerHTML = htmlPorRh();
+    };
+    const buscarGeral = lista => {
+      if (!nuvemOn) return;
+      if (!App.filtros.projetoId) { geral = lista; return; }
+      Nuvem.rh.andamento(null).then(n => { geral = n; pintarMetas(); }).catch(() => {});
+    };
+    const editarMeta = login => {
+      const u = Store.usuarioPorLogin(login); if (!u) return;
+      const feito = admSemanaDe(u.login);
+      UI.modal({ titulo: `Meta semanal — ${u.nome}`, largura: '420px',
+        corpo: `<label>Admissões por semana<input type="number" id="mt-valor" min="0" max="999" step="1" inputmode="numeric" placeholder="sem meta" value="${temMeta(u.metaSemanal) ? u.metaSemanal : ''}"></label>
+          <p class="muted small" style="margin-bottom:0">A semana vai de segunda a domingo.${feito == null ? '' : ` Nesta semana: ${adms(feito)}.`} Deixe vazio para ficar sem meta.</p>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Salvar', classe: 'btn-primario', acao: async md => {
+          const inp = md.corpo.querySelector('#mt-valor'), txt = inp.value.trim(), nova = txt === '' ? null : Number(txt);
+          if (nova !== null && (!Number.isInteger(nova) || nova < 0 || nova > 999)) { inp.focus(); throw new Error('A meta é um número inteiro de 0 a 999.'); }
+          await Nuvem.definirMeta(u.id, nova);
+          UI.toast(nova == null ? `${u.nome} ficou sem meta.` : `Meta de ${u.nome}: ${adms(nova)} por semana.`, 'sucesso');
+          pintarMetas();
+        } }] });
+      setTimeout(() => { const i = document.getElementById('mt-valor'); if (i) { i.focus(); i.select(); } }, 50);
     };
     // Recrutamento (para a diretoria): sai do andamento dos candidatos (sem dado pessoal) e das vagas.
     // Vale para todos que veem o Início; o RH (analista) vê só o que é dele. Respeita os filtros de distrito e tipo do topo.
-    Promise.resolve().then(async () => {   // logo depois de montar a tela, antes de ela aparecer: com o último resultado guardado não pisca
-      const v = document.getElementById('dash-cand'), s = document.getElementById('dash-cand-sub'), alvo = document.getElementById('dash-rec'); if (!v) return;
-      if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { v.textContent = '—'; s.textContent = 'precisa do banco central'; alvo.innerHTML = ''; return; }
-      let l;
-      const pid = App.filtros.projetoId || '', cache = Paginas.dashboard.cacheDe(pid);
-      if (cache) {
-        l = cache.l;   // o que já tinha: aparece na hora; a conferência abaixo só redesenha se mudou
-        Nuvem.rh.andamento(App.filtros.projetoId).then(n => { const j = JSON.stringify(n); if (j === cache.j) return; Paginas.dashboard._cache = { pid, l: n, j }; if (App.paginaAtual === 'dashboard') App.rotear(true); }).catch(() => {});
-      } else try { l = await Nuvem.rh.andamento(App.filtros.projetoId); Paginas.dashboard._cache = { pid, l, j: JSON.stringify(l) }; } catch (e) {
-        v.textContent = '—'; s.textContent = 'não foi possível carregar';
-        alvo.innerHTML = '<div class="card vazio mb">Não foi possível carregar o recrutamento. <button class="btn btn-pequeno" id="dr-tentar">Tentar de novo</button></div>';
-        document.getElementById('dr-tentar').addEventListener('click', () => App.recarregar()); return;
-      }
-      if (!document.body.contains(v)) return;
+    // desenha o bloco do recrutamento (passo 2, pendências e indicadores) a partir do andamento; chamado de novo quando
+    // os candidatos mudam, sem redesenhar o resto da tela (gráficos das contratações ficam como estão)
+    const pintarRec = l => {
+      const v = document.getElementById('dash-cand'), s = document.getElementById('dash-cand-sub'), alvo = document.getElementById('dash-rec');
+      if (!v || !l || !document.body.contains(v)) return;
       // contagem das vagas a partir do mesmo andamento (sem buscar de novo), sem os filtros de distrito e tipo:
       // cada vaga conta todos os distritos dela (os filtros entram depois, no que aparece) — igual à tela Vagas
       const lTodos = l;
+      buscarGeral(lTodos); if (!App.filtros.projetoId) pintarMetas();
       Store.definirContagemVagas(Store.contagemDoAndamento(lTodos));
       if (App.filtros.distritoId) l = l.filter(p => p.distrito_id === App.filtros.distritoId);
       if (App.filtros.tipo) l = l.filter(p => p.tipo === App.filtros.tipo);
@@ -77,7 +170,7 @@ Paginas.dashboard = {
       v.textContent = UI.fmtNum(ab.length);
       s.textContent = ab.length ? `${n('triagem')} na triagem · ${n('entrevista')} em entrevista · ${n('documentos')} na documentação` : 'triagem, entrevista e documentação';
       if (!l.length) {
-        const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = textoPendencias({ ...Store.resumoRecrutamento(App.usuario, App.filtros.projetoId), contagemPronta: true });
+        const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = cardPendencias({ ...Store.resumoRecrutamento(App.usuario, App.filtros.projetoId), contagemPronta: true });
         alvo.innerHTML = '<div class="secao-titulo">Recrutamento</div><div class="card vazio mb">Nenhuma candidatura ainda neste filtro. Quando o RH importar ou cadastrar candidatos, o funil aparece aqui.</div>';
         return;
       }
@@ -91,13 +184,21 @@ Paginas.dashboard = {
       const docParada = ab.filter(p => p.etapa === 'documentos' && !pronto(p) && parado(p) >= 7).length;
       const chegaPend = ab.filter(p => p.chegada_data && p.chegada_data >= segH && p.chegada_data <= fimH && !pronto(p)).length;
       const semRhN = ab.filter(p => !p.analista_login).length;
+      // na entrevista há 3+ dias (o andamento não traz a data da entrevista; conta pela mudança de etapa, igual a Candidatos)
+      const diasEtapa = p => { const ts = p.etapa_em || p.criado_em; return ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / DIA2)) : 0; };
+      const entParada = ab.filter(p => p.etapa === 'entrevista' && diasEtapa(p) >= 3).length;
+      // chegada que já passou e ninguém marcou se chegou ou faltou (só com o campo chegada_status no andamento)
+      const temSt = l.some(p => 'chegada_status' in p), hojeC = RH.hoje();
+      const chegVenc = s2 => temSt ? l.filter(p => p.chegada_data && p.chegada_data < hojeC && (p.chegada_status || 'aguardando') === 'aguardando' && (s2 === 'admitido' ? p.situacao === 'admitido' : p.situacao === 'em_andamento' && p.etapa === 'documentos')).length : 0;
       // cada pendência abre Candidatos já filtrado (quem não abre Candidatos vê só o texto)
-      const linkCand = (seg, pend, txt) => Store.pode(App.usuario, 'candidatos') ? `<a href="#/candidatos" data-cand-seg="${seg}" data-cand-pend="${pend}">${txt}</a>` : txt;
-      const extra = [prParados && linkCand('documentos', 'prontasparadas', `${prParados === 1 ? '1 pessoa pronta' : prParados + ' pessoas prontas'} para admitir há 2+ dias`),
-        docParada && linkCand('documentos', 'docparada', `${docParada} na documentação parada${docParada > 1 ? 's' : ''} há 7+ dias`),
-        chegaPend && linkCand('documentos', 'chegasemana', `${chegaPend} chega${chegaPend > 1 ? 'm' : ''} esta semana com pendência`),
-        semRhN && linkCand('', 'semrh', `${semRhN} candidato${semRhN > 1 ? 's' : ''} sem RH responsável`)].filter(Boolean);
-      const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = textoPendencias({ ...rec2, contagemPronta: true }, extra);
+      const extra = temDia ? [itemP(semRhN, 'candidato sem RH responsável', 'candidatos sem RH responsável', 'meio', { seg: '', pend: 'semrh' }, 'direcionar para um RH')] : [
+        itemP(prParados, 'pessoa pronta para admitir há 2+ dias', 'pessoas prontas para admitir há 2+ dias', 'ruim', { seg: 'documentos', pend: 'prontasparadas' }, 'falta só admitir'),
+        itemP(chegVenc('admitido'), 'admitido com chegada passada sem confirmação', 'admitidos com chegada passada sem confirmação', 'ruim', { seg: 'admitido', pend: 'chegavencida' }, 'marcar se chegou ou faltou'),
+        itemP(chegVenc('documentos'), 'na documentação com chegada passada sem confirmação', 'na documentação com chegada passada sem confirmação', 'ruim', { seg: 'documentos', pend: 'chegavencida' }, 'marcar se chegou ou faltou'),
+        itemP(chegaPend, 'chega esta semana com pendência', 'chegam esta semana com pendência', 'hoje', { seg: 'documentos', pend: 'chegasemana' }, 'documento, ASO ou treinamento faltando'),
+        itemP(entParada, 'na entrevista há 3+ dias', 'na entrevista há 3+ dias', 'meio', { seg: 'entrevista', pend: 'parados3' }, 'entrevista sem resultado ou sem data'),
+        itemP(docParada, 'na documentação parado há 7+ dias', 'na documentação parados há 7+ dias', 'meio', { seg: 'documentos', pend: 'docparada' }),
+        itemP(semRhN, 'candidato sem RH responsável', 'candidatos sem RH responsável', 'meio', { seg: '', pend: 'semrh' }, 'direcionar para um RH')];
       if (dv) { dv.textContent = UI.fmtNum(rec2.vagasAbertas); document.getElementById('dash-vagas-sub').innerHTML = `${UI.fmtNum(rec2.posicoes)} ${rec2.posicoes === 1 ? 'pessoa' : 'pessoas'} ainda a contratar${rec2.semDivulgacao ? ` · <span class="erro">${rec2.semDivulgacao} sem divulgar</span>` : ''}`; }
       const vagas = Store.vagasVisiveis(App.usuario, { projetoId: App.filtros.projetoId }).filter(x => x.aprovada && x.status !== 'cancelada');
       // pedido x admitido conta local e móvel separados por distrito (10 locais admitidos não cobrem 5 móveis pedidos)
@@ -126,6 +227,11 @@ Paginas.dashboard = {
         .map(x => ({ v: x, p: Store.previsaoVaga(x, lTodos, taxasDe(x.projetoId)) })).filter(o => o.p);
       const emRisco = prevs.filter(o => o.p.selo !== 'no_prazo')
         .sort((a, b) => ORD_SELO[a.p.selo] - ORD_SELO[b.p.selo] || (b.p.faltam - b.p.cobre) - (a.p.faltam - a.p.cobre) || (a.v.dataNecessidade || '9999').localeCompare(b.v.dataNecessidade || '9999'));
+      // vagas que o funil não fecha / em risco entram nas pendências (detalhe no quadro "Vagas em risco")
+      const nNaoFecha = emRisco.filter(o => o.p.selo === 'nao_fecha').length, nRisco = emRisco.length - nNaoFecha;
+      extra.push(itemP(nNaoFecha, 'vaga que o funil não fecha', 'vagas que o funil não fecha', 'ruim', { href: '#/vagas' }, 'precisa de mais candidatos'),
+        itemP(nRisco, 'vaga em risco', 'vagas em risco', 'meio', { href: '#/vagas' }, 'o funil cobre pouco do que falta'));
+      const pe = document.getElementById('dash-pend'); if (pe) pe.innerHTML = cardPendencias({ ...rec2, contagemPronta: true }, extra);
       // gargalo: quantos estão parados em cada etapa (pela última mudança: etapa_em ou atualizado_em, o mais recente)
       const desde = p => { const t = [p.etapa_em, p.atualizado_em].filter(Boolean).map(x => new Date(x).getTime()).filter(x => !isNaN(x)); return t.length ? Math.max(...t) : null; };
       const diasParado = p => { const t = desde(p); return t == null ? 0 : Math.max(0, Math.floor((Date.now() - t) / DIA2)); };
@@ -162,17 +268,24 @@ Paginas.dashboard = {
       const piorD = [...porD.values()].filter(a => a.cob != null).sort((a, b) => a.cob - b.cob)[0];
       // por RH: em processo, parado há (o mais antigo), aproveitamento (admitidos ÷ encerrados) e quanto falta nas vagas dele
       const porRh = new Map();
-      const rhDe = (k, u, nome) => porRh.get(k) || (porRh.set(k, { nome: u ? u.nome : (nome || 'Sem RH responsável'), u, proc: 0, adm: 0, fora: 0, total: 0, parado: 0, faltam: 0 }), porRh.get(k));
+      const rhDe = (k, u, nome) => porRh.get(k) || (porRh.set(k, { nome: u ? u.nome : (nome || 'Sem RH responsável'), u, proc: 0, adm: 0, sem: 0, fora: 0, total: 0, parado: 0, faltam: 0 }), porRh.get(k));
+      // admitidos nos últimos 7 dias (ranking) e nos últimos 14 (ritmo da previsão de fechamento)
+      const hojeI = RH.hoje(), somaDias = (iso, nd) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + nd); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+      const admEm = p => String(p.admitido_em || '').slice(0, 10), d7 = somaDias(hojeI, -7), d14 = somaDias(hojeI, -14);
+      const naJanela = (p, de) => p.situacao === 'admitido' && admEm(p) > de && admEm(p) <= hojeI;
       for (const p of l) {
         const k = p.analista_login || p.analista || '(sem)';
         const a = rhDe(k, Store.usuarioPorLogin(p.analista_login), p.analista);
-        a.total++; if (p.situacao === 'admitido') a.adm++; else if (p.situacao === 'em_andamento') { a.proc++; a.parado = Math.max(a.parado, diasParado(p)); } else a.fora++;
+        a.total++; if (p.situacao === 'admitido') { a.adm++; if (naJanela(p, d7)) a.sem++; } else if (p.situacao === 'em_andamento') { a.proc++; a.parado = Math.max(a.parado, diasParado(p)); } else a.fora++;
       }
       const ABERTA = ['aberta', 'divulgada', 'selecao'];
       for (const x of vagas.filter(x => ABERTA.includes(x.status) && (!fD || x.porDistrito.some(d => d.distrito.id === fD)))) {
         const rs = x.responsaveis && x.responsaveis.length ? x.responsaveis : ['(sem)'];
         for (const login of rs) rhDe(login, Store.usuarioPorLogin(login === '(sem)' ? '' : login), null).faltam += x.faltam;
       }
+      // RH com meta definida aparece mesmo sem candidato nem vaga neste filtro (só para quem acompanha todos os RHs)
+      if (diretoria) for (const u of Store.equipeRh()) if (temMeta(u.metaSemanal) && !porRh.has(u.login)) rhDe(u.login, u, null);
+      rhAtual = porRh;
       // saídas: em que etapa e por quê
       const saiu = e => fora.filter(p => p.etapa === e).length;
       // chegadas das próximas semanas
@@ -181,6 +294,19 @@ Paginas.dashboard = {
       for (const p of l) if (p.chegada_data && p.chegada_data >= seg && (p.situacao === 'em_andamento' || p.situacao === 'admitido')) { const w = RH.segundaDaSemana(p.chegada_data); semanas.set(w, (semanas.get(w) || 0) + 1); }
       const prox = [...semanas.entries()].sort().slice(0, 4);
       const fimSem = w => { const d = new Date(w + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return RH.fmtDia(d.toISOString().slice(0, 10)); };
+      // previsão de fechamento: no ritmo das admissões dos últimos 14 dias, quando o que falta fecha; comparado
+      // com a data mais distante em que as vagas abertas precisam das pessoas
+      const faltamT = Math.max(0, pedidas - admV), adm14 = adm.filter(p => naJanela(p, d14)).length, adm7 = adm.filter(p => naJanela(p, d7)).length;
+      const prazoFinal = vagas.filter(x => ABERTA.includes(x.status) && x.faltam > 0 && x.dataNecessidade && (!fD || x.porDistrito.some(d => d.distrito.id === fD))).map(x => x.dataNecessidade).sort().pop() || '';
+      let previsao = '';
+      if (pedidas && !faltamT) previsao = '<span class="in-txt-ok">Pedido completo.</span>';
+      else if (pedidas && !adm14) previsao = 'Sem admissões nos últimos 14 dias: ainda não dá para prever quando o pedido fecha.';
+      else if (pedidas) {
+        const diasF = Math.ceil(faltamT / (adm14 / 14)), fimF = somaDias(hojeI, diasF);
+        const quando = diasF > 365 ? 'em mais de um ano' : `por volta de <b>${RH.fmtDia(fimF)}${fimF.slice(0, 4) !== hojeI.slice(0, 4) ? '/' + fimF.slice(0, 4) : ''}</b>`;
+        previsao = `No ritmo atual (${adm14 === 1 ? '1 admissão' : adm14 + ' admissões'} em 14 dias), fecha ${quando}` +
+          (prazoFinal ? (fimF > prazoFinal ? ` · <span class="in-txt-ruim">depois do prazo (${RH.fmtDia(prazoFinal)})</span>` : ` · <span class="in-txt-ok">dentro do prazo (${RH.fmtDia(prazoFinal)})</span>`) : '') + '.';
+      }
       const barra = (val, max, cls = '') => `<div class="dr-barra ${cls}"><i style="width:${max ? Math.max(2, Math.round(100 * val / max)) : 0}%"></i></div>`;
       const qtd = (x, um, varios) => `${UI.fmtNum(x)} ${x === 1 ? um : varios}`;
       alvo.innerHTML = `
@@ -190,7 +316,8 @@ Paginas.dashboard = {
             <div class="dr-hero-rot">Pedido preenchido${fD || fT ? ' <span class="muted small">(com o filtro do topo)</span>' : ''}</div>
             <div class="dr-hero-n"><b>${UI.fmtNum(admV)}</b> de ${UI.fmtNum(pedidas)} pessoas <span>${pct(admV, pedidas)}%</span></div>
             <div class="dr-barra dr-hero-barra dr-ok"><i style="width:${pedidas ? Math.max(1, pct(admV, pedidas)) : 0}%"></i></div>
-            <div class="muted small">${qtd(vagas.length, 'vaga aprovada', 'vagas aprovadas')}${adm.length > admV ? ` · +${adm.length - admV} admitidos fora do pedido` : ''}</div>
+            <div class="muted small">${qtd(vagas.length, 'vaga aprovada', 'vagas aprovadas')} · ${adm7 === 1 ? '1 admitido' : UI.fmtNum(adm7) + ' admitidos'} nos últimos 7 dias${adm.length > admV ? ` · +${adm.length - admV} admitidos fora do pedido` : ''}</div>
+            ${previsao ? `<div class="in-prev" title="Conta as admissões dos últimos 14 dias e divide o que falta por esse ritmo. O prazo é a data mais distante em que as vagas abertas precisam das pessoas.">${previsao}</div>` : ''}
           </div>
           <ul class="dr-hero-fatos">
             <li><b>${UI.fmtNum(Math.max(0, pedidas - admV))}</b>faltam contratar</li>
@@ -225,9 +352,8 @@ Paginas.dashboard = {
             <div class="dr-nota">Saíram na triagem: <b>${saiu('triagem')}</b> · na entrevista: <b>${saiu('entrevista')}</b> · na documentação: <b>${saiu('documentos')}</b></div>
           </div>
           <div class="card"><h2>Por RH</h2>
-            <div class="dr-tab dr-tab-rh dr-tab-cab"><span>RH</span><span>Em processo</span><span>Parado há</span><span title="Admitidos ÷ (admitidos + não seguiram)">Aproveit.</span><span title="Pessoas que faltam nas vagas abertas em que ele é responsável">Faltam</span></div>
-            ${[...porRh.values()].sort((a, b) => b.faltam - a.faltam || b.proc - a.proc || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => `<div class="dr-tab dr-tab-rh"><b class="com-avatar">${a.u ? UI.avatar(a.u, 22) : ''}<span>${UI.esc(a.nome)}</span></b><span>${a.proc}</span><span class="${a.parado >= 8 ? 'ruim' : a.parado >= 4 ? 'alerta' : ''}">${a.proc ? a.parado + ' d' : '—'}</span><span title="${a.adm} admitidos, ${a.fora} não seguiram">${a.adm + a.fora ? pct(a.adm, a.adm + a.fora) + '%' : '—'}</span><span class="${a.faltam ? 'ruim' : 'ok'}">${a.faltam}</span></div>`).join('')}
-            <div class="dr-nota">Parado há: o candidato em processo há mais tempo sem mudança. Aproveitamento: admitidos entre quem já encerrou.</div>
+            <div id="dr-rh-corpo">${htmlPorRh()}</div>
+            <div class="dr-nota">Clique no título da coluna para ordenar. Semana: admitidos nos últimos 7 dias. Parado: o candidato em processo há mais tempo sem mudança. Aprov.: admitidos entre quem já encerrou. Meta: admissões de ${RH.fmtDia(semanaM.seg)} a ${RH.fmtDia(semanaM.dom)} (segunda a domingo), em todos os projetos${podeMeta ? "; clique na meta para mudar" : ""}.</div>
           </div>
           <div class="card" style="grid-column:1/-1;order:9"><h2>Pedido x admitido por distrito</h2>
             ${porD.size ? `<div class="dr-tab dr-tab-dist dr-tab-cab"><span>Distrito</span><span>Locais</span><span>Móveis</span><span>Falta</span><span>Em processo</span><span title="Admissões esperadas do funil ÷ o que falta">Cobertura</span><span>Preenchido</span></div>` + [...porD.values()].sort((a, b) => b.falta - a.falta || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => { const tot = a.pl + a.pm, ad = a.al + a.am;
@@ -246,6 +372,13 @@ Paginas.dashboard = {
           </div>
         </div>`;
       document.getElementById('dr-imprimir').addEventListener('click', () => window.print());
+      // Por RH: ordenar pela coluna e mudar a meta direto na linha (o miolo é redesenhado, então escuta no cartão)
+      const corpoRh = alvo.querySelector('#dr-rh-corpo');
+      if (corpoRh) corpoRh.addEventListener('click', e => {
+        const o = e.target.closest('[data-ord]'), m = e.target.closest('[data-meta]');
+        if (o) { const at = Paginas.dashboard._ordRh || { k: 'sem', inv: false }; Paginas.dashboard._ordRh = { k: o.dataset.ord, inv: at.k === o.dataset.ord ? !at.inv : false }; corpoRh.innerHTML = htmlPorRh(); }
+        else if (m) editarMeta(m.dataset.meta);
+      });
       // gargalo: o número abre Candidatos na etapa (lista), sem filtro de vaga
       alvo.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => {
         try { sessionStorage.setItem('maparh:cand-seg', b.dataset.seg); localStorage.setItem('maparh:cand-vaga', ''); if (App.filtros.projetoId) localStorage.setItem('maparh:cand-projeto', App.filtros.projetoId); } catch (e) { /* ok */ }
@@ -274,6 +407,21 @@ Paginas.dashboard = {
           ta.remove();
         }
       });
+    };
+    Promise.resolve().then(async () => {   // logo depois de montar a tela, antes de ela aparecer: com o último resultado guardado não pisca
+      const v = document.getElementById('dash-cand'), s = document.getElementById('dash-cand-sub'), alvo = document.getElementById('dash-rec'); if (!v) return;
+      if (typeof Nuvem === 'undefined' || !Nuvem.ativa) { v.textContent = '—'; s.textContent = 'precisa do banco central'; alvo.innerHTML = ''; return; }
+      let l;
+      const pid = App.filtros.projetoId || '', cache = Paginas.dashboard.cacheDe(pid);
+      if (cache) {
+        l = cache.l;   // o que já tinha: aparece na hora; a conferência abaixo só redesenha o recrutamento se mudou
+        Nuvem.rh.andamento(App.filtros.projetoId).then(n => { const j = JSON.stringify(n); if (j === cache.j) return; Paginas.dashboard._cache = { pid, l: n, j }; if (App.paginaAtual === 'dashboard') pintarRec(n); }).catch(() => {});
+      } else try { l = await Nuvem.rh.andamento(App.filtros.projetoId); Paginas.dashboard._cache = { pid, l, j: JSON.stringify(l) }; } catch (e) {
+        v.textContent = '—'; s.textContent = 'não foi possível carregar';
+        alvo.innerHTML = '<div class="card vazio mb">Não foi possível carregar o recrutamento. <button class="btn btn-pequeno" id="dr-tentar">Tentar de novo</button></div>';
+        document.getElementById('dr-tentar').addEventListener('click', () => App.recarregar()); return;
+      }
+      pintarRec(l);
     });
     el.innerHTML = `
       <div id="dash-dia"></div>
@@ -298,7 +446,7 @@ Paginas.dashboard = {
           <div><div class="fluxo-titulo">No mapa</div><div class="fluxo-valor">${UI.fmtNum(r.cidadesOrigem)}</div><div class="fluxo-sub">cidades de origem · ${UI.fmtNum(r.cidadesAtuacao)} de trabalho</div></div>
         </a>
       </div>
-      <div id="dash-pend">${textoPendencias({ ...rec, contagemPronta: false })}</div>
+      <div id="dash-pend">${cardPendencias({ ...rec, contagemPronta: false })}</div>
       <div id="dash-rec">${Paginas.dashboard.cacheDe(App.filtros.projetoId || '') ? '' : '<div class="card dr-esqueleto mb"></div>'}</div>
       <div class="secao-titulo">Perfil de quem já foi contratado <span class="muted small">${UI.esc(App.descricaoFiltro())}</span></div>
       <div class="grade kpis mb">
@@ -332,34 +480,87 @@ Paginas.dashboard = {
         sessionStorage.setItem('maparh:cand-seg', a.dataset.candSeg || '');
         sessionStorage.setItem('maparh:cand-pend', a.dataset.candPend || '');
         localStorage.setItem('maparh:cand-vaga', '');
-        if (App.filtros.projetoId) localStorage.setItem('maparh:cand-projeto', App.filtros.projetoId);
+        // "Seu dia" conta o projeto dele (o do filtro ou o primeiro ativo): Candidatos abre nesse mesmo projeto
+        const pidLink = App.filtros.projetoId || (a.closest('#dash-dia') ? el._diaPid : '');
+        if (pidLink) localStorage.setItem('maparh:cand-projeto', pidLink);
       } catch (er) { /* ok */ }
       App.ir('candidatos');
     });
-    // resumo do dia para quem não vê todos os RHs (o RH vê o que é dele): entrevistas hoje, aguardando resposta, prontos
-    if (!Store.rhVeTudo(App.usuario) && Store.pode(App.usuario, 'candidatos') && typeof Nuvem !== 'undefined' && Nuvem.ativa && Nuvem.rh) {
-      const pid = App.filtros.projetoId || ((App.projetosVisiveis().filter(p => p.ativo !== false)[0] || {}).id);
-      const pintarDia = lista => {
+    // "Seu dia" para quem não vê todos os RHs (o RH vê o que é dele): o que fazer hoje, do mais urgente para o menos,
+    // cada item abre Candidatos já filtrado (mesmos filtros da faixa "Hoje" de Candidatos, então os números batem)
+    let pintarDia = null, diaPid = '';
+    if (temDia) {
+      diaPid = el._diaPid = App.filtros.projetoId || ((App.projetosVisiveis().filter(p => p.ativo !== false)[0] || {}).id) || '';
+      pintarDia = lista => {
         const box = el.querySelector('#dash-dia'); if (!box || !lista) return;
-        const hoje = RH.hoje(), ab = lista.filter(p => p.situacao === 'em_andamento');
-        const DIA = 86400000;
+        const hoje = RH.hoje(), DIA = 86400000;
+        const amanha = (() => { const d = new Date(hoje + 'T12:00:00'); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+        const emAnd = p => p.situacao === 'em_andamento', naE = (p, e) => emAnd(p) && p.etapa === e;
+        const dias = ts => ts ? Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / DIA)) : 0;
+        const naEtapaHa = p => dias(p.etapa_em || p.criado_em);
         const contato = p => { const a = (p.anotacoes || []).filter(x => String(x.texto || '').startsWith('Mensagem pelo WhatsApp: primeiro contato')).pop(); return a && a.em ? a.em : null; };
-        const ent = ab.filter(p => p.entrevista && p.entrevista.data === hoje).length;
-        const agu = ab.filter(p => p.etapa === 'triagem' && contato(p) && (Date.now() - new Date(contato(p)).getTime()) / DIA >= 2).length;
-        const pr = ab.filter(p => p.etapa === 'documentos' && p.dinamica === 'ok' && !p.documentos_pendentes && ['ok', 'dispensado'].includes(p.aso) && ['ok', 'dispensado'].includes(p.treinamento)).length;
-        const item = (n, txt, seg, pend, cls) => `<a href="#/candidatos" class="dash-dia-item ${n ? cls : 'zero'}" data-cand-seg="${seg}" data-cand-pend="${pend}"><b>${n}</b><span>${txt}</span></a>`;
-        box.innerHTML = `<div class="card dash-dia mb"><div class="dash-dia-tit">Seu dia <span class="muted small">${RH.fmtDia(hoje)}</span></div>
-          ${item(ent, ent === 1 ? 'entrevista hoje' : 'entrevistas hoje', 'agenda', '', '')}
-          ${item(agu, 'aguardando resposta', 'triagem', 'semresposta', 'meio')}
-          ${item(pr, pr === 1 ? 'pronto para admitir' : 'prontos para admitir', 'documentos', 'prontas', 'ok')}
-          <a href="#/candidatos" class="btn btn-pequeno dash-dia-ir">Abrir Candidatos →</a></div>`;
+        const ok2 = v => ['ok', 'dispensado'].includes(v);
+        const pronto = p => naE(p, 'documentos') && p.dinamica === 'ok' && !p.documentos_pendentes && ok2(p.aso) && ok2(p.treinamento) && p.aso !== 'inapto';
+        const ent = p => p.entrevista || {}, entAguarda = p => (ent(p).resultado || 'aguardando') === 'aguardando';
+        const temCheg = p => !!p.chegada_data && (naE(p, 'documentos') || p.situacao === 'admitido');
+        const stCheg = p => p.chegada_status || 'aguardando';
+        const conta = f => lista.filter(f).length;
+        const porSeg = (f, um, varios, nivel, pend, dica) => ['admitido', 'documentos'].map(sg => itemP(conta(p => f(p) && (sg === 'admitido' ? p.situacao === 'admitido' : naE(p, 'documentos'))),
+          um + (sg === 'admitido' ? ' (admitido)' : ' (documentação)'), varios + (sg === 'admitido' ? ' (admitidos)' : ' (documentação)'), nivel, { seg: sg, pend }, dica));
+        const itens = ordenarItens([
+          ...porSeg(p => temCheg(p) && p.chegada_data < hoje && stCheg(p) === 'aguardando', 'chegada passada sem confirmação', 'chegadas passadas sem confirmação', 'ruim', 'chegavencida', 'marque se chegou ou faltou'),
+          itemP(conta(p => naE(p, 'entrevista') && ent(p).data && ent(p).data < hoje && entAguarda(p)), 'entrevista que passou sem resultado', 'entrevistas que passaram sem resultado', 'ruim', { seg: 'entrevista', pend: 'semresultado' }, 'marque aprovado, reprovado ou remarque'),
+          itemP(conta(p => naE(p, 'documentos') && p.aso === 'agendado' && p.aso_data && p.aso_data < hoje), 'ASO que passou sem resultado', 'ASOs que passaram sem resultado', 'ruim', { seg: 'documentos', pend: 'asoatraso' }, 'lance o resultado do exame'),
+          ...porSeg(p => temCheg(p) && p.chegada_data === hoje && !['chegou', 'faltou'].includes(stCheg(p)), 'chega hoje no campo', 'chegam hoje no campo', 'hoje', 'chegahoje', 'confirme a chegada'),
+          itemP(conta(p => emAnd(p) && ent(p).data === hoje), 'entrevista hoje', 'entrevistas hoje', 'hoje', { seg: 'agenda' }, 'veja os horários na agenda'),
+          itemP(conta(p => naE(p, 'documentos') && p.aso === 'agendado' && p.aso_data === hoje), 'ASO hoje', 'ASOs hoje', 'hoje', { seg: 'documentos', pend: 'asohoje' }),
+          itemP(conta(pronto), 'pronto para admitir', 'prontos para admitir', 'ok', { seg: 'documentos', pend: 'prontas' }, 'documentação completa: falta só admitir'),
+          itemP(conta(p => naE(p, 'entrevista') && ent(p).data === amanha && entAguarda(p) && ent(p).confirmou !== 'sim'), 'entrevista amanhã sem confirmação', 'entrevistas amanhã sem confirmação', 'meio', { seg: 'agenda' }, 'mande o lembrete'),
+          itemP(conta(p => naE(p, 'triagem') && contato(p) && dias(contato(p)) >= 2), 'aguardando resposta há 2+ dias', 'aguardando resposta há 2+ dias', 'meio', { seg: 'triagem', pend: 'semresposta' }, 'cobre de novo ou encerre'),
+          itemP(conta(p => naE(p, 'triagem') && naEtapaHa(p) >= 3), 'na triagem há 3+ dias', 'na triagem há 3+ dias', 'meio', { seg: 'triagem', pend: 'parados3' }, 'faça o 1º contato ou avance'),
+          itemP(conta(p => naE(p, 'entrevista') && !ent(p).data), 'entrevista sem data marcada', 'entrevistas sem data marcada', 'meio', { seg: 'entrevista', pend: 'semdata' }, 'agende com a pessoa'),
+          itemP(conta(p => naE(p, 'documentos') && !pronto(p) && naEtapaHa(p) >= 7), 'documentação parada há 7+ dias', 'documentações paradas há 7+ dias', 'meio', { seg: 'documentos', pend: 'docparada' }, 'cobre os documentos que faltam'),
+          itemP(conta(p => naE(p, 'documentos') && p.treinamento === 'agendado' && p.treinamento_data === amanha), 'treinamento amanhã', 'treinamentos amanhã', 'meio', { seg: 'documentos', pend: 'treamanha' })]);
+        const proj = Store.projeto(diaPid), urg = itens.filter(o => o.nivel === 'ruim').length;
+        box.innerHTML = `<section class="card in-dia mb"><div class="in-cab"><h2>Seu dia <span class="muted small">${RH.fmtDia(hoje)}${proj && App.projetosVisiveis().length > 1 ? ' · ' + UI.esc(proj.nome) : ''}</span></h2>
+            <span class="muted small">${itens.length ? `${itens.length === 1 ? '1 coisa' : itens.length + ' coisas'} para resolver${urg ? ` · <span class="in-txt-ruim">${urg} urgente${urg > 1 ? 's' : ''}</span>` : ''}` : ''}</span>
+            <a href="#/candidatos" class="btn btn-pequeno in-cab-ir" data-cand-seg="" data-cand-pend="">Abrir Candidatos →</a></div>
+          <div id="in-meta-box">${htmlMetaDia()}</div>
+          ${itens.length ? `<div class="in-lista">${itens.map(linhaItem).join('')}</div>`
+            : `<p class="in-vazio">✓ Tudo em dia: nenhuma entrevista, chegada, ASO ou documento pedindo ação. ${conta(emAnd) ? `Você tem ${conta(emAnd)} em processo.` : 'Quando chegarem candidatos para você, o que fazer aparece aqui.'}</p>`}</section>`;
       };
-      if (pid) {
-        const c = Nuvem.rh.emCache && Nuvem.rh.emCache(pid);
+      if (diaPid) {
+        const c = Nuvem.rh.emCache && Nuvem.rh.emCache(diaPid);
         if (c) pintarDia(c);
-        else Nuvem.rh.listar(pid).then(l => { if (document.body.contains(el)) pintarDia(l); }).catch(() => {});
+        else Nuvem.rh.listar(diaPid).then(l => { if (App.paginaAtual === 'dashboard') pintarDia(l); }).catch(() => {});
       }
     }
+    // dado novo de outro computador: candidatos mudaram → refaz só o recrutamento e o "Seu dia" (sem redesenhar a tela
+    // nem os gráficos); só vaga mudou → refaz o recrutamento com o andamento que já tem; contratação/projeto → tela toda
+    App.aoAtualizar(async info => {
+      if (App.paginaAtual !== 'dashboard' || !el.querySelector('#dash-rec')) return;
+      info = info || {};
+      const pidA = App.filtros.projetoId || '';
+      if (info.semCandidatos) {
+        const cs = info.colecoes ? [...info.colecoes] : null;
+        if (cs && cs.every(c => c === 'auditoria')) return;
+        if (cs && cs.every(c => c === 'vagas' || c === 'auditoria')) { const c = Paginas.dashboard.cacheDe(pidA); if (c) pintarRec(c.l); return; }
+        App.rotear(true); return;
+      }
+      if (typeof Nuvem === 'undefined' || !Nuvem.ativa || !Nuvem.rh) return;
+      Nuvem.rh.andamento(App.filtros.projetoId).then(n => {
+        const j = JSON.stringify(n), c = Paginas.dashboard._cache;
+        if (c && c.pid === pidA && c.j === j) return;
+        Paginas.dashboard._cache = { pid: pidA, l: n, j };
+        if (App.paginaAtual === 'dashboard' && (App.filtros.projetoId || '') === pidA) pintarRec(n);
+      }).catch(() => {});
+      if (pintarDia && diaPid) {
+        try {
+          const l = info.ids && info.ids.length && Nuvem.rh.atualizarIds ? await Nuvem.rh.atualizarIds(diaPid, info.ids) : await Nuvem.rh.listar(diaPid);
+          if (App.paginaAtual === 'dashboard') pintarDia(l);
+        } catch (e) { /* fica o que estava */ }
+      }
+    });
 
     if (!regs.length) {
       el.querySelector('#graficos').innerHTML = `<div class="card vazio" style="grid-column:1/-1">Nenhuma contratação cadastrada para o filtro atual. ${Store.pode(App.usuario, 'candidatos') ? 'As contratações nascem da admissão: <a href="#/candidatos">ir para Candidatos</a>.' : ''}</div>`;

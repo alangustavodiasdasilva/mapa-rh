@@ -4,6 +4,168 @@
 // e se ela entra como LOCAL ou MÓVEL; o administrador direciona cada pessoa para um RH, que só enxerga as dele.
 // Três jeitos de olhar: Quadro (cartões por etapa), Lista (conferência de documentos/ASO/treinamento) e Por RH (o que cada um tem).
 // A exportação sai no modelo da planilha "SEMANA". Os dados ficam em tabelas próprias do banco (têm CPF), fora da cópia local.
+
+// ---------- compartilhado com Contratações (cadastro.js): avaliação de fim de safra e planilha para o DP (eSocial) ----------
+window.RhSafra = (() => {
+  const ROT = { sim: 'Recontrataria', talvez: 'Talvez', nao: 'Não recontrataria' };
+  const CURTO = { sim: 'Sim', talvez: 'Talvez', nao: 'Não' };
+  const ICONE = { sim: '✓', talvez: '?', nao: '✗' };
+  const limpar = m => String(m || '').replace(/^[A-Z_]+:\s*/, '');
+  const dia = d => d ? RH.fmtDataBR(String(d).slice(0, 10)) : '';
+  const nomeDe = login => { const u = login && Store.usuarioPorLogin(login); return u ? u.nome : (login || ''); };
+  // quem avalia: admin, gestor, RH liberado, o RH responsável ou o RH da vaga (o banco confere de novo)
+  function podeAvaliar(p, eu) {
+    if (!p || p.situacao !== 'admitido' || !eu) return false;
+    if (['admin', 'gestor'].includes(eu.perfil) || Store.rhVeTudo(eu)) return true;
+    if (eu.perfil !== 'analista') return false;
+    if (p.analista_login === eu.login) return true;
+    const v = p.vaga_id && Store.vaga(p.vaga_id);
+    return !!(v && (v.recrutadorLogin === eu.login || (v.recrutadores || []).includes(eu.login)));
+  }
+  const dica = p => [ROT[p.avaliacao_recontrataria], p.avaliacao_nota ? `nota ${p.avaliacao_nota}/5` : '', p.avaliacao_obs || '',
+    p.avaliado_em ? `avaliado em ${dia(p.avaliado_em)}${p.avaliado_por ? ' por ' + nomeDe(p.avaliado_por) : ''}` : ''].filter(Boolean).join(' · ');
+  // selo da avaliação (Contratações, Lista de admitidos, cartão)
+  function selo(p, curto) {
+    const r = p.avaliacao_recontrataria; if (!ROT[r]) return '';
+    return `<span class="rhs-selo rhs-${r}" title="${UI.esc(dica(p))}">${ICONE[r]} ${curto ? CURTO[r] : ROT[r]}${p.avaliacao_nota ? ` <i aria-label="nota ${p.avaliacao_nota} de 5">${'★'.repeat(p.avaliacao_nota)}</i>` : ''}</span>`;
+  }
+  // selo "Já trabalhou" (avaliação de outra safra), para quem entrou na safra atual
+  function seloJa(x) {
+    if (!x || !ROT[x.recontrataria]) return '';
+    const t = [`Trabalhou em ${x.projeto_nome || 'outra safra'}${x.cargo ? ' como ' + x.cargo : ''}`, ROT[x.recontrataria], x.nota ? `nota ${x.nota}/5` : '', x.observacao || '', x.avaliado_em ? 'avaliado em ' + dia(x.avaliado_em) : ''].filter(Boolean).join(' · ');
+    return `<span class="rhs-ja rhs-ja-${x.recontrataria}" title="${UI.esc(t)}">Já trabalhou: ${x.recontrataria === 'nao' ? 'não recontrataria ✗' : x.recontrataria === 'talvez' ? 'talvez ?' : 'recontrataria ✓'}</span>`;
+  }
+  // bloco com os 3 botões grandes + estrelas + observação
+  function bloco(p, editavel) {
+    const dis = editavel ? '' : 'disabled';
+    return `<div class="rhs-aval" data-rhs>
+      <div class="rhs-pergunta">Recontrataria esta pessoa na próxima safra?</div>
+      <div class="rhs-botoes" role="group" aria-label="Recontrataria?">${['sim', 'talvez', 'nao'].map(k => `<button type="button" class="rhs-b rhs-b-${k} ${p.avaliacao_recontrataria === k ? 'on' : ''}" data-rhs-r="${k}" aria-pressed="${p.avaliacao_recontrataria === k}" ${dis}><b>${ICONE[k]}</b>${CURTO[k]}</button>`).join('')}</div>
+      <div class="rhs-linha"><span class="rhs-rot">Nota <span class="muted">(opcional)</span></span><span class="fi-estrelas rhs-estrelas">${[1, 2, 3, 4, 5].map(n => `<button type="button" data-rhs-n="${n}" class="${+p.avaliacao_nota >= n ? 'on' : ''}" aria-label="${n} de 5" ${dis}>★</button>`).join('')}</span></div>
+      <input class="rhs-obs" data-rhs-obs maxlength="300" aria-label="Observação da avaliação" placeholder="Observação curta (opcional). Ex.: pontual, cuida bem do equipamento" value="${UI.esc(p.avaliacao_obs || '')}" ${dis}>
+      <div class="muted small rhs-quando" data-rhs-quando>${p.avaliado_em ? `Avaliado em ${dia(p.avaliado_em)}${p.avaliado_por ? ' por ' + UI.esc(nomeDe(p.avaliado_por)) : ''}.` : editavel ? 'Ainda sem avaliação.' : 'Ainda sem avaliação (só o RH responsável, o gestor ou o administrador avaliam).'}</div>
+    </div>`;
+  }
+  // liga os cliques do bloco; devolve uma função que lê o que está marcado
+  function ligar(raiz, p) {
+    const st = { r: p.avaliacao_recontrataria || '', n: p.avaliacao_nota || null };
+    raiz.addEventListener('click', e => {
+      const b = e.target.closest('[data-rhs-r]');
+      if (b) { st.r = b.dataset.rhsR; raiz.querySelectorAll('[data-rhs-r]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', String(x === b)); }); return; }
+      const s = e.target.closest('[data-rhs-n]');
+      if (s) { const n = +s.dataset.rhsN; st.n = st.n === n ? null : n; raiz.querySelectorAll('[data-rhs-n]').forEach(x => x.classList.toggle('on', +x.dataset.rhsN <= (st.n || 0))); }
+    });
+    return () => ({ r: st.r, n: st.n, obs: String(raiz.querySelector('[data-rhs-obs]').value || '').trim().slice(0, 300) });
+  }
+  // grava pelo salvar_candidato (o banco confere quem pode, carimba autor/hora e anota no histórico); false = nada mudou
+  async function salvar(p, v) {
+    if (!v.r) throw new Error('Escolha Sim, Talvez ou Não.');
+    if (v.r === (p.avaliacao_recontrataria || '') && (v.n || null) === (p.avaliacao_nota || null) && (v.obs || '') === (p.avaliacao_obs || '')) return false;
+    try { await Nuvem.rh.salvar({ id: p.pessoa.id }, { id: p.id, avaliacao_recontrataria: v.r, avaliacao_nota: v.n || null, avaliacao_obs: v.obs || null }); }
+    catch (e) { throw new Error(limpar(e.message)); }
+    Object.assign(p, { avaliacao_recontrataria: v.r, avaliacao_nota: v.n || null, avaliacao_obs: v.obs || null, avaliado_em: new Date().toISOString(), avaliado_por: (App.usuario || {}).login || null });
+    return true;
+  }
+  // janela para avaliar uma pessoa
+  function janela(p, aoSalvar) {
+    let ler = null;
+    const m = UI.modal({ titulo: `Avaliação de fim de safra: ${p.pessoa.nome}`, largura: '520px',
+      corpo: `<p class="muted" style="margin-top:0">${UI.esc([p.cargo, p.admitido_em ? 'admitido em ' + dia(p.admitido_em) : ''].filter(Boolean).join(' · '))}. Quem for "Sim" ou "Talvez" entra no banco de talentos da próxima safra.</p>${bloco(p, true)}`,
+      botoes: [{ texto: 'Cancelar' }, { texto: 'Salvar avaliação', classe: 'btn-primario', acao: async () => {
+        const mudou = await salvar(p, ler());
+        if (mudou) UI.toast(`Avaliação de ${p.pessoa.nome} salva.`, 'sucesso');
+        if (aoSalvar) aoSalvar(p);
+      } }] });
+    ler = ligar(m.corpo.querySelector('[data-rhs]'), p);
+  }
+  // avaliar várias pessoas, uma por vez: clicar em Sim/Talvez/Não grava e já passa para a próxima
+  function emLote(lista, aoFim) {
+    if (!lista.length) { UI.toast('Ninguém para avaliar neste filtro.', 'aviso'); return; }
+    let i = 0, feitos = 0, ocupado = false;
+    const m = UI.modal({ titulo: 'Avaliar em lote (fim de safra)', largura: '560px', fecharAoClicarFora: false,
+      corpo: `<div class="cd-pap-topo"><b id="rhs-nome"></b><span class="cd-pap-cont" id="rhs-cont"></span></div><div class="muted small" id="rhs-sub" style="margin-bottom:10px"></div>
+        <div id="rhs-caixa"></div>
+        <p class="muted small" style="margin-bottom:0">Nota e observação são opcionais: preencha antes. Clicar em <b>Sim</b>, <b>Talvez</b> ou <b>Não</b> grava e já mostra a próxima pessoa.</p>`,
+      botoes: [{ texto: 'Fechar', acao: () => { fim(); } }, { texto: 'Pular', classe: 'btn-secundario', acao: () => proximo() }] });
+    const g = s => m.corpo.querySelector(s);
+    let ler = null;
+    function pintar() {
+      const p = lista[i];
+      g('#rhs-nome').textContent = p.pessoa.nome; g('#rhs-cont').textContent = `${i + 1} de ${lista.length}`;
+      g('#rhs-sub').textContent = [p.cargo, p.tipo === 'MOVEL' ? 'móvel' : 'local', p.admitido_em ? 'admitido em ' + dia(p.admitido_em) : ''].filter(Boolean).join(' · ');
+      g('#rhs-caixa').innerHTML = bloco(p, true);
+      ler = ligar(g('[data-rhs]'), p);
+    }
+    function fim() { if (feitos) UI.toast(`${feitos === 1 ? '1 avaliação salva' : feitos + ' avaliações salvas'}.`, 'sucesso'); if (aoFim) aoFim(feitos); }
+    function proximo() { i++; if (i >= lista.length) { fim(); return true; } pintar(); return false; }
+    g('#rhs-caixa').addEventListener('click', async e => {
+      if (!e.target.closest('[data-rhs-r]') || ocupado) return;
+      ocupado = true;
+      try { if (await salvar(lista[i], ler())) feitos++; if (proximo()) m.fechar(); }
+      catch (err) { UI.toast(err.message, 'erro', 6000); }
+      finally { ocupado = false; }
+    });
+    pintar();
+  }
+
+  // ---------- planilha para o DP: pré-cadastro de admissão (eSocial S-2200) ----------
+  // Sai o que o sistema tem; o resto vai em branco para o DP completar. Sem dados bancários.
+  const COLS_DP = [
+    ['NOME COMPLETO', 's'], ['CPF', 's'], ['DATA DE NASCIMENTO', 's'], ['TELEFONE', 's'], ['E-MAIL', 's'], ['MUNICÍPIO DE RESIDÊNCIA', 's'], ['UF DE RESIDÊNCIA', 's'],
+    ['CNH (INFORMADA)', 's'], ['CARGO', 's'], ['DATA DE ADMISSÃO', 's'], ['TIPO (LOCAL/MÓVEL)', 's'], ['MUNICÍPIO DE TRABALHO', 's'], ['UF DE TRABALHO', 's'],
+    ['DISTRITO', 's'], ['BASE DE CONTRATAÇÃO (MÓVEL)', 's'], ['PROJETO / SAFRA', 's'], ['RH RESPONSÁVEL', 's'],
+    ['PIS/NIS', 'dp'], ['RG (NÚMERO)', 'dp'], ['RG - ÓRGÃO EMISSOR/UF', 'dp'], ['RG - DATA DE EMISSÃO', 'dp'], ['NOME DA MÃE', 'dp'], ['NOME DO PAI', 'dp'], ['SEXO', 'dp'],
+    ['RAÇA/COR', 'dp'], ['ESTADO CIVIL', 'dp'], ['GRAU DE INSTRUÇÃO', 'dp'], ['NACIONALIDADE', 'dp'], ['MUNICÍPIO DE NASCIMENTO', 'dp'], ['UF DE NASCIMENTO', 'dp'],
+    ['ENDEREÇO (LOGRADOURO)', 'dp'], ['NÚMERO', 'dp'], ['COMPLEMENTO', 'dp'], ['BAIRRO', 'dp'], ['CEP', 'dp'], ['CTPS (NÚMERO)', 'dp'], ['CTPS (SÉRIE/UF)', 'dp'],
+    ['MATRÍCULA', 'dp'], ['CBO', 'dp'], ['CATEGORIA eSocial', 'dp'], ['TIPO DE CONTRATO (PRAZO)', 'dp'], ['DATA FIM DO CONTRATO', 'dp'], ['SALÁRIO BASE', 'dp'],
+    ['UNIDADE DO SALÁRIO', 'dp'], ['JORNADA SEMANAL (HORAS)', 'dp'], ['HORÁRIO DE TRABALHO', 'dp']];
+  // mesma pergunta da exportação de Contratações: cancelar não baixa nem registra
+  function perguntarCpf(titulo, n, extra) {
+    return new Promise(resolve => {
+      let r = null;
+      UI.modal({ titulo, largura: '480px', fecharAoClicarFora: true, aoFechar: () => resolve(r),
+        corpo: `<p style="margin-top:0">A planilha leva dados pessoais de <b>${n === 1 ? '1 pessoa' : n + ' pessoas'}</b>${extra ? ` (${UI.esc(extra)})` : ''}. Como sai o CPF?</p>
+          <p class="muted small" style="margin-bottom:0">Para o DP cadastrar no eSocial, o CPF precisa ir completo. Mascarado mostra só parte do número (ex.: ***.982.247-**). A exportação fica registrada na auditoria. Não vão dados bancários.</p>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'CPF mascarado', classe: 'btn-secundario', acao: () => { r = 'mascarado'; } }, { texto: 'CPF completo', classe: 'btn-primario', acao: () => { r = 'completo'; } }] });
+    });
+  }
+  async function planilhaDP(lista, projetoId, extra) {
+    if (!lista.length) { UI.toast('Ninguém admitido para exportar neste filtro.', 'aviso'); return; }
+    const escolha = await perguntarCpf('Planilha para o DP (eSocial)', lista.length, extra);
+    if (!escolha) return;
+    const completo = escolha === 'completo', proj = Store.projeto(projetoId) || {};
+    const cpfDe = c => !c ? '' : completo ? RH.fmtCPF(c) : '***.' + RH.fmtCPF(c).slice(4, 11) + '-**';
+    const cid = id => (id && Store.cidade(id)) || null;
+    const linhas = lista.map(p => {
+      const pe = p.pessoa || {}, ori = cid(pe.cidade_origem_id), d = p.distrito_id && Store.distrito(p.distrito_id);
+      const trab = cid(p.cidade_atuacao_id) || (p.tipo === 'MOVEL' ? cid(p.base_id) : null) || (d ? Store.poloDoDistrito(d) : null);
+      const base = p.tipo === 'MOVEL' ? cid(p.base_id) : null;
+      const u = p.analista_login && Store.usuarioPorLogin(p.analista_login);
+      const val = [pe.nome || '', cpfDe(pe.cpf), dia(pe.nascimento), pe.telefone || '', pe.email || '', ori ? ori.nome : '', ori ? ori.uf : '',
+        pe.cnh || '', p.cargo || '', dia(p.admitido_em), p.tipo === 'MOVEL' ? 'MÓVEL' : 'LOCAL', trab ? trab.nome : '', trab ? trab.uf : '',
+        d ? d.nome : '', base ? `${base.nome}/${base.uf}` : '', Store.rotuloProjeto ? Store.rotuloProjeto(proj) : (proj.nome || ''), u ? u.nome : (p.analista || '')];
+      return COLS_DP.map((c, j) => j < val.length ? val[j] : '');
+    });
+    const cab = COLS_DP.map(c => c[0]);
+    const nome = `DP eSocial - ${proj.nome || 'projeto'} - ${RH.hoje()}`.replace(/[\\/:*?"<>|]/g, '-');
+    if (typeof XLSX !== 'undefined') {
+      const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([cab].concat(linhas));
+      ws['!cols'] = cab.map((c, j) => ({ wch: Math.max(12, Math.min(38, Math.max(c.length, ...linhas.map(l => String(l[j] || '').length)) + 2)) }));
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+      XLSX.utils.book_append_sheet(wb, ws, 'Admissões');
+      const ajuda = [['COLUNA', 'QUEM PREENCHE', 'OBSERVAÇÃO']].concat(COLS_DP.map(([c, q]) => [c, q === 's' ? 'Já vem do Safra RH' : 'DP completa',
+        c === 'CPF' && !completo ? 'Saiu mascarado: exporte de novo com CPF completo para cadastrar' : c === 'DATA DE ADMISSÃO' ? 'Dia em que o RH admitiu no sistema' : '']))
+        .concat([[], ['Pré-cadastro de admissão (eSocial S-2200). Dados bancários não saem do sistema.'], [`Gerado em ${RH.fmtDataBR(RH.hoje())} · ${lista.length} pessoa(s)`]]);
+      const wa = XLSX.utils.aoa_to_sheet(ajuda); wa['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, wa, 'Como preencher');
+      XLSX.writeFile(wb, nome + '.xlsx');
+    } else UI.baixarCSV(nome + '.csv', [cab].concat(linhas));
+    try { Store.auditar('relatorio.exportar', `Planilha para o DP (eSocial): ${lista.length} admitido(s) de ${proj.nome || projetoId}${completo ? ' (CPF completo)' : ' (CPF mascarado)'}${extra ? ' · ' + extra : ''}`, App.usuario); } catch (e) { /* auditoria não impede a planilha */ }
+    UI.toast(`Planilha para o DP gerada (${lista.length === 1 ? '1 pessoa' : lista.length + ' pessoas'}).`, 'sucesso');
+  }
+  return { ROT, podeAvaliar, selo, seloJa, bloco, ligar, salvar, janela, emLote, planilhaDP, limpar };
+})();
+
 Paginas.candidatos = {
   titulo: 'Candidatos',
   semFiltros: true,
@@ -109,6 +271,7 @@ Paginas.candidatos = {
       ['entrevista', 'Entrevista marcada', 'Olá, {nome}! Aqui é {rh}, do RH. Sua entrevista para {cargo} ficou para {data} às {hora}.\nLocal: {local}\nPode confirmar?'],
       ['lembrete', 'Lembrete da entrevista', 'Oi, {nome}! Passando para lembrar da sua entrevista: {data} às {hora}.\nLocal: {local}\nQualquer imprevisto, me avise por aqui. {rh}'],
       ['documentos', 'Aprovado: documentos', 'Parabéns, {nome}! Você foi aprovado(a) para {cargo}. Agora vamos para a documentação.\nMe envie por aqui (foto legível): {documentos}'],
+      ['cobrardocs', 'Cobrar documentos', 'Oi, {nome}! Para seguir com a sua admissão ainda falta: {documentos}.\nPode me enviar por aqui (foto legível)? {rh}'],
       ['chegada', 'Chegada no campo', 'Olá, {nome}! Sua chegada está marcada para {chegada}.\nDistrito: {distrito}\nQualquer dúvida, fale comigo. {rh}'],
       ['naoseguiu', 'Não seguiu no processo', 'Olá, {nome}. Agradecemos seu interesse na vaga de {cargo}. Neste momento seguimos com outros candidatos, mas seu cadastro fica guardado para as próximas oportunidades. {rh}']];
     const MARCADORES = [['{nome}', 'primeiro nome'], ['{nome_completo}', 'nome completo'], ['{cargo}', 'cargo'], ['{data}', 'data da entrevista'], ['{hora}', 'horário'], ['{local}', 'local ou link'],
@@ -283,6 +446,41 @@ Paginas.candidatos = {
       return ve.status === 'preenchida' ? 'vaga já completa' : '';
     }
     const rhInativo = p => { const u = Store.usuarioPorLogin(p.analista_login); return !!(u && u.ativo === false); };
+    // ---------- possível duplicado: mesmo CPF ou mesmo telefone em outro candidato do projeto (só entre os que este usuário enxerga) ----------
+    let indiceDup = null;
+    const chavesDup = p => { const k = [], pe = p.pessoa || {}, cpf = RH.soDigitos(pe.cpf), tel = RH.soDigitos(pe.telefone).replace(/^55(?=\d{10,11}$)/, '');
+      if (cpf.length === 11) k.push('CPF|' + cpf); if (tel.length >= 10) k.push('telefone|' + tel); return k; };
+    // todos = também quem já saiu do processo (a ficha mostra como informação); sem todos = só os que ainda contam (em andamento ou admitido)
+    // par marcado como "não é a mesma pessoa" (gravado no banco, nos dois lados quando dá): o aviso some
+    const naoDuplicado = (a, b) => (a.nao_duplicado || []).includes(b.id) || (b.nao_duplicado || []).includes(a.id);
+    async function marcarNaoDuplicado(p, o) {
+      try { await Nuvem.rh.salvar({ id: p.pessoa.id }, { id: p.id, nao_duplicado: [o.id] }); }
+      catch (e) { UI.toast(RhSafra.limpar(e.message), 'erro', 6000); return false; }
+      p.nao_duplicado = [...new Set([...(p.nao_duplicado || []), o.id])];
+      // o outro lado também (se este usuário puder mexer nele; se não puder, o lado gravado já basta para o aviso sumir)
+      try { await Nuvem.rh.salvar({ id: o.pessoa.id }, { id: o.id, nao_duplicado: [p.id] }); o.nao_duplicado = [...new Set([...(o.nao_duplicado || []), p.id])]; } catch (e) { /* ok */ }
+      UI.toast(`${primeiroNome(p.pessoa.nome)} e ${primeiroNome(o.pessoa.nome)}: marcados como pessoas diferentes. O aviso de duplicado sumiu.`, 'sucesso', 4500);
+      desenhar();
+      return true;
+    }
+    function duplicadosDe(p, todos = false) {
+      if (!indiceDup) {
+        indiceDup = new Map();
+        for (const x of linhas) for (const k of chavesDup(x)) (indiceDup.get(k) || indiceDup.set(k, []).get(k)).push(x);
+        setTimeout(() => { indiceDup = null; }, 0);
+      }
+      const r = new Map();
+      for (const k of chavesDup(p)) for (const x of indiceDup.get(k) || []) {
+        if (x === p || r.has(x.id) || (!todos && !(emAndamento(x) || x.situacao === 'admitido')) || naoDuplicado(p, x)) continue;
+        r.set(x.id, { p: x, por: k.split('|')[0], mesma: !!(x.pessoa && p.pessoa && x.pessoa.id && x.pessoa.id === p.pessoa.id) });
+      }
+      return [...r.values()];
+    }
+    const temDuplicado = p => emAndamento(p) && duplicadosDe(p).length > 0;
+    const ondeEsta = x => x.situacao === 'admitido' ? 'admitido' : emAndamento(x) ? (ETAPAS[x.etapa] || x.etapa).toLowerCase() : (SIT[x.situacao] || '').toLowerCase();
+    // botões "mesmo CPF/telefone de Fulano" (abrem a ficha do outro)
+    const seloDup = p => { if (!emAndamento(p)) return ''; const d = duplicadosDe(p); if (!d.length) return '';
+      return `<div class="rhn-dup">${d.slice(0, 2).map(x => `<button type="button" class="rhn-dup-b" data-acao="dup" data-dup="${x.p.id}" title="Abrir a ficha de ${UI.esc(x.p.pessoa.nome)} (${UI.esc(ondeEsta(x.p))}${x.p.cargo ? ' · ' + UI.esc(x.p.cargo) : ''})">${x.mesma ? 'mesma pessoa em outra vaga' : 'mesmo ' + x.por}: ${UI.esc(primeiroNome(x.p.pessoa.nome))}</button>${!x.mesma && podeEditar ? `<button type="button" class="rhn-dup-nao" data-acao="nao-dup" data-dup="${x.p.id}" title="Não é a mesma pessoa que ${UI.esc(x.p.pessoa.nome)}: tirar o aviso" aria-label="Não é a mesma pessoa que ${UI.esc(x.p.pessoa.nome)}">não é ✕</button>` : ''}`).join('')}${d.length > 2 ? `<span class="muted small">+${d.length - 2}</span>` : ''}</div>`; };
 
     // ---------- situação de cada pessoa ----------
     const emAndamento = p => p.situacao === 'em_andamento';
@@ -330,6 +528,7 @@ Paginas.candidatos = {
               ${podeEditar && veTudo ? '<button type="button" id="cd-importar">Importar planilha do formulário</button>' : ''}
               <button type="button" id="cd-exportar" title="Baixa a lista que está na tela no modelo da planilha SEMANA">Exportar a lista (modelo SEMANA)</button>
             </div></div>
+            ${podeEditar ? '<button class="btn" id="cd-banco" title="Quem trabalhou em outras safras e foi avaliado como recontrataria: chame e traga para esta safra">Banco de talentos</button>' : ''}
             ${podeEditar ? '<button class="btn" id="cd-mensagens" title="Textos padrão que você manda pelo WhatsApp">Minhas mensagens</button>' : ''}
             ${podeEditar ? '<button class="btn btn-primario" id="cd-novo">+ Novo candidato</button>' : ''}
           </div>
@@ -338,6 +537,7 @@ Paginas.candidatos = {
           <div class="abas cd-abas" id="cd-abas"></div>
           <span class="espaco"></span>
           <input class="busca nao-imprimir" id="cd-busca" placeholder="Procurar por nome, CPF, telefone, cidade ou cargo…" aria-label="Procurar candidatos">
+          <button type="button" class="rhn-atalhos-btn nao-imprimir" id="rhn-atalhos" title="Atalhos do teclado (aperte ?)" aria-label="Atalhos do teclado">?</button>
         </div>
         <div id="cd-hoje" class="cd-hoje"></div>
         <div id="cd-aviso"></div>
@@ -351,7 +551,21 @@ Paginas.candidatos = {
     const medirLargura = () => { const c = q('#cd-corpo'); if (c) c.classList.toggle('cd-compacto', c.clientWidth > 0 && c.clientWidth < 1180); };
     if (window.ResizeObserver) new ResizeObserver(medirLargura).observe(q('#cd-corpo'));
 
+    // "já trabalhou": avaliação de outra safra de quem está neste projeto (pela função do banco), por pessoa
+    let jaTrab = new Map(), jaTrabProj = '';
+    function carregarJaTrabalhou() {
+      if (!Nuvem.rh.jaTrabalhou) return;
+      const pid = projetoId; if (jaTrabProj !== pid) { jaTrab = new Map(); jaTrabProj = pid; }
+      Nuvem.rh.jaTrabalhou(pid).then(l => {
+        if (pid !== projetoId) return;
+        const novo = new Map(l.map(x => [x.pessoa_id, x])), mudou = novo.size !== jaTrab.size || [...novo].some(([k, x]) => !jaTrab.has(k) || jaTrab.get(k).avaliado_em !== x.avaliado_em);
+        jaTrab = novo;
+        if (mudou && ativo && !document.querySelector('.modal-overlay')) desenhar();
+      }).catch(() => { /* sem a função no banco: só não mostra o selo */ });
+    }
+    const seloJaTrabalhou = p => jaTrabProj === projetoId && p.pessoa ? RhSafra.seloJa(jaTrab.get(p.pessoa.id)) : '';
     async function carregar() {
+      carregarJaTrabalhou();
       try { linhas = await Nuvem.rh.listar(projetoId); contarVagas(); Nuvem.rh.contagemVagas(projetoId).then(m => { Store.definirContagemVagas(m); if (ativo && vista === 'rh') desenhar(); }).catch(() => {}); }
       catch (e) { if (ativo) q('#cd-corpo').innerHTML = `<div class="vazio erro">Não foi possível carregar: ${UI.esc(e.message)}<br><button class="btn btn-pequeno" data-recarregar style="margin-top:10px">Tentar de novo</button></div>`; return; }
       if (ativo) desenhar();
@@ -397,11 +611,15 @@ Paginas.candidatos = {
       chegahoje: { rotulo: 'Chegam hoje', teste: p => chegaHoje(p), segs: ['documentos', 'admitido'] },
       chegavencida: { rotulo: 'Chegada sem confirmação', teste: p => chegadaVencida(p), segs: ['documentos', 'admitido'] },
       faltaram: { rotulo: 'Faltaram na chegada', teste: p => faltouCampo(p), segs: ['documentos', 'admitido'] },
+      // avaliação de fim de safra (Admitidos)
+      semaval: { rotulo: 'Sem avaliação de fim de safra', teste: p => p.situacao === 'admitido' && !p.avaliacao_recontrataria, segs: ['admitido'] },
       // Triagem e Entrevista
       semresposta: { rotulo: 'Aguardando resposta', teste: p => !!semResposta(p), segs: ['triagem'] },
       parados3: { rotulo: 'Na etapa há 3+ dias', teste: p => emAndamento(p) && diasNaEtapa(p) >= 3, segs: ['triagem', 'entrevista'] },
       semdata: { rotulo: 'Sem data marcada', teste: p => naEtapa(p, 'entrevista') && !(p.entrevista && p.entrevista.data), segs: ['entrevista'] },
-      semresultado: { rotulo: 'Passou sem resultado', teste: p => naEtapa(p, 'entrevista') && !!(p.entrevista && p.entrevista.data) && p.entrevista.data < RH.hoje() && (p.entrevista.resultado || 'aguardando') === 'aguardando', segs: ['entrevista'] }
+      semresultado: { rotulo: 'Passou sem resultado', teste: p => naEtapa(p, 'entrevista') && !!(p.entrevista && p.entrevista.data) && p.entrevista.data < RH.hoje() && (p.entrevista.resultado || 'aguardando') === 'aguardando', segs: ['entrevista'] },
+      // mesma pessoa cadastrada duas vezes (CPF ou telefone igual)
+      duplicados: { rotulo: 'Possível duplicado', teste: p => temDuplicado(p), segs: ['triagem', 'entrevista', 'documentos'] }
     };
     const pendDaEtapa = (k, s) => !!PEND[k] && (PEND[k].segs || ['documentos']).includes(s);
     // ---------- chegada no campo ----------
@@ -452,7 +670,7 @@ Paginas.candidatos = {
     }
     function desenhar() {
       UI.fecharMenus();
-      cacheVagas = null; indiceConflito = null;   // dados podem ter mudado desde o último desenho
+      cacheVagas = null; indiceConflito = null; indiceDup = null;   // dados podem ter mudado desde o último desenho
       // a dinâmica está completa quando todos os documentos do cargo foram entregues (recalculado: o cargo pode ter mudado)
       for (const p of linhas) if (emAndamento(p)) p.dinamica = dinamicaDe(p).completa ? 'ok' : 'pendente';
       desenharFiltros();
@@ -476,6 +694,7 @@ Paginas.candidatos = {
       const aguardam = ab.filter(semResposta).length, semConf = amanhaSemConfirmar(ab).length;
       const comAdm = b.filter(p => emAndamento(p) || p.situacao === 'admitido'), chHoje = comAdm.filter(chegaHoje).length, chVenc = comAdm.filter(chegadaVencida).length;
       const asoHoje = ab.filter(PEND.asohoje.teste).length, asoPassou = ab.filter(PEND.asoatraso.teste).length, treAmanha = ab.filter(PEND.treamanha.teste).length;
+      const dups = ab.filter(temDuplicado).length;
       const itens = [entHoje && `<button type="button" data-hoje="agenda"><b>${entHoje}</b> ${entHoje === 1 ? 'entrevista hoje' : 'entrevistas hoje'}</button>`,
         semRes && `<button type="button" data-hoje="agenda" class="ruim"><b>${semRes}</b> sem resultado</button>`,
         semConf && `<button type="button" data-hoje="confirmar" class="meio" title="Abre o lembrete para cada uma, uma por vez"><b>${semConf}</b> ${semConf === 1 ? 'entrevista amanhã sem confirmação' : 'entrevistas amanhã sem confirmação'}</button>`,
@@ -486,7 +705,8 @@ Paginas.candidatos = {
         asoHoje && `<button type="button" data-hoje="pend:asohoje"><b>${asoHoje}</b> ASO hoje</button>`,
         asoPassou && `<button type="button" data-hoje="pend:asoatraso" class="ruim"><b>${asoPassou}</b> ASO já passou sem resultado</button>`,
         treAmanha && `<button type="button" data-hoje="pend:treamanha"><b>${treAmanha}</b> ${treAmanha === 1 ? 'treinamento amanhã' : 'treinamentos amanhã'}</button>`,
-        prontos && `<button type="button" data-hoje="prontos" class="ok"><b>${prontos}</b> ${prontos === 1 ? 'pronto' : 'prontos'} para admitir</button>`].filter(Boolean);
+        prontos && `<button type="button" data-hoje="prontos" class="ok"><b>${prontos}</b> ${prontos === 1 ? 'pronto' : 'prontos'} para admitir</button>`,
+        dups && `<button type="button" data-hoje="pend:duplicados" class="meio" title="Mesmo CPF ou telefone em outro candidato deste projeto: confira se é a mesma pessoa"><b>${dups}</b> ${dups === 1 ? 'possível duplicado' : 'possíveis duplicados'}</button>`].filter(Boolean);
       q('#cd-hoje').innerHTML = itens.length && vista !== 'agenda' ? `<span class="cd-hoje-rot">Hoje</span>${itens.join('')}` : '';
       if (vista === 'quadro') desenharQuadro(b); else if (vista === 'lista') desenharLista(); else if (vista === 'agenda') desenharAgenda(b); else desenharPorRh();
     }
@@ -610,7 +830,8 @@ Paginas.candidatos = {
           menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>');
           menu.push('<button type="button" class="perigo" data-acao="fora">Não segue no processo</button>');
         } else if (!adm) { principal = '<button class="btn btn-pequeno" data-acao="retomar">Retomar</button>'; menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>'); }
-        else menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>');
+        else menu.push('<button type="button" data-acao="editar">Abrir a ficha</button>', '<button type="button" data-acao="copiar-folha">Copiar dados para a folha (DP)</button>');
+        if (adm && RhSafra.podeAvaliar(p, eu)) menu.push(`<button type="button" data-acao="avaliar">${p.avaliacao_recontrataria ? 'Mudar a avaliação de fim de safra' : 'Avaliar (fim de safra)'}</button>`);
       }
       const rh = ultimoAMexer(p);
       const km = p.distancia_km != null && +p.distancia_km > 0 ? `<span class="cd-km">${UI.fmtKm(+p.distancia_km)}</span>` : '';
@@ -618,6 +839,7 @@ Paginas.candidatos = {
       // o cartão não é um botão inteiro (tem botões dentro): o nome é o botão que abre a ficha
       return `<div class="cand-card cd-card ${estado} ${arrasta ? 'cd-arrasta' : ''}" data-id="${p.id}" ${arrasta ? 'draggable="true"' : ''}>
         <div class="cd-nome-l"><button type="button" class="cd-nome" data-acao="editar" title="Abrir a ficha de ${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</button>${seloCnh(pe)}${faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim cd-selo-faltou" title="Não chegou ao campo">faltou</span>' : ''}</div>
+        ${seloJaTrabalhou(p) || (adm && p.avaliacao_recontrataria) ? `<div class="rhs-selos">${seloJaTrabalhou(p)}${adm ? RhSafra.selo(p) : ''}</div>` : ''}
         <div class="cd-meta">${UI.badgeTipo(p.tipo)}${p.cargo ? `<span class="cd-cargo" title="${UI.esc(p.cargo)}">${UI.esc(p.cargo)}</span>` : ''}${km}</div>
         <div class="cd-rota" title="${UI.esc((origem || 'origem não informada') + ' → ' + (dest || 'destino não definido'))}">${origem ? UI.esc(origem) : '<span class="cd-falta">origem?</span>'} <i>→</i> ${dest ? UI.esc(dest) : '<span class="cd-falta">destino?</span>'}</div>
         ${aberto && seloPrazo(p) ? `<div class="cd-prazo-l">${seloPrazo(p)}</div>` : ''}
@@ -626,6 +848,7 @@ Paginas.candidatos = {
         ${podeEditar && sugerirNaoRespondeu(p) ? `<div class="cd-sugere"><span>Já tentou bastante.</span><button type="button" class="btn-link perigo" data-acao="nao-respondeu" title="Abre o 'Não segue no processo' com o motivo: não respondeu">Não segue: não respondeu</button></div>` : ''}
         ${barrada && aberto ? `<div class="cd-sit cd-sit-ruim">${barrada}</div>` : ''}
         ${alertas.length ? `<div class="cd-alertas">${alertas.map(a => `<span>${a}</span>`).join('')}</div>` : ''}
+        ${seloDup(p)}
         ${rh || principal || menu.length ? `<div class="cd-pe">${rh}${linkWhats(pe) && podeEditar ? `<button type="button" class="cd-wa" data-acao="mensagem" title="Mandar mensagem pelo WhatsApp" aria-label="Mensagem no WhatsApp"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.3c0-.1-.2-.2-.5-.3Z"/></svg></button>` : ''}<span class="espaco"></span>${principal}
           ${menu.length ? `<div class="cd-mais"><button type="button" class="cd-mais-btn" data-acao="menu" aria-label="Mais ações para ${UI.esc(pe.nome)}" aria-haspopup="menu" aria-expanded="false" title="Mais ações">⋯</button><div class="cd-menu" hidden>${menu.join('')}</div></div>` : ''}</div>` : ''}
       </div>`;
@@ -686,6 +909,13 @@ Paginas.candidatos = {
         const fim = s => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return RH.fmtDia(d.toISOString().slice(0, 10)); };
         if (cont.size) sub += `<label class="cd-filtro cd-filtro-sem">Chegada<select id="cd-semana"><option value="todas">Qualquer data</option>${[...cont.keys()].sort().map(s => `<option value="${s}" ${s === semana ? 'selected' : ''}>${RH.fmtDia(s)} a ${fim(s)} (${cont.get(s)})</option>`).join('')}${sem ? `<option value="sem" ${semana === 'sem' ? 'selected' : ''}>Sem data (${sem})</option>` : ''}</select></label>`;
       }
+      // admitidos: a lista da tela vai pronta para a folha/DP (cola no Excel)
+      if (seg === 'admitido' && podeEditar && lista.length) {
+        const aAvaliar = lista.filter(p => !p.avaliacao_recontrataria && RhSafra.podeAvaliar(p, eu)).length;
+        sub += `<span class="rhs-sub-acoes">${aAvaliar ? `<button type="button" class="btn btn-pequeno" data-avaliar-lote title="Uma pessoa por vez: Sim, Talvez ou Não">Avaliar em lote (${aAvaliar})</button>` : ''}`
+          + `<button type="button" class="btn btn-pequeno" data-planilha-dp title="Planilha de pré-cadastro de admissão (eSocial) de quem está na tela: o que o sistema tem já vem preenchido, o resto o DP completa. Sem dados bancários.">Planilha para o DP (eSocial)</button>`
+          + `<button type="button" class="btn btn-pequeno" data-copiar-folha title="Copia nome, CPF, nascimento, cargo, distrito, admissão e chegada de quem está na tela, em colunas (cole no Excel ou mande para o DP)">Copiar para a folha (${lista.length})</button></span>`;
+      }
       // ordenação por etapa
       const ts = x => new Date(x || 0).getTime();
       if (seg === 'triagem' || seg === 'entrevista') lista.sort((x, y) => porUrgencia(x, y) || ts(desdeEtapa(x)) - ts(desdeEtapa(y)) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
@@ -708,7 +938,7 @@ Paginas.candidatos = {
       const COLS = {
         fila: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Vaga / cargo', seg === 'triagem' ? 'Contato' : 'Entrevista'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1fr) 150px${veTudo ? ' minmax(90px,.7fr)' : ''} 230px` },
         documentos: { cab: ['Pessoa', 'De onde vem → para onde vai', 'Documentos', 'ASO', 'Treinamento', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) 150px 130px 130px 128px${veTudo ? ' minmax(80px,.6fr)' : ''} 150px` },
-        admitido: { cab: ['Pessoa', 'De onde vem → onde trabalha', 'Vaga / cargo', 'Admitido em', 'Chegada'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.4fr) minmax(0,1fr) 110px 128px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` },
+        admitido: { cab: ['Pessoa', 'De onde vem → onde trabalha', 'Vaga / cargo', 'Admitido em', 'Chegada', 'Fim de safra'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1fr) 100px 120px 118px${veTudo ? ' minmax(80px,.6fr)' : ''} 130px` },
         fora: { cab: ['Pessoa', 'Parou na etapa', 'O que aconteceu', 'Quando'].concat(rhCol, ['']), grade: `minmax(0,1.5fr) 140px minmax(0,1.6fr) 100px${veTudo ? ' minmax(90px,.7fr)' : ''} 150px` }
       };
       const modo = seg === 'triagem' || seg === 'entrevista' ? 'fila' : seg;
@@ -734,6 +964,8 @@ Paginas.candidatos = {
             <div class="pre-nome">${marca(p)}${UI.esc(pe.nome)}</div>
             <div class="pre-sub">${pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="muted">sem CPF</span>'}${pe.telefone ? ` · ${tel.length >= 10 && podeEditar ? `<button type="button" class="btn-link cd-tel" data-acao="mensagem" title="Mandar mensagem pelo WhatsApp">${UI.esc(pe.telefone)}</button>` : tel.length >= 10 ? `<a href="https://wa.me/55${tel}" target="_blank" rel="noopener">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)}` : ''}</div>
             ${al.length ? `<div class="cd-alertas">${al.map(([x, g]) => `<span class="${g === 1 ? 'cd-al-ruim' : g === 2 ? 'cd-al-info' : ''}">${UI.esc(x)}</span>`).join('')}</div>` : ''}
+            ${seloJaTrabalhou(p) ? `<div class="rhs-selos">${seloJaTrabalhou(p)}</div>` : ''}
+            ${seloDup(p)}
           </div>`;
       }
       const rota = p => `<div class="pre-cel pre-onde"><div class="pre-rota">${nomeCidade(p.pessoa.cidade_origem_id) ? UI.esc(nomeCidade(p.pessoa.cidade_origem_id)) : '<span class="pre-falta">falta a origem</span>'} <span class="muted">→</span> ${destinoTexto(p) ? UI.esc(destinoTexto(p)) : '<span class="pre-falta">falta o destino</span>'}</div>
@@ -770,7 +1002,10 @@ Paginas.candidatos = {
           if (b2.length && !barradaEm(p)) faixa = `<div class="pre-docs-faixa cd-faixa-falta"><b>Falta:</b> ${UI.esc(b2.filter(x => !/documento/.test(x)).concat(faltaDocs).join(' · '))}</div>`;
         } else if (modo === 'admitido') {
           cel = rota(p) + `<div class="pre-cel" data-rot="Vaga">${vagaTxt(p)}</div><div class="pre-cel pre-uma" data-rot="Admitido em">${RH.fmtDataBR(p.admitido_em)}</div>`
-            + `<div class="pre-cel" data-rot="Chegada">${p.chegada_data ? RH.fmtDia(p.chegada_data) + chegadaHtml(p) : '<span class="muted">—</span>'}</div>`;
+            + `<div class="pre-cel" data-rot="Chegada">${p.chegada_data ? RH.fmtDia(p.chegada_data) + chegadaHtml(p) : '<span class="muted">—</span>'}</div>`
+            + `<div class="pre-cel" data-rot="Fim de safra">${RhSafra.podeAvaliar(p, eu)
+              ? (p.avaliacao_recontrataria ? `<button type="button" class="rhs-selo-b" data-acao="avaliar" title="Mudar a avaliação">${RhSafra.selo(p, true)}</button>` : '<button type="button" class="btn btn-pequeno" data-acao="avaliar" title="Recontrataria na próxima safra?">Avaliar</button>')
+              : (RhSafra.selo(p, true) || '<span class="muted">—</span>')}</div>`;
           if (podeEditar) acoes = `<button class="btn-link perigo" data-acao="desfazer">Desfazer</button>${editar}`;
         } else {
           cel = `<div class="pre-cel pre-uma" data-rot="Parou na">${ETAPAS[p.etapa] || '—'}</div><div class="pre-cel" data-rot="O que aconteceu"><b class="${p.situacao === 'desistiu' ? 'cd-desistiu' : 'cd-reprovado'}">${SIT[p.situacao]}</b>${p.motivo_saida ? `<div class="pre-sub">${UI.esc(p.motivo_saida)}</div>` : ''}${p.observacao ? `<div class="pre-sub">${UI.esc(p.observacao)}</div>` : ''}</div>`
@@ -1128,7 +1363,7 @@ Paginas.candidatos = {
       });
     }
     // de onde veio o candidato (como soube da vaga)
-    const FONTES = () => Store.CANAIS.map(c => [c.id, c.nome]).concat([['indicacao', 'Indicação de colaborador'], ['ex_colaborador', 'Ex-colaborador'], ['outro', 'Outro']]);
+    const FONTES = () => Store.CANAIS.map(c => [c.id, c.nome]).concat([['indicacao', 'Indicação de colaborador'], ['ex_colaborador', 'Ex-colaborador'], ['recontratacao', 'Banco de talentos (recontratação)'], ['outro', 'Outro']]);
     const nomeFonte = f => { const x = FONTES().find(y => y[0] === f); return x ? x[1] : (f || ''); };
     // atalho do cartão: a pessoa confirmou (ou não) que vem na entrevista
     async function marcarConfirmou(p, valor) {
@@ -1251,6 +1486,9 @@ Paginas.candidatos = {
       if (e.target.closest('[data-ver-prontos]')) { e.stopPropagation(); seg = 'documentos'; pend = 'prontas'; return mudarVista('lista'); }
       if (e.target.closest('[data-ir-contratacoes]')) { App.filtros.projetoId = projetoId; try { localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros)); } catch (er) { /* ok */ } return App.ir('cadastro'); }
       if (e.target.closest('[data-ir-lista]')) { seg = 'fora'; pend = ''; return mudarVista('lista'); }
+      if (e.target.closest('[data-planilha-dp]')) return RhSafra.planilhaDP(admitidosDaTela(), projetoId, filtrosDaTela());
+      if (e.target.closest('[data-avaliar-lote]')) return RhSafra.emLote(admitidosDaTela().filter(p => !p.avaliacao_recontrataria && RhSafra.podeAvaliar(p, eu)), () => desenhar());
+      if (e.target.closest('[data-copiar-folha]')) return copiarParaFolha(daLista().slice().sort((x, y) => String(y.admitido_em || '').localeCompare(String(x.admitido_em || '')) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR')));
       const vm = e.target.closest('[data-ver-mais]'); if (vm) { const k = vm.dataset.verMais, passo = k === 'lista' ? 50 : k === 'agenda' ? 40 : POR_COLUNA; verMais[k] = (verMais[k] || passo) + passo; return desenhar(); }
       const sg = e.target.closest('[data-seg]'); if (sg) { seg = sg.dataset.seg; pend = ''; marcados.clear(); verMais.lista = 50; return desenhar(); }
       const pn = e.target.closest('[data-pend]'); if (pn) { pend = pn.dataset.pend; marcados.clear(); return desenhar(); }
@@ -1280,6 +1518,10 @@ Paginas.candidatos = {
       else if (a === 'chegou') marcarChegada(p, 'chegou'); else if (a === 'faltou-campo') marcarChegada(p, 'faltou'); else if (a === 'reserva') chamarReserva(p);
       else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${p.pessoa.nome} voltou para o processo.`);
       else if (a === 'admitir') admitir(p); else if (a === 'encerrar') encerrar(p, false); else if (a === 'desfazer') desfazerAdmissao(p);
+      else if (a === 'dup') { e.stopPropagation(); const o = linhas.find(x => x.id === b.dataset.dup); if (o) formulario(o); }
+      else if (a === 'nao-dup') { e.stopPropagation(); const o = linhas.find(x => x.id === b.dataset.dup); if (o) { b.disabled = true; marcarNaoDuplicado(p, o).then(okk => { if (!okk) b.disabled = false; }); } }
+      else if (a === 'avaliar') RhSafra.janela(p, () => desenhar());
+      else if (a === 'copiar-folha') copiarParaFolha([p]);
     });
     q('#cd-corpo').addEventListener('keydown', e => {
       if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('cd-card')) { e.preventDefault(); const p = pessoaDe(e.target); if (p) formulario(p); }
@@ -1332,7 +1574,7 @@ Paginas.candidatos = {
       const resumo = p ? [pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="cd-falta">sem CPF</span>', pe.telefone ? (tel.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${tel}">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)) : '',
         p.cargo ? UI.esc(p.cargo) : '', p.distrito_id && Store.distrito(p.distrito_id) ? UI.esc(Store.distrito(p.distrito_id).nome) : '', p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 20)}<span>RH ${UI.esc(nomeAnalista(p))}</span></span>` : '',
         p.fonte ? `<span class="cd-fonte" title="Como soube da vaga${p.indicado_por ? ' · indicado por ' + UI.esc(p.indicado_por) : ''}">${UI.esc(nomeFonte(p.fonte))}${p.fonte === 'indicacao' && p.indicado_por ? ': ' + UI.esc(p.indicado_por) : ''}</span>` : '',
-        faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim">faltou na chegada</span>' : ''].filter(Boolean).join(' · ') : 'Preencha quem é a pessoa. Os documentos são conferidos depois, na etapa de Documentação.';
+        faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim">faltou na chegada</span>' : '', seloJaTrabalhou(p)].filter(Boolean).join(' · ') : 'Preencha quem é a pessoa. Os documentos são conferidos depois, na etapa de Documentação.';
       // As etapas no topo são também a navegação da ficha: Triagem → dados da pessoa, Entrevista → entrevista, Documentação → documentos.
       // Azul cheio = etapa em que a pessoa está; contorno = o que está aberto na tela. Mudar de etapa é um botão à parte ("Mover para…").
       const trilha = (et, sit) => {
@@ -1346,9 +1588,10 @@ Paginas.candidatos = {
       const corpo = `
         <div class="fi-cab">
           ${p ? '<div id="fi-olhando"></div>' : ''}
-          <div class="fi-resumo">${resumo}${p && podeEditar && tel.length >= 10 ? ' <button type="button" class="btn btn-pequeno fi-msg" id="f-msg">Mensagem no WhatsApp</button>' : ''}</div>
+          <div class="fi-resumo">${resumo}${p && podeEditar && tel.length >= 10 ? ' <button type="button" class="btn btn-pequeno fi-msg" id="f-msg">Mensagem no WhatsApp</button>' : ''}${p ? `<span class="rhn-ferr">${podeEditar && (adm || pronta(p)) ? '<button type="button" class="btn-link" id="rhn-copiar" title="Copia os dados da admissão em texto pronto para mandar à folha/DP">Copiar para a folha</button>' : ''}<button type="button" class="btn-link" id="rhn-imprimir" title="Ficha em uma folha, para imprimir ou salvar em PDF (vale o que está salvo)">Imprimir ficha</button></span>` : ''}</div>
           ${trilha(etapaIni, p ? p.situacao : null)}
         </div>
+        ${p ? '<div id="rhn-pend" class="rhn-pend" hidden></div>' : ''}
         <input type="hidden" id="f-etapa" value="${etapaIni}">
         <section data-painel="dados">
           <div class="pre-form-titulo">Quem é</div>
@@ -1415,6 +1658,8 @@ Paginas.candidatos = {
             <label>Chegada no campo<select id="f-cheg-st">${opcoes(CHEGADA, (p && p.chegada_status) || 'aguardando')}</select></label>
           </div>
         </section>
+        ${adm ? `<section class="fi-aval" id="fi-aval"><div class="pre-form-titulo">Avaliação de fim de safra <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— quem for "Sim" ou "Talvez" entra no banco de talentos da próxima safra</span></div>
+          ${RhSafra.bloco(p, RhSafra.podeAvaliar(p, eu))}${RhSafra.podeAvaliar(p, eu) ? '<div class="rhs-salvar-l"><button type="button" class="btn btn-primario btn-pequeno" id="rhs-salvar">Salvar avaliação</button></div>' : ''}</section>` : ''}
         ${p ? `<section class="fi-historico">
           <div class="pre-form-titulo">Histórico <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">— cada mudança e anotação, com quem fez e quando</span></div>
           ${somenteLeitura ? '' : '<div class="fi-anotar"><textarea id="e-nova" rows="2" placeholder="Nova anotação (ex.: liguei e não atendeu; pediu para chegar na segunda)"></textarea><button type="button" class="btn" id="e-add">Anotar</button></div>'}
@@ -1574,6 +1819,47 @@ Paginas.candidatos = {
       const ETAPA_DO_PAINEL = { dados: 'triagem', entrevista: 'entrevista', docs: 'documentos' };
       const tr = g('#f-trilha');
       if (g('#f-msg')) g('#f-msg').addEventListener('click', () => mandarMensagem(p));
+      if (g('#rhn-copiar')) g('#rhn-copiar').addEventListener('click', () => copiarParaFolha([p]));
+      if (g('#rhn-imprimir')) g('#rhn-imprimir').addEventListener('click', () => imprimirFicha(p));
+      // avaliação de fim de safra (admitido): grava na hora, sem fechar a ficha
+      if (g('#rhs-salvar')) {
+        const lerAval = RhSafra.ligar(g('#fi-aval [data-rhs]'), p);
+        g('#rhs-salvar').addEventListener('click', async ev => {
+          const bt = ev.currentTarget; bt.disabled = true;
+          try {
+            const mudou = await RhSafra.salvar(p, lerAval());
+            if (mudou) { g('#fi-aval [data-rhs-quando]').textContent = `Avaliado agora por ${eu.nome}.`; UI.toast(`Avaliação de ${pe.nome} salva.`, 'sucesso'); desenhar(); }
+            else UI.toast('Nada mudou na avaliação.', 'aviso');
+          } catch (err) { UI.toast(err.message, 'erro', 6000); }
+          finally { bt.disabled = false; }
+        });
+      }
+      // o que falta para a pessoa avançar (pelo que está salvo) e possíveis duplicados, com o atalho de cada um
+      if (g('#rhn-pend')) {
+        const box = g('#rhn-pend'), itens = pendenciasDe(p), dups = duplicadosDe(p, true);
+        const btn = a => a ? ` <button type="button" class="btn btn-pequeno${/^msg:/.test(a[0]) ? ' btn-wa' : ''}" data-rhn="${a[0]}">${a[1]}</button>` : '';
+        box.innerHTML = (itens.length ? `<div class="rhn-pend-tit">Para avançar</div><ul>${itens.map(x => `<li class="${x.grave ? 'rhn-grave' : ''}"><span>${UI.esc(x.texto)}</span>${podeEditar ? btn(x.acao) : ''}</li>`).join('')}</ul>` : '')
+          + (dups.length ? `<div class="rhn-pend-tit rhn-dup-tit">Possível duplicado</div><ul>${dups.map(x => `<li><span>${x.mesma ? 'Mesma pessoa' : 'Mesmo ' + x.por} em <b>${UI.esc(x.p.pessoa.nome)}</b> · ${UI.esc(ondeEsta(x.p))}${x.p.cargo ? ' · ' + UI.esc(x.p.cargo) : ''}${veTudo && nomeAnalista(x.p) ? ' · RH ' + UI.esc(nomeAnalista(x.p).split(' ')[0]) : ''}</span> <span class="rhn-dup-acoes"><button type="button" class="btn btn-pequeno" data-rhn="dup:${x.p.id}">Abrir</button>${!x.mesma && podeEditar ? `<button type="button" class="btn btn-pequeno" data-rhn="naodup:${x.p.id}" title="Grava que são pessoas diferentes e tira o aviso (para os dois)">Não é a mesma pessoa</button>` : ''}</span></li>`).join('')}</ul>` : '');
+        box.hidden = !box.innerHTML;
+        box.addEventListener('click', e => {
+          const b = e.target.closest('[data-rhn]'); if (!b) return;
+          const [tipo, val] = b.dataset.rhn.split(':');
+          if (tipo === 'msg') mandarMensagem(p, val);
+          else if (tipo === 'aba') { aba(val); const foco = { dados: '#f-nome', entrevista: '#e-data', docs: '#doc-lista' }[val]; setTimeout(() => { const f = g(foco); if (f && f.focus) f.focus(); }, 30); }
+          else if (tipo === 'dup') { const o = linhas.find(x => x.id === val); if (o) formulario(o); }
+          else if (tipo === 'naodup') {
+            const o = linhas.find(x => x.id === val); if (!o) return;
+            b.disabled = true;
+            marcarNaoDuplicado(p, o).then(okk => {
+              if (!okk) { b.disabled = false; return; }
+              // a versão no banco mudou por mim: não conta como conflito ao salvar a ficha
+              const li = b.closest('li'), ul = li && li.parentElement; if (li) li.remove();
+              if (ul && !ul.children.length) { const tit = ul.previousElementSibling; if (tit && tit.classList.contains('rhn-dup-tit')) tit.remove(); ul.remove(); }
+              box.hidden = !box.textContent.trim();
+            });
+          }
+        });
+      }
       const marcarEtapa = et => { const k = ORDEM.indexOf(et); tr.querySelectorAll('[data-etapa]').forEach((x, i) => { x.classList.toggle('atual', i === k); x.classList.toggle('feita', i < k); }); if (modoDestino) modoDestino(); };
       let painelAtual = 'dados';
       function aba(n) {
@@ -1730,7 +2016,7 @@ Paginas.candidatos = {
         } catch (err) { info.textContent = 'Não consegui consultar o CPF agora.'; }
       });
       // só leitura de verdade: nenhum campo editável
-      if (somenteLeitura) m.corpo.querySelectorAll('section input, section select, section textarea').forEach(x => { x.disabled = true; });
+      if (somenteLeitura) m.corpo.querySelectorAll('section:not(.fi-aval) input, section:not(.fi-aval) select, section:not(.fi-aval) textarea').forEach(x => { x.disabled = true; });
       if (adm && podeEditar) ['#f-chegada', '#f-hora', '#f-grupo', '#f-obs', '#f-cheg-st'].forEach(s => { if (g(s)) g(s).disabled = false; });
       // "Como soube da vaga": Indicação pede o nome de quem indicou
       g('#f-fonte').addEventListener('change', () => { g('#f-indicado-w').hidden = g('#f-fonte').value !== 'indicacao'; if (!g('#f-indicado-w').hidden) g('#f-indicado').focus(); });
@@ -1758,6 +2044,143 @@ Paginas.candidatos = {
       setTimeout(() => { retratoIni = retrato(); }, 0);   // depois que os campos se ajustam (listas, sugestões)
       setTimeout(() => { if (document.activeElement && m.corpo.contains(document.activeElement)) document.activeElement.blur(); m.corpo.scrollTop = 0; if (!p) g('#f-nome').focus(); }, 80);
     }
+
+    // ---------- o que falta para a pessoa avançar (usado na ficha e na impressão) ----------
+    // cada item: { texto, acao: ['msg:<modelo>' | 'aba:<painel>', rótulo] | null, grave }
+    function pendenciasDe(p) {
+      const r = [], e = p.entrevista || {}, temTel = !!linkWhats(p.pessoa), hoje = RH.hoje();
+      if (!emAndamento(p)) return r;
+      if (p.etapa === 'triagem') {
+        if (!contatoEm(p)) r.push({ texto: tentativas(p) ? `Ainda sem contato (${qtd(tentativas(p), 'ligação', 'ligações')} sem resposta)` : 'Fazer o primeiro contato', acao: temTel ? ['msg:triagem', '1º contato'] : ['aba:dados', 'Preencher telefone'] });
+        else if (semResposta(p)) r.push({ texto: `Mandou o 1º contato e está sem resposta há ${semResposta(p)} dias`, acao: temTel ? ['msg:cobrar', 'Cobrar de novo'] : null, grave: semResposta(p) >= 7 });
+      } else if (p.etapa === 'entrevista') {
+        const res = e.resultado || 'aguardando';
+        if (res === 'faltou') r.push({ texto: 'Não compareceu na entrevista: marque outra data ou encerre', acao: ['aba:entrevista', 'Remarcar'], grave: true });
+        else if (res === 'aprovado') r.push({ texto: 'Aprovado na entrevista: falta passar para a Documentação', acao: ['aba:docs', 'Avançar'] });
+        else if (!e.data) r.push({ texto: 'Entrevista sem data marcada', acao: ['aba:entrevista', 'Marcar data'] });
+        else if (e.data < hoje) r.push({ texto: `Entrevista de ${RH.fmtDia(e.data)} ficou sem resultado`, acao: ['aba:entrevista', 'Marcar resultado'], grave: true });
+        else if (confirmou(p) === 'nao') r.push({ texto: 'Avisou que não vem na entrevista', acao: ['aba:entrevista', 'Remarcar'], grave: true });
+        else if (confirmou(p) !== 'sim') r.push({ texto: `Entrevista ${RH.fmtDia(e.data)}${e.hora ? ' às ' + e.hora : ''}: ainda não confirmou presença`, acao: temTel ? ['msg:lembrete', 'Mandar lembrete'] : null });
+      } else if (p.etapa === 'documentos') {
+        const din = dinamicaDe(p);
+        if (din.pendentes.length) r.push({ texto: `${din.recusados.length ? 'Reenviar' : 'Falta entregar'}: ${din.pendentes.map(d => d.nome + (d.estado === 'recusado' ? ' (recusado)' : '')).join(', ')}`, acao: temTel ? ['msg:cobrardocs', 'Cobrar no WhatsApp'] : ['aba:docs', 'Conferir'], grave: din.recusados.length > 0 });
+        for (const b of bloqueios(p)) {
+          if (/documento|^ainda está/.test(b)) continue;
+          let texto = b.charAt(0).toUpperCase() + b.slice(1);
+          if (/^ASO não/.test(b) && p.aso === 'agendado' && p.aso_data) texto = p.aso_data < hoje ? `ASO de ${RH.fmtDia(p.aso_data)} passou sem resultado` : `ASO marcado para ${RH.fmtDia(p.aso_data)}${p.aso_local ? ' · ' + p.aso_local : ''}`;
+          if (/^treinamento não/.test(b) && p.treinamento === 'agendado' && p.treinamento_data) texto = `Treinamento marcado para ${RH.fmtDia(p.treinamento_data)}${p.treinamento_local ? ' · ' + p.treinamento_local : ''}`;
+          r.push({ texto, acao: /ASO|treinamento/.test(b) ? ['aba:docs', 'Abrir'] : ['aba:dados', 'Preencher'], grave: /menor|inapto|reprovado|cancelada|recusada|passou/.test(b + texto) });
+        }
+        if (!p.chegada_data && !barradaEm(p)) r.push({ texto: 'Sem data de chegada no campo', acao: ['aba:docs', 'Marcar chegada'] });
+      }
+      return r;
+    }
+
+    // ---------- copiar para a folha / DP (texto pronto; várias pessoas saem em colunas para colar no Excel) ----------
+    const CAMPOS_FOLHA = [['Nome', p => p.pessoa.nome], ['CPF', p => p.pessoa.cpf ? RH.fmtCPF(p.pessoa.cpf) : ''], ['Nascimento', p => p.pessoa.nascimento ? RH.fmtDataBR(String(p.pessoa.nascimento).slice(0, 10)) : ''],
+      ['Telefone', p => p.pessoa.telefone || ''], ['E-mail', p => p.pessoa.email || ''], ['Cargo', p => p.cargo || ''], ['Tipo', p => p.tipo === 'MOVEL' ? 'Móvel' : 'Local'],
+      ['Distrito', p => (p.distrito_id && Store.distrito(p.distrito_id) || {}).nome || ''], ['Cidade onde trabalha', p => nomeCidade(trabalhoId(p))], ['Base de contratação', p => p.tipo === 'MOVEL' ? nomeCidade(p.base_id) : ''],
+      ['Cidade de origem', p => nomeCidade(p.pessoa.cidade_origem_id)], ['Admitido em', p => p.admitido_em ? RH.fmtDataBR(String(p.admitido_em).slice(0, 10)) : ''],
+      ['Chegada', p => p.chegada_data ? RH.fmtDataBR(p.chegada_data) + (p.chegada_hora ? ' ' + String(p.chegada_hora).slice(0, 5) : '') : ''], ['RH', p => nomeAnalista(p)]];
+    async function copiarTexto(txt) {
+      try { await navigator.clipboard.writeText(txt); return true; }
+      catch (e) {
+        const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(ta); ta.select();
+        let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } ta.remove(); return ok;
+      }
+    }
+    // Lista > Admitidos: quem está na tela (filtros de cima, busca, semana de chegada e pendência), na ordem da tela
+    const admitidosDaTela = () => daLista().filter(p => p.situacao === 'admitido').sort((x, y) => String(y.admitido_em || '').localeCompare(String(x.admitido_em || '')) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR'));
+    const filtrosDaTela = () => [vagaId && vagaId !== '(sem)' ? 'vaga ' + ((Store.vaga(vagaId) || {}).titulo || '') : vagaId ? 'sem vaga' : '', distritoId ? 'distrito ' + (distritoId === '(sem)' ? '(sem)' : (Store.distrito(distritoId) || {}).nome || '') : '',
+      analista ? 'RH ' + (analista === '(sem)' ? '(sem)' : (Store.usuarioPorLogin(analista) || {}).nome || analista) : '', busca ? 'busca "' + busca + '"' : '', semana !== 'todas' ? 'chegada ' + (semana === 'sem' ? 'sem data' : RH.fmtDia(semana)) : '',
+      pend && PEND[pend] ? PEND[pend].rotulo.toLowerCase() : ''].filter(Boolean).join(', ');
+    async function copiarParaFolha(lista) {
+      if (!lista.length) { UI.toast('Ninguém para copiar neste filtro.', 'aviso'); return; }
+      const txt = lista.length === 1
+        ? `ADMISSÃO — ${lista[0].pessoa.nome}\n` + CAMPOS_FOLHA.slice(1).filter(([r]) => r !== 'Base de contratação' || lista[0].tipo === 'MOVEL').map(([r, f]) => `${r}: ${f(lista[0]) || '—'}`).join('\n')
+        : [CAMPOS_FOLHA.map(c => c[0])].concat(lista.map(p => CAMPOS_FOLHA.map(c => String(c[1](p) || '').replace(/[\t\n]+/g, ' ')))).map(l => l.join('\t')).join('\n');
+      if (await copiarTexto(txt)) UI.toast(lista.length === 1 ? `Dados de ${lista[0].pessoa.nome} copiados. Cole no e-mail ou WhatsApp do DP.` : `${qtd(lista.length, 'pessoa copiada', 'pessoas copiadas')} em colunas. Cole numa planilha (Excel).`, 'sucesso', 5000);
+      else UI.modal({ titulo: 'Copiar para a folha', largura: '640px', corpo: `<p class="muted" style="margin-top:0">O navegador não deixou copiar sozinho. Selecione o texto abaixo (Ctrl+A) e copie (Ctrl+C).</p><textarea rows="12" style="width:100%" readonly>${UI.esc(txt)}</textarea>`, botoes: [{ texto: 'Fechar' }] });
+      try { Store.auditar('relatorio.exportar', `Dados para a folha copiados (${lista.length} pessoa(s), com CPF)`, eu); } catch (e) { /* auditoria não impede a cópia */ }
+    }
+
+    // ---------- ficha imprimível (uma folha, também serve para salvar em PDF) ----------
+    function imprimirFicha(p) {
+      const pe = p.pessoa, din = dinamicaDe(p), e = p.entrevista || {}, d = p.distrito_id && Store.distrito(p.distrito_id), vg = p.vaga_id ? (vagaDe(p.vaga_id) || Store.vaga(p.vaga_id)) : null;
+      const lin = (r, v) => `<tr><th>${r}</th><td>${v ? UI.esc(v) : '<span class="rhn-i-vazio">—</span>'}</td></tr>`;
+      const sit = p.situacao === 'admitido' ? `Admitido em ${RH.fmtDataBR(String(p.admitido_em || '').slice(0, 10))}` : emAndamento(p) ? `Em andamento · ${ETAPAS[p.etapa]}` : `${SIT[p.situacao]}${p.motivo_saida ? ': ' + p.motivo_saida : ''}`;
+      const idade = RH.idade(pe.nascimento), pend = pendenciasDe(p), hist = (p.anotacoes || []).slice(-25).reverse();
+      const rotDoc = { falta: 'Falta', entregue: 'Entregue', recusado: 'Recusado', dispensado: 'Não se aplica' };
+      let box = document.getElementById('rhn-impressao');
+      if (!box) { box = document.createElement('div'); box.id = 'rhn-impressao'; document.body.appendChild(box); }
+      box.innerHTML = `<div class="rhn-i-cab"><div><div class="rhn-i-proj">${UI.esc(Store.rotuloProjeto(projeto()))} · Ficha do candidato</div><h1>${UI.esc(pe.nome)}</h1><div class="rhn-i-sit">${UI.esc(sit)}</div></div>
+          <div class="rhn-i-quando">Impresso em ${UI.esc(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}<br>por ${UI.esc(eu.nome)}</div></div>
+        ${pend.length ? `<div class="rhn-i-bloco rhn-i-pend"><h2>Para avançar</h2><ul>${pend.map(x => `<li>${UI.esc(x.texto)}</li>`).join('')}</ul></div>` : ''}
+        <div class="rhn-i-duas">
+          <div class="rhn-i-bloco"><h2>Dados pessoais</h2><table>${lin('CPF', pe.cpf ? RH.fmtCPF(pe.cpf) : '')}${lin('Nascimento', pe.nascimento ? `${RH.fmtDataBR(String(pe.nascimento).slice(0, 10))}${idade != null ? ` (${idade} anos)` : ''}` : '')}${lin('Telefone', pe.telefone)}${lin('E-mail', pe.email)}${lin('Cidade onde mora', nomeCidade(pe.cidade_origem_id))}${lin('CNH', pe.cnh)}${lin('Ex-colaborador', pe.ex_colaborador ? 'Sim' : 'Não')}${lin('Como soube da vaga', p.fonte ? nomeFonte(p.fonte) + (p.indicado_por ? ': ' + p.indicado_por : '') : '')}</table></div>
+          <div class="rhn-i-bloco"><h2>Vaga e destino</h2><table>${lin('Vaga', vg ? vg.titulo : '')}${lin('Cargo', p.cargo)}${lin('Distrito', d ? d.nome : '')}${lin('Tipo', p.tipo === 'MOVEL' ? 'Móvel' : 'Local')}${lin('Cidade onde trabalha', nomeCidade(trabalhoId(p)))}${p.tipo === 'MOVEL' ? lin('Base de contratação', nomeCidade(p.base_id)) : ''}${lin('Unidade', p.unidade)}${lin('RH responsável', nomeAnalista(p))}</table></div>
+        </div>
+        <div class="rhn-i-duas">
+          <div class="rhn-i-bloco"><h2>Entrevista</h2><table>${lin('Data', e.data ? RH.fmtDataBR(e.data) + (e.hora ? ' às ' + e.hora : '') : '')}${lin('Formato', FORMATOS[e.formato] || '')}${lin('Local', e.local)}${lin('Quem entrevistou', e.entrevistador)}${lin('Resultado', e.data || e.resultado ? RESULTADOS[e.resultado || 'aguardando'] : '')}${lin('Avaliação', e.avaliacao ? '★'.repeat(+e.avaliacao) + '☆'.repeat(5 - e.avaliacao) : '')}</table>${e.notas ? `<p class="rhn-i-notas">${UI.esc(e.notas)}</p>` : ''}</div>
+          <div class="rhn-i-bloco"><h2>Exame, treinamento e chegada</h2><table>${lin('ASO', `${ASO[p.aso] || ''}${p.aso_data ? ' · ' + RH.fmtDataBR(p.aso_data) : ''}${p.aso_local ? ' · ' + p.aso_local : ''}`)}${lin('Treinamento', `${TRE[p.treinamento] || ''}${p.treinamento_data ? ' · ' + RH.fmtDataBR(p.treinamento_data) : ''}${p.treinamento_local ? ' · ' + p.treinamento_local : ''}`)}${lin('Chegada', p.chegada_data ? RH.fmtDataBR(p.chegada_data) + (p.chegada_hora ? ' às ' + String(p.chegada_hora).slice(0, 5) : '') : '')}${lin('Situação da chegada', p.chegada_data ? CHEGADA[stChegada(p)] : '')}${lin('Grupo do WhatsApp', p.grupo_whatsapp)}</table></div>
+        </div>
+        ${din.total ? `<div class="rhn-i-bloco"><h2>Documentos (${din.total - din.pendentes.length} de ${din.total})</h2><ul class="rhn-i-docs">${din.docs.map(x => `<li class="rhn-i-d-${x.estado}"><span class="rhn-i-caixa">${x.estado === 'entregue' ? '✓' : x.estado === 'dispensado' ? '–' : x.estado === 'recusado' ? '!' : ''}</span>${UI.esc(x.nome)} <em>${rotDoc[x.estado]}</em></li>`).join('')}</ul></div>` : ''}
+        ${p.observacao ? `<div class="rhn-i-bloco"><h2>Observação</h2><p>${UI.esc(p.observacao)}</p></div>` : ''}
+        ${hist.length ? `<div class="rhn-i-bloco"><h2>Histórico${(p.anotacoes || []).length > hist.length ? ` (últimos ${hist.length})` : ''}</h2><table class="rhn-i-hist">${hist.map(a => `<tr><th>${UI.esc(UI.fmtDataHora(a.em))}</th><td><b>${UI.esc(a.nome || a.por || '—')}</b> — ${UI.esc(a.texto)}</td></tr>`).join('')}</table></div>` : ''}`;
+      document.body.classList.add('rhn-imprimindo');
+      const limpar = () => { document.body.classList.remove('rhn-imprimindo'); window.removeEventListener('afterprint', limpar); };
+      window.addEventListener('afterprint', limpar);
+      setTimeout(() => window.print(), 30);
+    }
+
+    // ---------- atalhos de teclado da tela ----------
+    let focoId = '';
+    const itensNavegaveis = () => [...q('#cd-corpo').querySelectorAll('.cd-card[data-id], .pre-pessoa[data-id]')].filter(x => x.offsetParent !== null);
+    function focar(elx, rolar = true) {
+      if (!elx) return;
+      q('#cd-corpo').querySelectorAll('.rhn-foco').forEach(x => x.classList.remove('rhn-foco'));
+      elx.setAttribute('tabindex', '-1'); elx.classList.add('rhn-foco'); elx.focus({ preventScroll: true }); if (rolar) elx.scrollIntoView({ block: 'nearest' });
+      focoId = elx.dataset.id;
+    }
+    // usou o mouse: esquece o candidato marcado pelo teclado
+    q('#cd-corpo').addEventListener('mousedown', () => { if (!focoId) return; focoId = ''; q('#cd-corpo').querySelectorAll('.rhn-foco').forEach(x => x.classList.remove('rhn-foco')); });
+    function ajudaAtalhos() {
+      const t = [['/', 'Procurar (vai para a busca)'], ['J ou ↓', 'Próximo candidato'], ['K ou ↑', 'Candidato anterior'], ['Enter', 'Abrir a ficha do candidato marcado'], ['W', 'Mensagem no WhatsApp para o candidato marcado'],
+        ['1  2  3' + (veTudo ? '  4' : ''), 'Quadro · Lista · Agenda' + (veTudo ? ' · Por RH' : '')], ['N', 'Novo candidato'], ['Esc', 'Limpa a busca / fecha a janela'], ['?', 'Esta ajuda']].filter(([k]) => podeEditar || !/^[WN]$/.test(k));
+      UI.modal({ titulo: 'Atalhos do teclado', largura: '440px', fecharAoClicarFora: true, corpo: `<table class="rhn-atalhos">${t.map(([k, d]) => `<tr><td>${k.split(/\s+ou\s+|\s{2}/).map(x => `<kbd>${UI.esc(x.trim())}</kbd>`).join(' ')}</td><td>${UI.esc(d)}</td></tr>`).join('')}</table><p class="muted small" style="margin-bottom:0">Os atalhos não funcionam enquanto você digita num campo.</p>`, botoes: [{ texto: 'Fechar' }] });
+    }
+    function aoTeclar(e) {
+      if (!ativo || !document.body.contains(el) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (document.querySelector('.modal-overlay')) return;
+      const alvo = e.target, digitando = alvo && (/^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName) || alvo.isContentEditable);
+      if (digitando) { if (e.key === 'Escape' && alvo.id === 'cd-busca') { if (alvo.value) { alvo.value = ''; busca = ''; desenhar(); } alvo.blur(); e.preventDefault(); } return; }
+      if (e.defaultPrevented) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, atual = alvo && alvo.closest && alvo.closest('.cd-card[data-id], .pre-pessoa[data-id]');
+      // Enter/W só valem com o cartão em si marcado (num botão dentro dele, o Enter é do botão)
+      const pAtual = atual && atual === alvo && linhas.find(x => x.id === atual.dataset.id);
+      if (k === '/') { e.preventDefault(); q('#cd-busca').focus(); q('#cd-busca').select(); return; }
+      if (k === '?') { e.preventDefault(); ajudaAtalhos(); return; }
+      if (k === 'j' || k === 'k' || ((k === 'ArrowDown' || k === 'ArrowUp') && atual)) {
+        const l = itensNavegaveis(); if (!l.length) return;
+        e.preventDefault();
+        const i = atual ? l.indexOf(atual) : -1, prox = k === 'j' || k === 'ArrowDown';
+        focar(l[i < 0 ? (prox ? 0 : l.length - 1) : Math.max(0, Math.min(l.length - 1, i + (prox ? 1 : -1)))]);
+        return;
+      }
+      if ((k === 'Enter' || k === 'o') && pAtual) { e.preventDefault(); formulario(pAtual); return; }
+      if (k === 'w' && pAtual && podeEditar) { e.preventDefault(); mandarMensagem(pAtual); return; }
+      if (k === 'n' && podeEditar) { e.preventDefault(); formulario(null); return; }
+      const vistas = ['quadro', 'lista', 'agenda'].concat(veTudo ? ['rh'] : []), n = +k;
+      if (n >= 1 && n <= vistas.length) { e.preventDefault(); mudarVista(vistas[n - 1]); return; }
+      if (k === 'Escape') { if (busca) { busca = ''; q('#cd-busca').value = ''; desenhar(); } else if (atual) { atual.blur(); atual.classList.remove('rhn-foco'); focoId = ''; } }
+    }
+    document.addEventListener('keydown', aoTeclar);
+    // depois de redesenhar (ex.: atualização que chegou do banco), o candidato marcado continua marcado
+    const manterFoco = new MutationObserver(() => {
+      if (!focoId || (document.activeElement && document.activeElement !== document.body)) return;
+      const elx = q('#cd-corpo').querySelector(`[data-id="${CSS.escape(focoId)}"]`); if (elx && elx.offsetParent !== null) focar(elx, false);
+    });
+    manterFoco.observe(q('#cd-corpo'), { childList: true });
 
     // ---------- direcionar candidatos para os RHs ----------
     function direcionarIds(ids) {
@@ -1957,6 +2380,57 @@ Paginas.candidatos = {
       recentes();
     }
 
+    // ---------- BANCO DE TALENTOS: quem foi avaliado "recontrataria" (ou talvez) em outra safra e ainda não está nesta ----------
+    // A lista vem da função do banco (sem CPF). WhatsApp com a mensagem de nova safra; "Trazer" cria o candidato aqui, na Triagem.
+    async function bancoTalentos() {
+      const proj = projeto(), souRh = eu.perfil === 'analista';
+      let lista = null, erro = '', aba = 'sim', bq = '';
+      const m = UI.modal({ titulo: `Banco de talentos · ${Store.rotuloProjeto(proj)}`, largura: '920px',
+        corpo: `<p class="muted" style="margin-top:0">Quem trabalhou em outras safras, foi avaliado como <b>recontrataria</b> (ou talvez) e ainda não está neste projeto. Chame pelo WhatsApp e, se a pessoa topar, clique em <b>Trazer para esta safra</b>: ela entra na Triagem ${souRh ? 'no seu nome' : 'sem RH (direcione depois)'}, com o cadastro que já existe.</p>
+          <div class="rhs-banco-topo"><div class="cd-segs" id="bt-abas"></div><input class="busca" id="bt-busca" placeholder="Procurar por nome, cidade ou cargo…" aria-label="Procurar no banco de talentos"></div>
+          <div id="bt-lista" class="rhs-banco"><div class="vazio">Carregando…</div></div>`,
+        botoes: [{ texto: 'Fechar' }] });
+      const g = s => m.corpo.querySelector(s);
+      const msgNovaSafra = x => `Olá, ${primeiroNome(x.nome)}! Aqui é ${primeiroNome(eu.nome)}, do RH. Você trabalhou com a gente na ${x.projeto_nome}${x.cargo ? ' como ' + String(x.cargo).toLowerCase() : ''} e queremos você de volta na nova safra (${proj.nome}).\nTem interesse? Me responde por aqui que eu te passo os detalhes.`;
+      function pintar() {
+        if (!g('#bt-lista')) return;
+        if (erro) { g('#bt-lista').innerHTML = `<div class="vazio erro">Não foi possível carregar: ${UI.esc(erro)}</div>`; g('#bt-abas').innerHTML = ''; return; }
+        if (!lista) return;
+        const n = k => lista.filter(x => x.recontrataria === k).length;
+        if (!n(aba) && n(aba === 'sim' ? 'talvez' : 'sim')) aba = aba === 'sim' ? 'talvez' : 'sim';
+        g('#bt-abas').innerHTML = [['sim', 'Recontrataria'], ['talvez', 'Talvez']].map(([k, r]) => `<button type="button" class="cd-seg ${aba === k ? 'ativa' : ''}" data-bt-aba="${k}">${r} <span class="aba-num">${n(k)}</span></button>`).join('');
+        const b = Store.normalizar(bq);
+        const l = lista.filter(x => x.recontrataria === aba && (!b || Store.normalizar([x.nome, nomeCidade(x.cidade_origem_id), x.cargo, x.projeto_nome].join(' ')).includes(b)))
+          .sort((x, y) => (y.nota || 0) - (x.nota || 0) || String(y.avaliado_em || '').localeCompare(String(x.avaliado_em || '')) || String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
+        if (!lista.length) { g('#bt-lista').innerHTML = '<div class="vazio">Ninguém no banco de talentos ainda.<br><span class="small">Ele se forma com a avaliação de fim de safra: em Contratações (ou na ficha de quem foi admitido), marque se recontrataria. Quem for "Sim" ou "Talvez" aparece aqui na próxima safra.</span></div>'; return; }
+        if (!l.length) { g('#bt-lista').innerHTML = `<div class="vazio">Ninguém ${bq ? 'com essa busca' : 'nesta aba'}.</div>`; return; }
+        g('#bt-lista').innerHTML = l.slice(0, 200).map(x => {
+          const tel = RH.soDigitos(x.telefone), cid = nomeCidade(x.cidade_origem_id);
+          return `<div class="rhs-bl" data-pre="${x.pre_id}">
+            <div class="rhs-bl-quem"><b>${UI.esc(x.nome)}</b><div class="muted small">${[cid ? 'mora em ' + UI.esc(cid) : '', x.telefone ? UI.esc(x.telefone) : 'sem telefone'].filter(Boolean).join(' · ')}</div></div>
+            <div class="rhs-bl-onde"><div>${UI.esc(x.cargo || 'Cargo não informado')}${x.tipo === 'MOVEL' ? ' <span class="muted small">(móvel)</span>' : ''}</div><div class="muted small">${UI.esc(x.projeto_nome || '')}${x.avaliado_em ? ' · avaliado em ' + RH.fmtDataBR(String(x.avaliado_em).slice(0, 10)) : ''}${x.avaliado_por ? ' por ' + UI.esc(String(x.avaliado_por).split(' ')[0]) : ''}</div></div>
+            <div class="rhs-bl-aval">${RhSafra.selo({ avaliacao_recontrataria: x.recontrataria, avaliacao_nota: x.nota, avaliacao_obs: x.observacao, avaliado_em: x.avaliado_em }, true)}${x.observacao ? `<div class="small rhs-bl-obs">${UI.esc(x.observacao)}</div>` : ''}</div>
+            <div class="rhs-bl-acoes">${tel.length >= 10 ? `<a class="btn btn-pequeno btn-wa" target="_blank" rel="noopener" href="https://wa.me/55${tel}?text=${encodeURIComponent(msgNovaSafra(x))}" title="Abre o WhatsApp com a mensagem de nova safra">WhatsApp</a>` : ''}<button type="button" class="btn btn-pequeno btn-primario" data-trazer="${x.pre_id}">Trazer para esta safra</button></div>
+          </div>`;
+        }).join('') + (l.length > 200 ? `<div class="vazio small">Mostrando 200 de ${l.length}. Use a busca para achar os outros.</div>` : '');
+      }
+      g('#bt-abas').addEventListener('click', e => { const b = e.target.closest('[data-bt-aba]'); if (b) { aba = b.dataset.btAba; pintar(); } });
+      g('#bt-busca').addEventListener('input', UI.debounce(e => { bq = e.target.value.trim(); pintar(); }, 150));
+      g('#bt-lista').addEventListener('click', async e => {
+        const b = e.target.closest('[data-trazer]'); if (!b) return;
+        const x = lista.find(y => y.pre_id === b.dataset.trazer); if (!x) return;
+        b.disabled = true; b.textContent = 'Trazendo…';
+        try {
+          await Nuvem.rh.trazerDoBanco(x.pre_id, projetoId);
+          lista = lista.filter(y => y.pessoa_id !== x.pessoa_id);
+          UI.toast(`${x.nome} entrou na Triagem desta safra${souRh ? '' : ' sem RH: direcione para alguém'}.`, 'sucesso', 5000);
+          pintar(); carregar();
+        } catch (err) { b.disabled = false; b.textContent = 'Trazer para esta safra'; UI.toast(RhSafra.limpar(err.message), 'erro', 6000); }
+      });
+      try { lista = await Nuvem.rh.bancoTalentos(projetoId); } catch (e) { erro = RhSafra.limpar(e.message) || 'erro'; }
+      pintar();
+    }
+
     // ---------- exportar no modelo da planilha SEMANA ----------
     function exportar() {
       const l = vista === 'lista' ? daLista() : base().filter(p => p.situacao === 'em_andamento' || p.situacao === 'admitido');
@@ -1997,6 +2471,8 @@ Paginas.candidatos = {
     if (q('#cd-novo')) q('#cd-novo').addEventListener('click', () => formulario(null));
     if (q('#cd-importar')) q('#cd-importar').addEventListener('click', importar);
     if (q('#cd-mensagens')) q('#cd-mensagens').addEventListener('click', editarMensagens);
+    if (q('#cd-banco')) q('#cd-banco').addEventListener('click', bancoTalentos);
+    q('#rhn-atalhos').addEventListener('click', ajudaAtalhos);
     // abre com o que já tinha (se tiver) e atualiza por trás; "Carregando…" só na primeira vez
     { const c = typeof Nuvem !== 'undefined' && Nuvem.rh.emCache && Nuvem.rh.emCache(projetoId);
       if (c) { linhas = c; contarVagas(); desenhar(); } else q('#cd-corpo').innerHTML = '<div class="vazio">Carregando…</div>'; }
@@ -2035,6 +2511,6 @@ Paginas.candidatos = {
     });
     const aoFecharJanela = new MutationObserver(() => { if (pendenteRedesenho && ativo && !document.querySelector('.modal-overlay')) { pendenteRedesenho = false; desenhar(); } });
     aoFecharJanela.observe(document.body, { childList: true });
-    return () => { ativo = false; aoFecharJanela.disconnect(); aoRedesenhar.disconnect(); document.removeEventListener('maparh:presenca', agendarOlhando); };
+    return () => { ativo = false; aoFecharJanela.disconnect(); aoRedesenhar.disconnect(); manterFoco.disconnect(); document.removeEventListener('keydown', aoTeclar); document.removeEventListener('maparh:presenca', agendarOlhando); };
   }
 };

@@ -1,0 +1,108 @@
+/* Início (Seu dia, Pendências da diretoria, previsão, ranking por RH), Relatórios (resumo da Situação das vagas)
+   e Contratações (totais que filtram). Base azul do app.css. */
+
+/* ---------- Seu dia / Pendências: lista de itens clicáveis ---------- */
+.in-dia, .in-pend { padding: 14px 16px; }
+.in-dia { border-left: 4px solid var(--primaria); }
+.in-cab { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.in-cab h2 { margin: 0; font-size: 16px; }
+.in-cab h2 .small { font-weight: 500; margin-left: 4px; }
+.in-cab-ir { margin-left: auto; }
+.in-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px 14px; }
+.in-item { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--borda); border-left-width: 4px; background: #fff; color: var(--texto); text-decoration: none; font-size: 13.5px; min-width: 0; }
+a.in-item:hover { border-color: var(--primaria); background: #f8fbff; }
+a.in-item:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.in-item > b { font-size: 20px; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; color: var(--primaria); }
+.in-item > span { min-width: 0; font-weight: 600; }
+.in-item small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.in-item > em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--primaria); white-space: nowrap; }
+.in-item.in-ruim { border-left-color: #dc2626; }
+.in-item.in-ruim > b { color: #b91c1c; }
+.in-item.in-hoje { border-left-color: var(--primaria); }
+.in-item.in-ok { border-left-color: #16a34a; }
+.in-item.in-ok > b { color: #15803d; }
+.in-item.in-meio { border-left-color: #f59e0b; }
+.in-item.in-meio > b { color: #b45309; }
+.in-vazio { margin: 0; color: #166534; font-size: 14px; }
+.in-pend-ok { padding: 10px 16px; font-size: 13.5px; border-left: 4px solid #16a34a; }
+.in-pend-ok b { color: #166534; }
+
+.in-txt-ruim { color: #b91c1c; font-weight: 700; }
+.in-txt-meio { color: #b45309; font-weight: 700; }
+.in-txt-ok { color: #047857; font-weight: 700; }
+
+/* ---------- bloco principal: previsão de fechamento ---------- */
+.in-prev { margin-top: 8px; padding: 7px 10px; border-radius: 8px; background: #f1f5f9; font-size: 13px; color: #334155; }
+
+/* ---------- Por RH com a coluna "Semana" ---------- */
+/* o cartão tem ~330px em 1366: o nome vai numa linha própria e os 5 números embaixo, alinhados ao cabeçalho */
+.dr-tab-rh.in-rh6 { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px 6px; }
+.dr-tab-rh.in-rh6 > b { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dr-tab-rh.in-rh6 > b span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-tab-rh.in-rh6.dr-tab-cab > span:first-child { display: none; }
+.dr-tab-rh.in-rh6.dr-tab-cab > span { text-align: center; line-height: 1.2; }
+
+/* ---------- Metas por RH ---------- */
+/* Seu dia: barra da meta da semana */
+.in-meta { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; background: #f1f5f9; font-size: 13.5px; color: #334155; }
+.in-meta:empty { display: none; }
+.in-meta-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.in-meta-cab b { color: var(--texto); font-variant-numeric: tabular-nums; }
+.in-meta-rec { font-weight: 700; font-size: 13px; white-space: nowrap; }
+.in-meta-ok { color: #047857; }
+.in-meta-ritmo { color: var(--primaria); }
+.in-meta-meio { color: #b45309; }
+.in-meta-barra { height: 10px; background: #dbe3ee; }
+.in-meta-sem { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; padding: 7px 12px; }
+/* Por RH: 6 colunas (a sexta é a meta), cabeçalho que ordena */
+.dr-tab-rh.in-rh6.in-rh7 { grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(0, 1.25fr); }
+.dr-tab-cab > .in-ord { appearance: none; border: 0; background: none; padding: 2px 0; margin: 0; font: inherit; font-weight: 700; letter-spacing: inherit; text-transform: inherit; color: #64748b; cursor: pointer; line-height: 1.2; min-width: 0; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+.dr-tab-rh.in-rh7.dr-tab-cab { font-size: 10px; letter-spacing: .02em; align-items: start; }
+.dr-tab-cab > .in-ord:hover, .dr-tab-cab > .in-ord.ativo { color: var(--primaria); }
+.dr-tab-cab > .in-ord:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.dr-tab-cab > .in-ord i { font-style: normal; font-size: 11px; line-height: 1; }
+.dr-tab > .in-rhm { display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; color: #334155; }
+.in-rhm em { font-style: normal; line-height: 1.1; }
+.in-rhm small { font-size: 11px; font-weight: 500; color: #94a3b8; white-space: nowrap; }
+.in-rhm-barra { display: block; height: 5px; }
+.dr-tab > .in-rhm-nada { color: #94a3b8; font-weight: 500; }
+button.in-rhm-btn { appearance: none; border: 1px solid transparent; background: none; padding: 2px 3px; margin: -3px -3px; font: inherit; font-weight: 600; cursor: pointer; border-radius: 6px; }
+button.in-rhm-btn:hover { border-color: var(--primaria); background: #f8fbff; }
+button.in-rhm-btn:hover small { color: var(--primaria); }
+button.in-rhm-btn:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+/* Usuários: meta semanal direto na linha */
+input.us-meta { width: 92px; padding: 5px 8px; margin: 0; text-align: center; font-variant-numeric: tabular-nums; }
+input.us-meta::placeholder { font-size: 12px; color: #94a3b8; }
+
+/* ---------- Relatórios: resumo da Situação das vagas ---------- */
+#rel-conteudo .card-titulo > .linha { flex-wrap: nowrap; flex-shrink: 0; }
+@media (max-width: 760px) { #rel-conteudo .card-titulo > .linha { flex-wrap: wrap; } }
+.in-rel-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 4px 0 14px; }
+.in-rel-resumo > div { border: 1px solid var(--borda); border-radius: 8px; padding: 8px 12px; font-size: 12.5px; color: var(--muted); }
+.in-rel-resumo b { display: block; font-size: 20px; color: var(--texto); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.in-rel-barra { display: block; height: 6px; border-radius: 999px; background: #e2e8f0; margin-top: 6px; overflow: hidden; }
+.in-rel-barra > i { display: block; height: 100%; background: #16a34a; border-radius: 999px; }
+
+/* ---------- Contratações: totais do topo que filtram ---------- */
+.ct-resumo { gap: 8px; }
+.ct-rapido { flex: 1 1 0; min-width: 112px; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 12px; border: 1px solid var(--borda); border-radius: 8px; background: #fff; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.ct-rapido b { font-size: 20px; color: var(--texto); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.ct-rapido small { font-size: 11.5px; color: var(--muted); }
+.ct-rapido:hover { border-color: var(--primaria); }
+.ct-rapido:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.ct-rapido.ativo { border-color: var(--primaria); background: var(--primaria-clara); color: var(--primaria-escura); box-shadow: inset 0 0 0 1px var(--primaria); }
+.ct-rapido.ativo b { color: var(--primaria-escura); }
+.ct-rapido-ruim b { color: #b91c1c; }
+.ct-rapido-zero { opacity: .7; }
+.ct-rapido-todos { flex-grow: 1.4; }
+
+@media (max-width: 760px) {
+  .in-lista { grid-template-columns: 1fr; }
+  .in-item > em { display: none; }
+  .in-cab-ir { margin-left: 0; }
+  .ct-rapido { flex: 1 1 140px; }
+}
+@media print {
+  .in-item > em, .in-cab-ir { display: none !important; }
+  .in-item { break-inside: avoid; }
+}
