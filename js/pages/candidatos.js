@@ -1823,6 +1823,13 @@ Paginas.candidatos = {
         const g = s => md.corpo.querySelector(s);
         const cpf = RH.limparCPF(g('#f-cpf').value);
         if (cpf && !RH.cpfValido(cpf)) { aba('dados'); throw new Error('CPF inválido. Confira os números ou deixe em branco por enquanto.'); }
+        // clicou em Cadastrar antes da consulta do CPF terminar: confere agora para reaproveitar a pessoa (senão o banco recusa CPF repetido)
+        if (!p && cpf && !pessoaId) {
+          let ex = null;
+          try { ex = await Nuvem.rh.pessoaPorCPF(cpf); } catch (e) { /* segue: o banco avisa se repetir */ }
+          if (ex && ex.restrito) { cpfDeOutro = true; aba('dados'); throw new Error('Este CPF já está cadastrado com outro RH. Peça ao administrador para direcionar a pessoa para você.'); }
+          if (ex && ex.id) pessoaId = ex.id;
+        }
         if (cpfDeOutro) { aba('dados'); throw new Error('Este CPF já está cadastrado com outro RH. Peça ao administrador para direcionar a pessoa para você.'); }
         const nascV = g('#f-nasc').value;
         if (nascV && (nascV <= '1920-01-01' || nascV > RH.hoje())) { aba('dados'); throw new Error('Data de nascimento impossível. Confira.'); }

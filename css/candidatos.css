@@ -553,7 +553,7 @@ button.cd-nome:focus-visible { outline: 2px solid var(--primaria); outline-offse
 .cd-coluna.cd-sobre .coluna-cab { background: transparent; }
 .cd-coluna .coluna-cab .aba-num { box-shadow: 0 0 0 1px var(--borda); }
 .cd-card { border-radius: 10px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
-.cd-card:hover { box-shadow: 0 6px 16px rgba(15, 23, 42, .12); transform: translateY(-1px); }
+.cd-card:hover { box-shadow: 0 6px 16px rgba(15, 23, 42, .12); }
 .cd-arrastando .cd-card:hover, .cd-card.cd-levantado:hover { transform: none; }
 .cd-chip { border-radius: var(--raio-pill); font-variant-numeric: tabular-nums; }
 .cd-km, .cd-chega, .cd-prazo { font-variant-numeric: tabular-nums; }
