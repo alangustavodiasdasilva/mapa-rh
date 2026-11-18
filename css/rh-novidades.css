@@ -146,3 +146,40 @@
   .rhs-bl-acoes { justify-content: flex-start; margin-top: 4px; }
   .rhs-botoes { grid-template-columns: 1fr; }
 }
+
+/* ----- etapas (v152): esquecidos, desfazer, por que saíram ----- */
+/* barrinha de idade no cabeçalho das colunas do Quadro: em dia / 4–7 dias / 8+ dias sem movimento */
+.rhe-idade { display: flex; align-items: center; gap: 8px; min-height: 22px; margin: -4px 0 10px; }
+.rhe-idade-vazia { visibility: hidden; }
+.rhe-idade-barra { flex: 1; min-width: 0; display: flex; gap: 2px; height: 6px; border-radius: 999px; overflow: hidden; background: #e2e8f0; }
+.rhe-idade-barra i { display: block; min-width: 4px; }
+.rhe-id-ok { background: #86efac; }
+.rhe-id-meio { background: #fbbf24; }
+.rhe-id-ruim { background: var(--perigo); }
+.rhe-esq-b { flex-shrink: 0; font: inherit; font-size: 11.5px; font-weight: 600; line-height: 20px; padding: 0 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #fecaca; background: var(--perigo-clara); color: var(--perigo-escuro); white-space: nowrap; }
+.rhe-esq-b:hover { border-color: var(--perigo); }
+.rhe-esq-b.on { background: var(--perigo); border-color: var(--perigo); color: #fff; }
+.rhe-esq-b:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.rhe-esq-ok { flex-shrink: 0; font-size: 11.5px; color: #15803d; white-space: nowrap; }
+.rhe-esq-aviso { background: #fef2f2; border-bottom-color: #fecaca; color: #991b1b; }
+
+/* barra "Desfazer" depois de mudar a etapa ou tirar do processo */
+.rhe-desf { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 2100; display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 32px); padding: 9px 10px 9px 16px; border-radius: 10px; background: #1e293b; color: #fff; font-size: 13.5px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .28); animation: rhe-sobe .18s ease-out; }
+.rhe-desf-tx { min-width: 0; overflow-wrap: anywhere; }
+.rhe-desf-b { flex-shrink: 0; font: inherit; font-weight: 700; font-size: 13px; padding: 4px 12px; border-radius: 7px; border: 1px solid #93c5fd; background: transparent; color: #bfdbfe; cursor: pointer; }
+.rhe-desf-b:hover { background: rgba(147, 197, 253, .16); color: #fff; }
+.rhe-desf-x { flex-shrink: 0; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: #94a3b8; font-size: 18px; line-height: 1; cursor: pointer; }
+.rhe-desf-x:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+.rhe-desf button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+@keyframes rhe-sobe { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media print { .rhe-desf { display: none !important; } }
+
+/* Lista > Não seguiram: por que saíram */
+.rhe-motivos { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 100%; min-width: 0; }
+.rhe-motivos-rot { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.rhe-motivos .cd-pend { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rhe-motivos .rhe-sem-mot { border-style: dashed; color: var(--muted); }
+.rhe-motivos-resumo { flex: 1 1 100%; }

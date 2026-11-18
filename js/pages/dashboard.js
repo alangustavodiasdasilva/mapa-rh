@@ -40,6 +40,30 @@ Paginas.dashboard = {
 
     const rec = Store.resumoRecrutamento(App.usuario, App.filtros.projetoId);
     const temAno = regs.some(x => x.projeto.ano);
+    // Comparado com a safra passada: contratações dos projetos do ano anterior nos mesmos estados (o total do ano
+    // passado contra o que já foi contratado nesta safra). Sem projeto do ano anterior com contratações, não aparece.
+    const htmlSafra = (() => {
+      const vis = App.projetosVisiveis();
+      const anoMax = Math.max(0, ...vis.filter(p => p.ano).map(p => +p.ano));
+      const atuais = App.filtros.projetoId ? vis.filter(p => p.id === App.filtros.projetoId) : vis.filter(p => p.ano && +p.ano === anoMax);
+      const ant = Analise.safraAnterior(atuais, vis); if (!ant) return '';
+      const idsA = new Set(atuais.filter(p => +p.ano === ant.anoAtual).map(p => p.id)), idsP = new Set(ant.projetos.map(p => p.id));
+      const todas = App.regs({ projetoId: '' });
+      const ra = Analise.resumo(todas.filter(x => idsA.has(x.projetoId))), rp = Analise.resumo(todas.filter(x => idsP.has(x.projetoId)));
+      if (!rp.total) return '';
+      const pcs = Math.round(100 * ra.total / rp.total);
+      const dif = (a, b, un = '') => { const d = Math.round(a) - Math.round(b); return d ? `<em class="in-saf-dif">${d > 0 ? '+' : '−'}${Math.abs(d)}${un}</em>` : ''; };
+      const t = (rot, atual, passada, extra = '') => `<div class="in-saf-t"><span class="in-ind-rot">${rot}</span><b>${atual}${extra}</b><small>safra ${ant.ano}: ${passada}</small></div>`;
+      return `<section class="card in-safra mb"><div class="in-cab"><h2>Comparado com a safra passada</h2><span class="muted small">${ant.anoAtual} até agora · ${ant.ano} o ano todo (${UI.esc(ant.projetos.map(p => p.nome).join(', '))})</span></div>
+        <div class="in-saf">
+          <div class="in-saf-t in-saf-principal"><span class="in-ind-rot">Contratados</span><b>${UI.fmtNum(ra.total)} <span>de ${UI.fmtNum(rp.total)} da safra ${ant.ano}</span></b>
+            <div class="dr-barra ${pcs >= 100 ? 'dr-ok' : ''}"><i style="width:${ra.total ? Math.max(2, Math.min(100, pcs)) : 0}%"></i></div><small>${pcs}% do total da safra passada</small></div>
+          ${t('Locais', ra.total ? UI.fmtPct(ra.pctLocal, 0) : '—', UI.fmtPct(rp.pctLocal, 0), ra.total ? dif(ra.pctLocal, rp.pctLocal, ' p.p.') : '')}
+          ${t('Cidades de origem', UI.fmtNum(ra.cidadesOrigem), UI.fmtNum(rp.cidadesOrigem))}
+          ${t('De fora do estado', ra.total ? UI.fmtPct(ra.pctForaDoEstado, 0) : '—', UI.fmtPct(rp.pctForaDoEstado, 0), ra.total ? dif(ra.pctForaDoEstado, rp.pctForaDoEstado, ' p.p.') : '')}
+          ${t('Distância média', UI.fmtKm(ra.distMedia), UI.fmtKm(rp.distMedia))}
+        </div></section>`;
+    })();
     const podeCand = Store.pode(App.usuario, 'candidatos');
     const diretoria = Store.rhVeTudo(App.usuario);
     // quem tem o "Seu dia" (RH que vê só o dele) já vê ali o que é de candidato: as pendências ficam só com as vagas
@@ -307,17 +331,48 @@ Paginas.dashboard = {
         previsao = `No ritmo atual (${adm14 === 1 ? '1 admissão' : adm14 + ' admissões'} em 14 dias), fecha ${quando}` +
           (prazoFinal ? (fimF > prazoFinal ? ` · <span class="in-txt-ruim">depois do prazo (${RH.fmtDia(prazoFinal)})</span>` : ` · <span class="in-txt-ok">dentro do prazo (${RH.fmtDia(prazoFinal)})</span>`) : '') + '.';
       }
+      // semáforo do pedido: o ritmo das últimas 2 semanas dá para fechar o que falta até o prazo?
+      const rit = Analise.ritmoNecessario({ faltam: faltamT, prazo: prazoFinal, adm14, hoje: hojeI });
+      const SEMAFORO = { completo: ['ok', 'Completo', 'Todas as pessoas pedidas já foram admitidas'], no_ritmo: ['ok', 'No ritmo', 'O ritmo das últimas 2 semanas fecha o pedido dentro do prazo'],
+        atencao: ['meio', 'Atenção', 'O ritmo das últimas 2 semanas está um pouco abaixo do necessário'], fora: ['ruim', 'Fora do ritmo', 'O ritmo das últimas 2 semanas não fecha o pedido no prazo'],
+        vencido: ['ruim', 'Prazo vencido', 'A data em que as vagas precisavam das pessoas já passou'] };
+      const fmtSem = x => x.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+      const sm = pedidas ? SEMAFORO[rit.situacao] : null;
+      const seloHero = sm ? `<span class="in-sem in-sem-${sm[0]}" title="${sm[2]}">${sm[1]}</span>` : '';
+      const linhaRitmo = !pedidas ? '' : rit.precisa > 0 ? `Para fechar até <b>${RH.fmtDia(prazoFinal)}</b> precisa de <b>${fmtSem(Math.ceil(rit.precisa * 10) / 10)} por semana</b> · hoje ${rit.atual === 1 ? 'sai' : 'saem'} <b>${fmtSem(rit.atual)} por semana</b>.`
+        : rit.situacao === 'vencido' ? `O prazo era <b>${RH.fmtDia(prazoFinal)}</b> e ainda ${faltamT === 1 ? 'falta 1 pessoa' : 'faltam ' + UI.fmtNum(faltamT) + ' pessoas'}.` : '';
+      // indicadores do processo (o que o diretor olha em 10 segundos), canais e as últimas 8 semanas
+      const ind = Analise.indicadoresRecrutamento(l);
+      const qtdI = (x, um, varios) => `${UI.fmtNum(x)} ${x === 1 ? um : varios}`;
+      const pc1 = x => x == null ? '—' : Math.round(100 * x) + '%';
+      const ETQ_E = { triagem: 'triagem', entrevista: 'entrevista', documentos: 'documentação' };
+      const podeRel = Store.pode(App.usuario, 'relatorios');
+      const tile = (rot, val, sub, rel, dica) => { const miolo = `<span class="in-ind-rot">${rot}</span><b>${val}</b><small>${sub}</small>`;
+        return rel && podeRel ? `<a class="in-ind-t" href="#/relatorios" data-rel="${rel}" title="${dica} Clique para abrir o relatório.">${miolo}</a>` : `<div class="in-ind-t" title="${dica}">${miolo}</div>`; };
+      const htmlInd = `<div class="in-ind mb">
+          ${tile('Aproveitamento', pc1(ind.aproveitamento), ind.encerrados ? `${qtdI(ind.admitidos, 'admitido', 'admitidos')} de ${UI.fmtNum(ind.encerrados)} que encerraram` : 'ninguém encerrou o processo ainda', 'porrh', 'De quem já encerrou o processo (admitido, reprovado ou desistiu), quantos foram admitidos.')}
+          ${tile('Desistência', pc1(ind.desistencia), ind.desistencias ? `${qtdI(ind.desistencias, 'desistiu', 'desistiram')}${ind.etapaQueMaisDesiste ? ' · mais na ' + ETQ_E[ind.etapaQueMaisDesiste] : ''}` : (ind.encerrados ? 'nenhuma desistência' : 'ninguém encerrou o processo ainda'), 'saidas', 'De quem já encerrou o processo, quantos desistiram (o candidato saiu por conta própria).')}
+          ${tile('Chegaram ao campo', pc1(ind.comparecimento), ind.chegou + ind.faltou ? `${qtdI(ind.chegou, 'chegou', 'chegaram')} · ${qtdI(ind.faltou, 'faltou', 'faltaram')}` : 'nenhuma chegada confirmada ainda', '', 'Das chegadas já confirmadas (chegou ou faltou), quantas pessoas chegaram.')}
+          ${tile('Da candidatura à admissão', ind.diasAteAdmitir == null ? '—' : fmtD(ind.diasAteAdmitir), ind.nTempos ? `mediana de ${qtdI(ind.nTempos, 'admissão', 'admissões')}` : 'ainda sem admissão', 'semanal', 'Dias entre o cadastro do candidato e a admissão. Mediana: metade levou menos, metade mais.')}
+        </div>`;
+      const NOMES_F = Object.fromEntries(Store.CANAIS.map(c => [c.id, c.nome]).concat([['indicacao', 'Indicação de colaborador'], ['ex_colaborador', 'Ex-colaborador'], ['outro', 'Outro']]));
+      const canais = Analise.canaisRecrutamento(l, NOMES_F), semF = canais.find(c => !c.fonte), comF = canais.filter(c => c.fonte).sort((a, b) => b.admitidos - a.admitidos || b.conversao - a.conversao || b.inscritos - a.inscritos);
+      const melhorC = comF[0] && comF[0].admitidos ? comF[0] : null;
+      const maxC = Math.max(1, ...comF.map(c => c.inscritos));
+      const semG = Analise.semanasRecrutamento(l, { hoje: hojeI, n: 8 });
+      const temSemanas = semG.some(s2 => s2.novos || s2.admitidos);
       const barra = (val, max, cls = '') => `<div class="dr-barra ${cls}"><i style="width:${max ? Math.max(2, Math.round(100 * val / max)) : 0}%"></i></div>`;
       const qtd = (x, um, varios) => `${UI.fmtNum(x)} ${x === 1 ? um : varios}`;
+      if (Paginas.dashboard._gSem) { Paginas.dashboard._gSem.destroy(); Paginas.dashboard._gSem = null; }
       alvo.innerHTML = `
         <div class="secao-titulo dr-titulo">Recrutamento ${App.usuario.perfil === 'analista' ? '<span class="muted small">(só o que está com você)</span>' : ''}<span class="espaco"></span><button class="btn btn-pequeno nao-imprimir" id="dr-whats" title="Copia um resumo curto para colar no WhatsApp">Copiar resumo para WhatsApp</button><button class="btn btn-pequeno nao-imprimir" id="dr-imprimir" title="Gera uma versão para imprimir ou salvar em PDF">Imprimir / PDF</button></div>
         <section class="card dr-hero mb">
           <div>
-            <div class="dr-hero-rot">Pedido preenchido${fD || fT ? ' <span class="muted small">(com o filtro do topo)</span>' : ''}</div>
+            <div class="dr-hero-rot">Pedido preenchido${fD || fT ? ' <span class="muted small">(com o filtro do topo)</span>' : ''}${seloHero}</div>
             <div class="dr-hero-n"><b>${UI.fmtNum(admV)}</b> de ${UI.fmtNum(pedidas)} pessoas <span>${pct(admV, pedidas)}%</span></div>
             <div class="dr-barra dr-hero-barra dr-ok"><i style="width:${pedidas ? Math.max(1, pct(admV, pedidas)) : 0}%"></i></div>
             <div class="muted small">${qtd(vagas.length, 'vaga aprovada', 'vagas aprovadas')} · ${adm7 === 1 ? '1 admitido' : UI.fmtNum(adm7) + ' admitidos'} nos últimos 7 dias${adm.length > admV ? ` · +${adm.length - admV} admitidos fora do pedido` : ''}</div>
-            ${previsao ? `<div class="in-prev" title="Conta as admissões dos últimos 14 dias e divide o que falta por esse ritmo. O prazo é a data mais distante em que as vagas abertas precisam das pessoas.">${previsao}</div>` : ''}
+            ${previsao ? `<div class="in-prev" title="Conta as admissões dos últimos 14 dias e divide o que falta por esse ritmo. O prazo é a data mais distante em que as vagas abertas precisam das pessoas.">${previsao}${linhaRitmo ? `<div class="in-prev-ritmo">${linhaRitmo}</div>` : ''}</div>` : ''}
           </div>
           <ul class="dr-hero-fatos">
             <li><b>${UI.fmtNum(Math.max(0, pedidas - admV))}</b>faltam contratar</li>
@@ -326,6 +381,7 @@ Paginas.dashboard = {
             <li title="Mediana: metade das admissões levou menos que isso, metade mais"><b>${fmtD(tc.admissao)}</b>da aprovação da vaga à admissão${tc.campo != null ? ` · ${fmtD(tc.campo)} até chegar no campo` : ''}</li>
           </ul>
         </section>
+        ${htmlInd}
         <div class="grade kpis mb" hidden>
           <div class="card kpi"><div class="rotulo">Pessoas pedidas</div><div class="valor">${UI.fmtNum(pedidas)}</div><div class="sub">${qtd(vagas.length, 'vaga aprovada', 'vagas aprovadas')}${fD || fT ? ' · com o filtro do topo' : ''}</div></div>
           <div class="card kpi kpi-local"><div class="rotulo">Admitidas</div><div class="valor">${UI.fmtNum(admV)}</div><div class="sub">${pedidas ? `${pct(admV, pedidas)}% do pedido preenchido` : 'sem vaga aprovada'}${adm.length > admV ? ` · +${adm.length - admV} fora do pedido` : ''}</div></div>
@@ -355,6 +411,19 @@ Paginas.dashboard = {
             <div id="dr-rh-corpo">${htmlPorRh()}</div>
             <div class="dr-nota">Clique no título da coluna para ordenar. Semana: admitidos nos últimos 7 dias. Parado: o candidato em processo há mais tempo sem mudança. Aprov.: admitidos entre quem já encerrou. Meta: admissões de ${RH.fmtDia(semanaM.seg)} a ${RH.fmtDia(semanaM.dom)} (segunda a domingo), em todos os projetos${podeMeta ? "; clique na meta para mudar" : ""}.</div>
           </div>
+          <div class="card in-card-sem"><h2>Por semana <span class="muted small" style="font-weight:400">últimas 8 semanas</span></h2>
+            ${!temSemanas ? '<p class="muted small">Nenhuma candidatura nem admissão nas últimas 8 semanas.</p>'
+              : typeof Chart === 'undefined' ? `<div class="dr-tab dr-tab-mot dr-tab-cab"><span>Semana</span><span>Novos</span><span>Admit.</span><span>Cheg.</span></div>` + semG.map(s2 => `<div class="dr-tab dr-tab-mot"><b>${RH.fmtDia(s2.ini)} a ${RH.fmtDia(s2.fim)}</b><span>${s2.novos}</span><span>${s2.admitidos}</span><span>${s2.chegadas}</span></div>`).join('')
+              : '<div class="in-sem-wrap"><canvas id="g-semanas" role="img" aria-label="Candidaturas novas e admitidos por semana"></canvas></div>'}
+            <div class="dr-nota">Semana de segunda a domingo. Candidaturas pela data do cadastro; admitidos pela data da admissão.${rit.precisa > 0 ? ` A linha tracejada é o que precisa sair por semana para fechar até ${RH.fmtDia(prazoFinal)}.` : ''}</div>
+          </div>
+          <div class="card"><h2>De onde vêm <span class="muted small" style="font-weight:400">como soube da vaga</span></h2>
+            ${!comF.length ? `<p class="muted small">Ninguém com "Como soube da vaga" preenchido ainda. Marque na ficha do candidato para saber qual divulgação traz gente que fica.</p>`
+              : `<div class="dr-tab in-tab-can dr-tab-cab"><span>Canal</span><span title="Candidatos que vieram por este canal">Cand.</span><span title="Admitidos">Admit.</span><span title="Admitidos ÷ candidatos do canal">Aprov.</span></div>`
+                + comF.slice(0, 6).map(c => `<div class="dr-tab in-tab-can ${c === melhorC ? 'in-can-melhor' : ''}"><b title="${UI.esc(c.nome)}">${UI.esc(c.nome)}${c === melhorC ? ' <i title="O canal que mais trouxe admitidos">★</i>' : ''}<span class="dr-barra"><i style="width:${Math.max(2, Math.round(100 * c.inscritos / maxC))}%"></i></span></b><span>${c.inscritos}</span><span class="${c.admitidos ? 'ok' : ''}">${c.admitidos}</span><span>${Math.round(100 * c.conversao)}%</span></div>`).join('')
+                + (comF.length > 6 ? `<p class="muted small" style="margin:8px 0 0">+ ${comF.length - 6} no relatório.</p>` : '')}
+            <div class="dr-nota">${semF && comF.length ? `${qtd(semF.inscritos, 'candidato', 'candidatos')} sem essa resposta (${Math.round(100 * semF.inscritos / l.length)}%). ` : ''}${podeRel && comF.length ? '<a href="#/relatorios" data-rel="canais">Ver o relatório de canais e indicações →</a>' : ''}</div>
+          </div>
           <div class="card" style="grid-column:1/-1;order:9"><h2>Pedido x admitido por distrito</h2>
             ${porD.size ? `<div class="dr-tab dr-tab-dist dr-tab-cab"><span>Distrito</span><span>Locais</span><span>Móveis</span><span>Falta</span><span>Em processo</span><span title="Admissões esperadas do funil ÷ o que falta">Cobertura</span><span>Preenchido</span></div>` + [...porD.values()].sort((a, b) => b.falta - a.falta || a.nome.localeCompare(b.nome, 'pt-BR')).map(a => { const tot = a.pl + a.pm, ad = a.al + a.am;
                 const cob = a.cob == null ? '<span class="ok">completo</span>' : `<span class="${a === piorD && a.cob < 1 ? 'ruim dr-pior' : a.cob < 0.5 ? 'ruim' : a.cob < 1 ? 'alerta' : 'ok'}" title="O funil deve render ${a.esp.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} admissões para ${a.falta} que faltam">${Math.round(100 * a.cob)}%</span>`;
@@ -372,6 +441,23 @@ Paginas.dashboard = {
           </div>
         </div>`;
       document.getElementById('dr-imprimir').addEventListener('click', () => window.print());
+      // atalhos para os relatórios (indicadores e canais)
+      alvo.querySelectorAll('[data-rel]').forEach(a => a.addEventListener('click', () => { try { localStorage.setItem('maparh:relatorio', a.dataset.rel); } catch (e) { /* ok */ } }));
+      // gráfico por semana: candidaturas novas x admitidos, com a linha do que precisa sair por semana
+      const cvSem = alvo.querySelector('#g-semanas');
+      if (cvSem && typeof Chart !== 'undefined') {
+        const ds = [
+          { label: 'Candidaturas novas', data: semG.map(s2 => s2.novos), backgroundColor: '#93c5fd', borderRadius: 3, order: 2 },
+          { label: 'Admitidos', data: semG.map(s2 => s2.admitidos), backgroundColor: '#16a34a', borderRadius: 3, order: 2 }];
+        if (rit.precisa > 0) ds.push({ label: 'Precisa admitir por semana', data: semG.map(() => Math.ceil(rit.precisa * 10) / 10), type: 'line', borderColor: '#b45309', backgroundColor: 'rgba(0,0,0,0)', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, pointHitRadius: 8, order: 1 });
+        Paginas.dashboard._gSem = new Chart(cvSem, { type: 'bar',
+          data: { labels: semG.map(s2 => s2.atual ? 'esta semana' : RH.fmtDia(s2.ini)), datasets: ds },
+          options: { responsive: true, maintainAspectRatio: false, animation: false, color: '#475569', interaction: { mode: 'index', intersect: false },
+            scales: { x: { grid: { display: false }, ticks: { color: '#475569' } }, y: { beginAtZero: true, ticks: { precision: 0, color: '#475569' } } },
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, color: '#475569' } },
+              tooltip: { callbacks: { title: it => { const s2 = semG[it[0].dataIndex]; return `${RH.fmtDia(s2.ini)} a ${RH.fmtDia(s2.fim)}`; },
+                afterBody: it => { const s2 = semG[it[0].dataIndex]; return s2.admitidos ? [`${s2.admLocal} local · ${s2.admMovel} móvel`] : []; } } } } } });
+      }
       // Por RH: ordenar pela coluna e mudar a meta direto na linha (o miolo é redesenhado, então escuta no cartão)
       const corpoRh = alvo.querySelector('#dr-rh-corpo');
       if (corpoRh) corpoRh.addEventListener('click', e => {
@@ -399,6 +485,9 @@ Paginas.dashboard = {
         t.push(`Chegam esta semana: ${chegam}`);
         if (parados8) t.push(`Gargalo: ${parados8} parado${parados8 > 1 ? 's' : ''} há 8+ dias (mais na ${pior8.rot.toLowerCase()}: ${pior8.n[2]})`);
         if (tc.admissao != null) t.push(`Da aprovação à admissão: ${fmtD(tc.admissao)} (mediana)`);
+        if (sm && rit.precisa > 0) t.push(`Ritmo: *${sm[1]}* — precisa de ${fmtSem(Math.ceil(rit.precisa * 10) / 10)} por semana até ${RH.fmtDia(prazoFinal)}, hoje ${fmtSem(rit.atual)}`);
+        else if (sm && rit.situacao === 'vencido') t.push(`Ritmo: *Prazo vencido* (${RH.fmtDia(prazoFinal)}), faltam ${faltamT}`);
+        if (ind.encerrados) t.push(`Aproveitamento: ${pc1(ind.aproveitamento)} · desistência: ${pc1(ind.desistencia)}${ind.comparecimento != null ? ` · chegaram ao campo: ${pc1(ind.comparecimento)}` : ''}`);
         const texto = t.join('\n');
         try { await navigator.clipboard.writeText(texto); UI.toast('Resumo copiado. Cole no WhatsApp.', 'sucesso'); }
         catch (e) {
@@ -458,6 +547,7 @@ Paginas.dashboard = {
         <div class="card kpi"><div class="rotulo">Moram onde trabalham</div><div class="valor">${UI.fmtNum(r.mesmaCidade)}</div><div class="sub">de ${UI.fmtNum(r.cidadesAtuacao)} cidades de trabalho</div></div>
         <div class="card kpi"><div class="rotulo">Distância casa → trabalho</div><div class="valor">${UI.fmtKm(r.distMedia)}</div><div class="sub">média · máx. ${UI.fmtKm(r.distMax)}</div></div>
       </div>
+      ${htmlSafra}
       <div class="grade grade-2 mb" id="graficos">
         <div class="card"><h2>De onde vêm (10 maiores cidades)</h2><div class="grafico-wrap"><canvas id="g-origem"></canvas></div></div>
         <div class="card"><h2>Onde trabalham (10 maiores cidades)</h2><div class="grafico-wrap"><canvas id="g-atuacao"></canvas></div></div>
@@ -639,6 +729,6 @@ Paginas.dashboard = {
       linhas: Analise.porProjeto(regs, projetos)
     });
 
-    return () => graficos.forEach(g => g.destroy());
+    return () => { graficos.forEach(g => g.destroy()); if (Paginas.dashboard._gSem) { Paginas.dashboard._gSem.destroy(); Paginas.dashboard._gSem = null; } };
   }
 };

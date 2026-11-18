@@ -25,7 +25,7 @@ Paginas.pdrs = {
             <input id="pdr-busca" class="busca" placeholder="Buscar unidade, cidade, microrregião…" autocomplete="off">
             <select id="pdr-filtro-mapa" style="width:auto;min-width:170px"><option value="">Todos os mapas</option></select>
           </div>
-          <span class="muted small" id="pdr-total-contagem"></span>
+          <div class="linha" style="gap:8px"><span class="muted small" id="pdr-total-contagem"></span><button class="btn btn-pequeno" id="pdr-exportar" title="Baixa as unidades filtradas (todas, não só as 200 da tela)">Exportar planilha</button></div>
         </div>
         <div id="pdr-tabela"></div>
       </div>`;
@@ -208,7 +208,11 @@ Paginas.pdrs = {
       const mapas = Store.mapasPdr();
       const contMapas = el.querySelector('#pdr-lista-mapas');
       if (!mapas.length) {
-        contMapas.innerHTML = `<div class="card vazio" style="padding:18px">Nenhum mapa PDR carregado.${podeEditar ? ' Use <b>Carregar arquivo KML</b> para importar os mapas exportados do Google My Maps.' : ''}</div>`;
+        contMapas.innerHTML = UI.estadoVazio({ titulo: 'Nenhum mapa de unidades ainda',
+          texto: podeEditar ? 'No <b>Google My Maps</b>, abra o mapa das unidades → ⋮ → <i>Exportar para KML/KMZ</i> → marque <i>Exportar como KML</i>. Depois traga o arquivo aqui — ou cole o link do mapa. As pastas do mapa viram distritos.' : 'Peça a um administrador ou gestor para carregar o mapa das unidades (arquivo do Google My Maps).',
+          botoes: podeEditar ? [{ acao: 'arquivo', texto: 'Carregar arquivo KML', primario: true }, { acao: 'colar', texto: 'Colar link do Google' }] : [] });
+        const ba = contMapas.querySelector('[data-acao="arquivo"]'); if (ba) ba.addEventListener('click', () => fileInput && fileInput.click());
+        const bc = contMapas.querySelector('[data-acao="colar"]'); if (bc) bc.addEventListener('click', () => btnColar && btnColar.click());
       } else {
         contMapas.innerHTML = `<div class="grade grade-3" style="gap:12px">${mapas.map(m => `
           <div class="card" style="border-top:3px solid #b45309;padding:12px">
@@ -233,12 +237,7 @@ Paginas.pdrs = {
         mapas.map(m => `<option value="${m.id}" ${filtroMapa === m.id ? 'selected' : ''}>${UI.esc(m.nome)}</option>`).join('');
 
       const reg = App.regiaoFiltrada();
-      let todos = App.silosFiltrados();
-      if (filtroMapa) todos = todos.filter(s => s.mapaId === filtroMapa);
-      if (busca) {
-        const b = Store.normalizar(busca);
-        todos = todos.filter(s => Store.normalizar([s.nome, s.cidade, s.micro, s.distrito, s.mapaNome, ...Object.values(s.campos || {})].join(' ')).includes(b));
-      }
+      const todos = filtrarUnidades();
       el.querySelector('#pdr-total-contagem').innerHTML = `${UI.fmtNum(todos.length)} unidade(s)` +
         (reg.distrito ? ` <span class="badge badge-azul">filtro: ${UI.esc(reg.micro ? reg.micro.nome : reg.distrito.nome)}</span>` : '');
 
@@ -262,6 +261,25 @@ Paginas.pdrs = {
       }) + (todos.length > LIMITE ? `<div class="rodape-tabela">Mostrando as primeiras ${LIMITE} de ${UI.fmtNum(todos.length)} unidades. Use a busca para filtrar.</div>` : '');
     }
 
+    function filtrarUnidades() {
+      let todos = App.silosFiltrados();
+      if (filtroMapa) todos = todos.filter(s => s.mapaId === filtroMapa);
+      if (busca) {
+        const b = Store.normalizar(busca);
+        todos = todos.filter(s => Store.normalizar([s.nome, s.cidade, s.micro, s.distrito, s.mapaNome, ...Object.values(s.campos || {})].join(' ')).includes(b));
+      }
+      return todos;
+    }
+    el.querySelector('#pdr-exportar').addEventListener('click', () => {
+      const todos = filtrarUnidades();
+      if (!todos.length) { UI.toast('Nenhuma unidade para exportar.', 'aviso'); return; }
+      UI.baixarCSV('unidades-pdr.csv', [['UNIDADE', 'CIDADE', 'MICRORREGIAO', 'DISTRITO', 'MAPA', 'LATITUDE', 'LONGITUDE']].concat(todos.map(s => {
+        const info = Store.microDoSilo(s);
+        return [s.nome, s.cidade || '', info ? info.micro.nome : (s.micro || ''), info ? info.distrito.nome : (s.distrito || ''), s.mapaNome || '',
+          s.lat != null ? String(s.lat).replace('.', ',') : '', s.lng != null ? String(s.lng).replace('.', ',') : ''];
+      })));
+      Store.auditar('relatorio.exportar', `Unidades PDR (${todos.length})`, App.usuario);
+    });
     el.querySelector('#pdr-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; renderizar(); }, 150));
     el.querySelector('#pdr-filtro-mapa').addEventListener('change', e => { filtroMapa = e.target.value; renderizar(); });
     renderizar();

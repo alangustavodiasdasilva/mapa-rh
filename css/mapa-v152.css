@@ -1,0 +1,70 @@
+/* Mapa — rodada v152: candidatos em processo, raio de busca, unidades próximas, medir distância, impressão.
+   Carregar DEPOIS de mapa.css e vagas-mapa-novidades.css. */
+
+/* ---------- candidatos em processo: bolha VAZADA (ainda não contratado), ao contrário da laranja cheia ---------- */
+.mv-cand-bolha { box-sizing: border-box; border-radius: 50%; background: #fff; border: 2px solid #0e7490; color: #0e7490; font-weight: 700; text-align: center; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .3); }
+.mv-cand-bolha.varias { border-style: double; border-width: 4px; line-height: 1 !important; display: flex; align-items: center; justify-content: center; }
+.mv-cand-bolha:hover { background: #ecfeff; }
+.mv-cand-bolha.mv-cand-leg { display: inline-block; min-width: 20px; height: 20px; line-height: 16px; padding: 0 4px; font-size: 10px; flex-shrink: 0; cursor: default; box-shadow: none; }
+.mapa-painel h3 .mv-cand-bolha.mv-cand-leg { margin-right: 8px; vertical-align: 2px; }
+.mv-cand-mini { display: inline-block; box-sizing: border-box; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid #0e7490; flex-shrink: 0; }
+.mv-cand-resumo { margin: -2px 0 4px 18px; line-height: 1.35; }
+
+/* ---------- ficha da cidade: raio de busca ---------- */
+.mv-raio-botoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.mv-raio-botoes > span { flex: 1 1 100%; line-height: 1.35; }
+.mv-raio-resumo { background: var(--primaria-clara, #eff6ff); border-radius: 6px; padding: 6px 9px; margin: 2px 0 6px; font-size: 12.5px; line-height: 1.4; }
+#ficha-raio .tabela { font-size: 12.5px; }
+#ficha-raio .tabela th { font-size: 10.5px; }
+#ficha-raio .sine-mini { margin: 0; }
+.mv-raio-resto { margin-top: 6px; }
+.mv-raio-resto > summary { cursor: pointer; font-weight: 600; color: var(--primaria); }
+.mv-raio-chips { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 5px; font-size: 12px; line-height: 1.5; }
+.mv-raio-chips > span { white-space: nowrap; }
+.rotulo-micro span.mv-raio-rot { transform: translate(-50%, -130%); background: #1d4ed8; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1.5px solid #fff; pointer-events: none; cursor: default; }
+
+/* ---------- ficha da cidade: unidades mais próximas ---------- */
+.mv-unid { display: grid; gap: 2px; margin-bottom: 4px; }
+.mv-unid-linha { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid var(--borda); }
+.mv-unid-linha:last-child { border-bottom: none; }
+.mv-unid-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-unid-linha b { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mv-unid-linha a { white-space: nowrap; }
+
+/* ---------- medir distância ---------- */
+.mapa-medindo, .mapa-medindo .leaflet-grab, .mapa-medindo .leaflet-interactive { cursor: crosshair !important; }
+/* medindo: marcadores, áreas e linhas deixam o clique passar para o mapa (senão abririam um painel no meio da medida) */
+.mapa-medindo .leaflet-marker-icon, .mapa-medindo .leaflet-pane > canvas, .mapa-medindo .leaflet-pane > svg, .mapa-medindo .leaflet-interactive { pointer-events: none !important; }
+.mv-medir-aviso { background: #1d4ed8; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; box-shadow: 0 2px 6px rgba(15, 23, 42, .3); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-medida-pop .leaflet-popup-content { margin: 8px 12px; }
+.mv-medida { font-size: 12.5px; line-height: 1.45; text-align: center; white-space: nowrap; }
+.mv-medida b { font-size: 15px; }
+.mv-medida a { display: block; margin-top: 2px; font-weight: 600; }
+
+/* ---------- legenda do mapa de calor ---------- */
+.mv-calor-escala { display: flex; align-items: center; gap: 6px; margin: 2px 0 3px; font-size: 11px; color: var(--muted); }
+.mv-calor-escala i { flex: 1; height: 7px; border-radius: 999px; background: linear-gradient(90deg, #3b82f6, #22d3ee, #84cc16, #facc15, #dc2626); }
+
+/* botões do painel: cinco botões em duas linhas certinhas */
+.mpn-botoes .btn { flex: 1 1 auto; justify-content: center; text-align: center; }
+
+/* ---------- impressão do mapa (botão "Imprimir mapa") ---------- */
+.mv-imp-cab { display: none; }
+@media print {
+  body.mapa-imprimindo * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body.mapa-imprimindo .mv-imp-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin: 0 0 6px; font-size: 11px; color: #334155; }
+  body.mapa-imprimindo .mv-imp-cab b { font-size: 15px; color: #0f172a; }
+  /* mesmo tamanho da tela, encolhido para caber na folha deitada */
+  body.mapa-imprimindo .mapa-wrap { flex: none; width: var(--mv-imp-w, 100%); height: var(--mv-imp-h, 640px); zoom: var(--mv-imp-z, 1); overflow: hidden; border: 1px solid #cbd5e1; break-inside: avoid; }
+  body.mapa-imprimindo .mapa-legenda.nao-imprimir { display: block !important; max-height: calc(100% - 36px); overflow: hidden; box-shadow: none; border: 1px solid #cbd5e1; }
+  body.mapa-imprimindo .mapa-legenda .painel-corpo { display: block; }
+  body.mapa-imprimindo .mapa-legenda .painel-toggle, body.mapa-imprimindo .mapa-legenda #legenda-ajuda { display: none; }
+  /* a lista de distritos/microrregiões é comprida e taparia o mapa: no papel ficam só os símbolos */
+  body.mapa-imprimindo .mapa-legenda .legenda-micro, body.mapa-imprimindo .mapa-legenda .legenda-secao:has(+ .legenda-micro) { display: none; }
+  body.mapa-imprimindo .mapa-kpis.nao-imprimir { display: flex !important; }
+  body.mapa-imprimindo .mapa-wrap.painel-aberto .mapa-kpis.nao-imprimir { display: none !important; }
+  body.mapa-imprimindo .mapa-painel { box-shadow: none; border: 1px solid #cbd5e1; overflow: hidden; }
+  body.mapa-imprimindo .mapa-painel #painel-fechar, body.mapa-imprimindo .painel-foco-aviso { display: none; }
+  body.mapa-imprimindo .leaflet-control-zoom { display: none; }
+  body.mapa-imprimindo .filtros-barra, body.mapa-imprimindo .pagina-titulo { display: none !important; }
+}

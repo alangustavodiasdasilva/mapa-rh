@@ -1,0 +1,75 @@
+/* v152 — telas de apoio: Projetos, Cidades, Distritos, PDRs, Usuários (busca, filtros, estados vazios, dicas) */
+
+/* barra de busca/filtros no topo das telas de cadastro */
+.cad-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.cad-barra .busca { width: 240px; max-width: 100%; }
+.cad-barra .espaco { flex: 1; }
+.cad-abas { border-bottom: none; }
+.cad-abas .aba { padding: 6px 10px; border-radius: var(--raio-m); border-bottom: 2px solid transparent; }
+.cad-abas .aba.ativa { background: var(--primaria-suave); }
+.card .cad-barra.us-barra { padding: 12px 16px; margin: 0; border-bottom: 1px solid var(--borda); }
+
+/* botões segmentados (Ativos / Inativos / Todos) */
+.seg-cad { display: inline-flex; border: 1px solid var(--borda-forte); border-radius: var(--raio-m); overflow: hidden; background: var(--card); }
+.seg-cad button { border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--texto-2); padding: 6px 10px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
+.seg-cad button + button { border-left: 1px solid var(--borda); }
+.seg-cad button span { font-size: 11px; color: var(--muted); font-weight: 700; }
+.seg-cad button:hover { background: var(--superficie); }
+.seg-cad button.ativo { background: var(--primaria-clara); color: var(--primaria-escura); }
+.seg-cad button.ativo span { color: var(--primaria-escura); }
+.seg-cad button:focus-visible { outline: 2px solid var(--primaria); outline-offset: -2px; }
+
+/* estado vazio que ensina o próximo passo */
+.vazio-guia { text-align: center; padding: 32px 24px; color: var(--muted); }
+.vazio-guia h3 { color: var(--texto); font-size: var(--f-m); margin: 0 0 6px; }
+.vazio-guia p { margin: 0 auto; max-width: 620px; font-size: 13.5px; line-height: 1.6; }
+.vazio-guia-acoes { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.vazio-guia.compacto { padding: 22px 18px; box-shadow: none; }
+.card.sem-padding .vazio-guia { border: none; border-radius: 0; }
+
+/* dica curta para quem é novo na tela */
+.dica-novato { display: flex; align-items: flex-start; gap: 10px; background: var(--primaria-suave); border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: var(--raio); padding: 10px 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.55; }
+.dica-novato-icone { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--primaria); color: #fff; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.dica-novato-texto { flex: 1; min-width: 0; }
+.dica-novato-ok { flex: none; font-weight: 600; white-space: nowrap; }
+
+/* menu "Mais ⋯" das telas de cadastro */
+.cad-menu { background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio-m); box-shadow: var(--sombra-3); padding: 4px; min-width: 200px; display: flex; flex-direction: column; }
+.cad-menu[hidden] { display: none; }
+.cad-menu button { border: none; background: none; text-align: left; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: var(--raio-p); cursor: pointer; color: var(--texto); white-space: nowrap; }
+.cad-menu button:hover, .cad-menu button:focus-visible { background: var(--superficie-2); outline: none; }
+.cad-menu button.perigo { color: var(--perigo-escuro); }
+.cad-menu button.perigo:hover { background: var(--perigo-clara); }
+
+/* Projetos */
+.projeto-card .pj-vagas { padding: 6px 0 2px; }
+.projeto-card .pj-vagas-link { color: var(--primaria); font-weight: 600; text-decoration: none; }
+.projeto-card .pj-vagas-link:hover { text-decoration: underline; }
+.projeto-card .pj-pedidos { color: #b45309; font-weight: 600; }
+.projeto-card .pj-acoes { gap: 6px; flex-wrap: wrap; }
+.projeto-card .pj-acoes .espaco { flex: 1; }
+.pj-lista-efeitos { margin: 6px 0 10px; padding-left: 20px; line-height: 1.7; }
+.ns-opcao { display: flex !important; gap: 8px; align-items: flex-start; margin: 10px 0 !important; font-weight: 500; }
+.ns-opcao input { margin-top: 3px; }
+
+/* Distritos: pendências do cadastro */
+.dist-pend-btn { border: 1px solid #fcd34d; background: var(--aviso-clara); color: #78350f; border-radius: var(--raio-pill); padding: 3px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.dist-pend-btn:hover { background: #fde68a; }
+.dist-pend-btn.ativo { background: #78350f; color: #fff; border-color: #78350f; }
+.dist-ok { color: var(--verde); font-weight: 600; font-size: 12.5px; }
+.dist-resumo { align-items: center; }
+.dist-resumo .espaco { flex: 1; }
+.dist-pend { display: inline-block; margin-top: 2px; font-size: 12px; font-weight: 600; color: #b45309; }
+
+/* Usuários */
+.us-acoes { white-space: nowrap; }
+.us-acoes .btn + .btn { margin-left: 4px; }
+.us-resumo { margin-top: 12px; border: 1px solid var(--borda); background: var(--superficie); border-radius: var(--raio-m); padding: 10px 12px; display: grid; gap: 6px; }
+.us-resumo-tit { font-size: 12px; font-weight: 700; color: var(--texto-2); text-transform: uppercase; letter-spacing: .02em; }
+.us-resumo-telas { display: flex; flex-wrap: wrap; gap: 4px; }
+.us-resumo-telas span { background: var(--primaria-clara); color: var(--primaria-escura); border-radius: var(--raio-pill); padding: 1px 9px; font-size: 12px; font-weight: 600; }
+
+@media (max-width: 700px) {
+  .cad-barra .busca { width: 100%; }
+  .dica-novato { flex-wrap: wrap; }
+}

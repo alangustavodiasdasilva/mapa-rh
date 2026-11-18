@@ -393,6 +393,67 @@ const UI = (() => {
       botoes: [{ texto: 'Fechar' }] });
   }
 
+  // ---------- Auxiliares das telas de cadastro (v152) ----------
+  // Estado vazio que ensina o próximo passo: título, texto curto e botões (cada um com data-acao para a tela ligar).
+  // botoes: [{ acao: 'novo', texto: '+ Novo', primario: true }]
+  function estadoVazio({ titulo, texto = '', botoes = [], compacto = false } = {}) {
+    return `<div class="card vazio-guia${compacto ? ' compacto' : ''}">
+      ${titulo ? `<h3>${esc(titulo)}</h3>` : ''}${texto ? `<p>${texto}</p>` : ''}
+      ${botoes.length ? `<div class="vazio-guia-acoes">${botoes.map(b => `<button type="button" class="btn ${b.primario ? 'btn-primario' : ''}" data-acao="${esc(b.acao)}">${esc(b.texto)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  }
+  // Dica curta para quem é novo na tela; some quando a pessoa clica "Entendi" (lembra neste navegador).
+  function dicaNovato(chave, html) {
+    let vista = false;
+    try { vista = localStorage.getItem('maparh:dica:' + chave) === '1'; } catch (e) { /* sem armazenamento: mostra */ }
+    if (vista) return '';
+    return `<div class="dica-novato" data-dica="${esc(chave)}" role="note"><span class="dica-novato-icone" aria-hidden="true">?</span><div class="dica-novato-texto">${html}</div><button type="button" class="btn-link dica-novato-ok">Entendi</button></div>`;
+  }
+  function ligarDicas(raiz) {
+    (raiz || document).querySelectorAll('.dica-novato').forEach(d => {
+      const b = d.querySelector('.dica-novato-ok');
+      if (!b || b._ligado) return;
+      b._ligado = true;
+      b.addEventListener('click', () => { try { localStorage.setItem('maparh:dica:' + d.dataset.dica, '1'); } catch (e) { /* segue */ } d.remove(); });
+    });
+  }
+  // Copia um texto para a área de transferência (com plano B para navegador antigo / sem https).
+  async function copiarTexto(texto) {
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(texto); return true; } } catch (e) { /* tenta o plano B */ }
+    const ta = document.createElement('textarea');
+    ta.value = texto; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+  // Itens com nome igual ou muito parecido (acento, caixa, 1-2 letras trocadas, um contido no outro). Para evitar cadastro duplicado.
+  // nomeDe(item) -> texto. Devolve [{ item, igual }] (igual = mesmo nome sem acento/caixa).
+  function nomesParecidos(texto, itens, nomeDe = x => x.nome) {
+    const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const n = norm(texto);
+    if (n.length < 3) return [];
+    const dist = (a, b) => {
+      if (Math.abs(a.length - b.length) > 2) return 99;
+      const v = Array.from({ length: b.length + 1 }, (_, i) => i);
+      for (let i = 1; i <= a.length; i++) {
+        let ant = v[0]; v[0] = i;
+        for (let j = 1; j <= b.length; j++) { const tmp = v[j]; v[j] = Math.min(v[j] + 1, v[j - 1] + 1, ant + (a[i - 1] === b[j - 1] ? 0 : 1)); ant = tmp; }
+      }
+      return v[b.length];
+    };
+    const out = [];
+    for (const it of itens || []) {
+      const m = norm(nomeDe(it));
+      if (!m) continue;
+      if (m === n) { out.push({ item: it, igual: true }); continue; }
+      const limite = n.length >= 8 ? 2 : 1;
+      if ((m.length >= 4 && n.length >= 4 && (m.includes(n) || n.includes(m))) || dist(n, m) <= limite) out.push({ item: it, igual: false });
+    }
+    return out.sort((a, b) => b.igual - a.igual);
+  }
+
   return { esc, fmtNum, fmtPct, fmtKm, fmtDataHora, fmtData, rotuloTipo, badgeTipo, debounce, toast, modal, confirmar, linksBuscaCandidatos, modalBuscaCandidatos,
-    autocompleteCidade, sugestoes, avatar, abrirMenu, fecharMenus, reduzirImagem, csvSerializar, baixarArquivo, baixarCSV, csvParse, lerArquivo, tabela, opcoesUF };
+    autocompleteCidade, sugestoes, avatar, abrirMenu, fecharMenus, reduzirImagem, csvSerializar, baixarArquivo, baixarCSV, csvParse, lerArquivo, tabela, opcoesUF,
+    estadoVazio, dicaNovato, ligarDicas, copiarTexto, nomesParecidos };
 })();

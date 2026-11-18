@@ -106,3 +106,69 @@ input.us-meta::placeholder { font-size: 12px; color: #94a3b8; }
   .in-item > em, .in-cab-ir { display: none !important; }
   .in-item { break-inside: avoid; }
 }
+
+/* ================= v152: indicadores, ritmo, por semana, canais, safra passada, relatórios e Contratações ================= */
+/* ---------- bloco principal: semáforo do ritmo ---------- */
+.in-sem { display: inline-block; margin-left: 10px; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .04em; vertical-align: middle; cursor: help; }
+.in-sem-ok { background: #dcfce7; color: #166534; }
+.in-sem-meio { background: #fef3c7; color: #92400e; }
+.in-sem-ruim { background: #fee2e2; color: #b91c1c; }
+.in-prev-ritmo { margin-top: 4px; padding-top: 4px; border-top: 1px solid #e2e8f0; }
+.in-prev-ritmo b { color: var(--texto); font-variant-numeric: tabular-nums; }
+
+/* ---------- indicadores do processo (4 quadros abaixo do bloco principal) ---------- */
+.in-ind { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.in-ind-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 14px; border: 1px solid var(--borda); border-radius: 10px; background: var(--card, #fff); color: var(--texto); text-decoration: none; }
+a.in-ind-t:hover { border-color: var(--primaria); background: #f8fbff; }
+a.in-ind-t:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.in-ind-rot { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.in-ind-t > b { font-size: 26px; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.in-ind-t > small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Por semana (gráfico) e De onde vêm (canais) ---------- */
+.in-card-sem { grid-column: span 2; }
+.in-sem-wrap { position: relative; height: 230px; }
+.dr-tab.in-tab-can { grid-template-columns: minmax(0, 1fr) 40px 40px 44px; gap: 8px; }
+.dr-tab.in-tab-can > b { display: block; font-weight: 500; }
+.dr-tab.in-tab-can > b i { font-style: normal; color: #d97706; cursor: help; }
+.dr-tab.in-tab-can > b .dr-barra { display: block; height: 4px; margin-top: 4px; }
+.in-can-melhor > b { font-weight: 700 !important; }
+
+/* ---------- Comparado com a safra passada ---------- */
+.in-safra { padding: 14px 16px; }
+.in-saf { display: grid; grid-template-columns: minmax(0, 1.7fr) repeat(4, minmax(0, 1fr)); gap: 12px 22px; align-items: start; }
+.in-saf-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; border-left: 3px solid var(--primaria-clara, #dbeafe); padding-left: 10px; }
+.in-saf-t > b { font-size: 22px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.in-saf-t > b span { font-size: 13px; font-weight: 500; color: var(--muted); }
+.in-saf-t > small { font-size: 12.5px; color: var(--muted); }
+.in-saf-principal .dr-barra { margin: 5px 0 3px; height: 8px; }
+.in-saf-dif { font-style: normal; font-size: 12px; font-weight: 600; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+
+/* ---------- Relatórios: lista em dois grupos ---------- */
+.in-rel-grupo { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.in-rel-grupo > span { flex: 0 0 104px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+
+/* ---------- Contratações: faixa "Por cargo" e títulos que ordenam ---------- */
+.ct-cargos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 18px; border-bottom: 1px solid var(--borda); }
+.ct-cargos[hidden] { display: none; }
+.ct-cargos-rot { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-right: 4px; }
+.ct-cargo { appearance: none; border: 1px solid var(--borda); background: #fff; color: var(--texto); font: inherit; font-size: 12.5px; padding: 3px 10px; border-radius: 999px; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-cargo b { font-variant-numeric: tabular-nums; color: var(--primaria); margin-left: 2px; }
+.ct-cargo:hover { border-color: var(--primaria); }
+.ct-cargo:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.ct-cargo.ativo { border-color: var(--primaria); background: var(--primaria-clara); color: var(--primaria-escura); box-shadow: inset 0 0 0 1px var(--primaria); }
+.ct-cab > .ct-ord { appearance: none; border: 0; background: none; padding: 2px 0; margin: 0; font: inherit; font-weight: 700; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; text-align: left; min-width: 0; border-radius: 4px; white-space: nowrap; }
+.ct-cab > .ct-ord:hover, .ct-cab > .ct-ord.ativo { color: var(--primaria); }
+.ct-cab > .ct-ord:focus-visible { outline: 2px solid var(--primaria); outline-offset: 1px; }
+.ct-cab > .ct-ord i { font-style: normal; margin-left: 3px; }
+
+@media (max-width: 1100px) { .in-saf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .in-saf-principal { grid-column: 1 / -1; } }
+@media (max-width: 760px) {
+  .in-ind { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .in-card-sem { grid-column: auto; }
+  .in-rel-grupo > span { flex-basis: 100%; }
+}
+@media print {
+  .in-ind-t, .in-saf-t { break-inside: avoid; }
+  .in-card-sem { grid-column: auto; }
+}

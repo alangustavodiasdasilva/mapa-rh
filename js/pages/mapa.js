@@ -2,6 +2,7 @@ Paginas.mapa = {
   titulo: 'Mapa',
   render(el) {
     el.innerHTML = `
+      <div class="mv-imp-cab" id="mv-imp-cab" aria-hidden="true"></div>
       <div class="mapa-wrap">
         <div id="mapa"></div>
         <div class="card mapa-controles nao-imprimir" id="controles">
@@ -26,13 +27,15 @@ Paginas.mapa = {
               </select></label>
           </details>
           <details class="mpn-grupo" data-g="vagas" open>
-            <summary><span>Vagas</span><small id="c-falta-selo"></small></summary>
+            <summary><span>Vagas e candidatos</span><small id="c-falta-selo"></small></summary>
             <label title="Cada distrito pintado pela parte do pedido já preenchida nas vagas aprovadas (verde = completo, vermelho = falta muito)"><input type="checkbox" id="c-falta"> <span class="ponto-cor" style="background:linear-gradient(90deg,#dc2626,#16a34a)"></span>Falta contratar <span class="muted small">(por distrito)</span></label>
             <div id="c-falta-opcoes" class="mpn-falta" hidden>
               <select id="c-falta-rh" aria-label="Filtrar as vagas por RH responsável" hidden></select>
               <select id="c-falta-vaga" aria-label="Filtrar por vaga"></select>
               <div id="c-falta-resumo" class="mpn-falta-resumo"></div>
             </div>
+            <label id="c-cand-wrap" title="Bolha vazada com quantos candidatos ainda em processo (triagem, entrevista, documentos) são de cada cidade" hidden><input type="checkbox" id="c-cand"> <span class="mv-cand-mini"></span>Candidatos em processo</label>
+            <div id="c-cand-resumo" class="mv-cand-resumo muted small" hidden></div>
           </details>
           <details class="mpn-grupo" data-g="regioes" data-conta open>
             <summary><span>Regiões</span><small></small></summary>
@@ -63,6 +66,7 @@ Paginas.mapa = {
             <select id="c-modo-calor" class="sub" style="width:calc(100% - 18px)" hidden>
               <option value="origem">Concentração por cidade de origem</option>
               <option value="atuacao">Concentração por cidade de atuação</option>
+              <option value="candidatos" hidden disabled>Candidatos em processo (cidade de origem)</option>
             </select>
           </details>
           <details class="mpn-grupo" data-g="fundo">
@@ -77,11 +81,14 @@ Paginas.mapa = {
             <button class="btn btn-pequeno" id="c-ajustar" title="Enquadrar tudo, inclusive origens distantes">Ajustar zoom</button>
             <button class="btn btn-pequeno" id="c-brasil">Ver Brasil</button>
             <button class="btn btn-pequeno" id="c-tela-cheia" title="Mapa ocupando a tela inteira (Esc para sair)">Tela cheia</button>
+            <button class="btn btn-pequeno" id="c-medir" title="Clique em dois pontos do mapa para saber a distância em linha reta e abrir a rota de carro" aria-pressed="false">Medir distância</button>
+            <button class="btn btn-pequeno" id="c-imprimir" title="Imprime (ou salva em PDF) o mapa como está na tela, com a legenda e o filtro">Imprimir mapa</button>
           </div>
           </div>
         </div>
         <div class="card mapa-legenda nao-imprimir" id="legenda"></div>
         <div class="mpn-rodape nao-imprimir" aria-live="polite">
+          <div class="mv-medir-aviso" id="mv-medir-aviso" hidden></div>
           <div class="cidade-hover" id="cidade-hover" hidden></div>
           <div class="malha-status" id="malha-status" hidden></div>
         </div>
@@ -341,6 +348,9 @@ Paginas.mapa = {
     mapa.createPane('origens').style.zIndex = 440;
     mapa.createPane('destaque').style.zIndex = 445;
     const camadaDestaque = L.layerGroup().addTo(mapa); // divisa do município clicado
+    const camadaRaio = L.layerGroup().addTo(mapa);     // círculo do "buscar gente por perto" (ficha da cidade)
+    // rota de carro no Google Maps entre dois pontos (só as coordenadas das cidades vão no endereço)
+    const urlRota = (a, b) => `https://www.google.com/maps/dir/?api=1&origin=${(+a.lat).toFixed(5)},${(+a.lng).toFixed(5)}&destination=${(+b.lat).toFixed(5)},${(+b.lng).toFixed(5)}&travelmode=driving`;
     const pontosFoco = [];                          // área de trabalho (atuação, distritos, silos) para o enquadramento inicial
     const pontosDistritos = [];                     // só as cidades dos distritos: se existirem, são o enquadramento inicial
     const DIST_AGRUPAR = 34;                        // px
@@ -515,7 +525,7 @@ Paginas.mapa = {
       foco = chaves ? new Set(chaves) : null;
       for (const pm of polysMalha) pm.poly.setStyle(estiloMalha(pm.cidadeId, pm.normal));
       if (typeof ajustarRotulos === 'function') ajustarRotulos();
-      if (foco) { if (camadas.calor) { mapa.removeLayer(camadas.calor); camadas.calor = null; } }
+      if (foco) { if (camadas.calor) { mapa.removeLayer(camadas.calor); camadas.calor = null; } atualizarLegendaCalor(); }
       else if (typeof montarCalor === 'function') montarCalor();
       desenharOrigens();
       // com uma cidade selecionada o mapa mostra só o que é dela: as cidades ligadas a ela, as unidades e a agência do SINE dela
@@ -871,9 +881,6 @@ Paginas.mapa = {
       const lg = el.querySelector('#legenda-falta'); if (lg) lg.hidden = !e.target.checked;
       if (e.target.checked) { camadaFalta.addTo(mapa); montarCamadaFalta(); } else { montandoFalta++; mapa.removeLayer(camadaFalta); const selo = el.querySelector('#c-falta-selo'); if (selo) selo.textContent = ''; }
     });
-    el.querySelector('#c-falta').addEventListener('change', e => {
-      if (e.target.checked) { camadaFalta.addTo(mapa); montarCamadaFalta(); } else { montandoFalta++; mapa.removeLayer(camadaFalta); }
-    });
 
     // ---------- limites dos estados (malha do IBGE, guardada no navegador) ----------
     async function carregarLimite(uf) {
@@ -935,7 +942,7 @@ Paginas.mapa = {
       seqPainel++;
       olharCidade('');
       const estavaAberto = !painel.hidden;
-      painel.hidden = true; painel.innerHTML = ''; camadaDestaque.clearLayers();
+      painel.hidden = true; painel.innerHTML = ''; camadaDestaque.clearLayers(); camadaRaio.clearLayers();
       wrapMapa.classList.remove('painel-aberto');
       const tinhaLinhas = !!linhasSelecionadas;
       linhasSelecionadas = null;
@@ -951,6 +958,7 @@ Paginas.mapa = {
     // liga os botões do painel, mostra o painel e passa o foco do teclado para ele; devolve o número desta abertura
     function ligarFechar() {
       painel.querySelector('#painel-fechar').addEventListener('click', fecharPainel);
+      camadaRaio.clearLayers(); // o círculo de busca é da ficha anterior
       if (painel.hidden) focoAntesPainel = document.activeElement;
       painel.hidden = false;
       wrapMapa.classList.add('painel-aberto');
@@ -962,7 +970,9 @@ Paginas.mapa = {
     }
     // Esc fecha o painel (se não houver uma janela aberta por cima)
     function aoTeclar(e) {
-      if (e.key !== 'Escape' || painel.hidden || document.querySelector('.modal-overlay')) return;
+      if (e.key !== 'Escape' || document.querySelector('.modal-overlay')) return;
+      if (medindo) { pararMedida(); return; }
+      if (painel.hidden) return;
       fecharPainel();
     }
     document.addEventListener('keydown', aoTeclar);
@@ -1105,7 +1115,7 @@ Paginas.mapa = {
           <div class="ficha-dado"><div class="rotulo"><span class="ponto-cor" style="background:${COR_ORIGEM}"></span>De onde vêm</div><div class="valor" style="font-size:16px"><a href="#" class="p-origem" data-id="${o.id}">${UI.esc(o.nome)}/${o.uf}</a></div><div class="muted small">${regiao(infoO)}</div></div>
           <div class="ficha-dado"><div class="rotulo"><span class="marc-atuacao mini"></span>Onde trabalham</div><div class="valor" style="font-size:16px">${f.atuacaoMovel ? destNome : `<a href="#" class="p-destino" data-id="${f.cidadeAtuacao.id}">${destNome}</a>`}</div><div class="muted small">${f.atuacaoMovel ? 'cadastro antigo (MÓVEL)' : regiao(infoA)}</div></div>
         </div>
-        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button></div>` +
+        <div class="linha" style="gap:6px;flex-wrap:wrap;margin-bottom:10px"><button class="btn btn-pequeno btn-primario" id="fluxo-enquadrar">Enquadrar os dois pontos</button>${f.atuacaoMovel ? '' : `<a class="btn btn-pequeno" href="${urlRota(o, f.cidadeAtuacao)}" target="_blank" rel="noopener" title="Abre o Google Maps com o caminho de carro e o tempo de viagem">Rota de carro ↗</a>`}</div>` +
         listaPessoas(lista, { origem: false, destino: false, cadastro: true });
       ligarFechar(); ligarListas();
       destacarLinhas([linha]);
@@ -1198,6 +1208,10 @@ Paginas.mapa = {
             <button class="ficha-dado ficha-botao" id="ficha-ver-atuacao" ${a ? '' : 'disabled'}><div class="rotulo"><span class="marc-atuacao mini"></span>Trabalham aqui</div><div class="valor">${a ? UI.fmtNum(a.total) : 0}</div><div class="muted small">${a ? `vêm de ${new Set(a.fluxos.map(f => f.cidadeOrigem.id)).size} cidade(s) · ver quem` : 'ninguém trabalha aqui'}</div></button>
             <button class="ficha-dado ficha-botao" id="ficha-ver-origem" ${g ? '' : 'disabled'}><div class="rotulo"><span class="bolha-origem mini">&nbsp;</span>São daqui</div><div class="valor">${g ? UI.fmtNum(g.total) : 0}</div><div class="muted small">${g ? `${resumoDestinos(g).replace(/<[^>]+>/g, '')} · ver quem` : 'ninguém contratado daqui'}</div></button>
           </div>
+          <div class="ficha-secao">Buscar gente por perto <span class="muted small">raio em linha reta</span></div>
+          <div class="mv-raio-botoes" role="group" aria-label="Raio de busca em volta de ${UI.esc(cid.nome)}">${[30, 50, 100].map(k => `<button type="button" class="btn btn-pequeno mv-raio-bt" data-km="${k}" aria-pressed="false">${k} km</button>`).join('')}<span class="muted small">cidades em volta: quem já veio de lá, quem está em processo e onde tem SINE</span></div>
+          <div id="ficha-raio"></div>
+          ${blocoUnidadesPerto(cid)}
           <div class="ficha-secao">Dados do município <span class="muted small">IBGE</span></div>
           <div class="ficha-grade" id="ficha-ibge"><span class="muted small">Buscando no IBGE…</span></div>
           <div class="muted small" style="margin-top:4px">O IBGE não divulga taxa de desemprego por município: use a % de população ocupada (empregos formais) como referência e confirme no SINE.</div>
@@ -1245,6 +1259,7 @@ Paginas.mapa = {
       }
       aplicarFoco([cid.id, ...destinosDe(fluxos), ...(a ? a.fluxos.map(f => f.cidadeOrigem.id) : [])]);
       if (a && !fluxosOrigem) destacarLinhas(linhasPorChave.get('A:' + cid.id) || []);
+      painel.querySelectorAll('.mv-raio-bt').forEach(b => b.addEventListener('click', () => mostrarRaio(cid, +b.dataset.km)));
       const bpc = painel.querySelector('#ficha-procurar-candidatos');
       if (bpc) bpc.addEventListener('click', e => { e.preventDefault(); UI.modalBuscaCandidatos(cid.nome, cid.uf); });
       const bm = painel.querySelector('#ficha-micro');
@@ -1398,6 +1413,7 @@ Paginas.mapa = {
     // clique em qualquer lugar do mapa: numa linha, mostra o trajeto; fora, identifica o município (malha do IBGE) e abre a ficha
     let identificando = false;
     mapa.on('click', async e => {
+      if (medindo) { cliqueMedida(e); return; }
       const l = e.layerPoint && linhaNoPonto(e.layerPoint);
       if (l) { abrirPainelFluxo(l._fluxo, l); return; }
       fecharPainel();
@@ -1486,16 +1502,267 @@ Paginas.mapa = {
     });
     mapa.on('mouseout', () => { hoverEl.hidden = true; hoverCodigo = ''; });
 
+    // ---------- candidatos em processo por cidade de origem (camada opcional; só para quem vê Candidatos) ----------
+    // A lista é a mesma da tela Candidatos (o banco já entrega só o que o usuário pode ver); nada é baixado ao abrir o mapa.
+    const COR_CAND = '#0e7490';
+    const ETAPA_ROT = { triagem: 'Triagem', entrevista: 'Entrevista', documentos: 'Documentos' };
+    const camadaCand = L.layerGroup();
+    const caixaCand = el.querySelector('#c-cand'), resumoCand = el.querySelector('#c-cand-resumo');
+    const candLigada = () => !!(temNuvemRh && caixaCand && caixaCand.checked);
+    let memoCand = null;   // refaz a conta só quando a lista guardada de algum projeto muda
+    function candidatosPorCidade() {
+      const r = { grupos: new Map(), semCidade: 0, total: 0, carregado: false };
+      if (!temNuvemRh) return r;
+      const listas = projetos.map(p => Nuvem.rh.emCache(p.id));
+      if (memoCand && memoCand.listas.length === listas.length && memoCand.listas.every((l, i) => l === listas[i])) return memoCand.r;
+      r.carregado = listas.some(Boolean);
+      const fT = App.filtros.tipo, fD = App.filtros.distritoId;
+      for (const l of listas) for (const x of (l || [])) {
+        if (x.situacao !== 'em_andamento' || !x.pessoa) continue;
+        if (fT && x.tipo !== fT) continue;
+        if (fD && x.distrito_id !== fD) continue;
+        r.total++;
+        const c = x.pessoa.cidade_origem_id ? Store.cidade(x.pessoa.cidade_origem_id) : null;
+        if (!c || c.lat == null) { r.semCidade++; continue; }
+        let g = r.grupos.get(c.id);
+        if (!g) { g = { cidade: c, lista: [] }; r.grupos.set(c.id, g); }
+        g.lista.push(x);
+      }
+      memoCand = { listas, r };
+      return r;
+    }
+    // busca as listas que ainda não estão guardadas (só quando o usuário liga a camada ou pede o raio); devolve true se chegou coisa nova
+    let buscandoCand = null;
+    function garantirCandidatos() {
+      if (!temNuvemRh) return Promise.resolve(false);
+      const faltam = projetos.filter(p => p.ativo !== false && !Nuvem.rh.emCache(p.id));
+      if (!faltam.length) return Promise.resolve(false);
+      if (!buscandoCand) buscandoCand = Promise.all(faltam.map(p => Nuvem.rh.listar(p.id).catch(() => null))).then(() => { buscandoCand = null; return true; });
+      return buscandoCand;
+    }
+    const resumoEtapas = lista => ['triagem', 'entrevista', 'documentos'].map(e => [ETAPA_ROT[e], lista.filter(x => x.etapa === e).length]).filter(x => x[1]).map(x => `${x[0]} ${x[1]}`).join(' · ');
+    function desenharCandidatos() {
+      camadaCand.clearLayers();
+      const r = candidatosPorCidade();
+      if (resumoCand) resumoCand.textContent = !r.carregado && buscandoCand ? 'Carregando os candidatos…'
+        : !r.total ? 'Nenhum candidato em processo neste filtro.'
+        : `${UI.fmtNum(r.total)} em processo · ${r.grupos.size} ${r.grupos.size === 1 ? 'cidade' : 'cidades'}${r.semCidade ? ` · ${r.semCidade} sem cidade de origem (fora do mapa)` : ''}`;
+      const itens = [...r.grupos.values()].sort((a, b) => b.lista.length - a.lista.length);
+      const origensNaTela = el.querySelector('#c-origens').checked && estilo === 'bolhas';
+      for (const gr of agruparPorProximidade(itens, g => [g.cidade.lat, g.cidade.lng], DIST_AGRUPAR)) {
+        const lista = gr.itens.flatMap(g => g.lista), n = lista.length, varias = gr.itens.length > 1;
+        const c0 = gr.itens[0].cidade;
+        const raio = Math.max(9, Math.round(Math.min(18, 7 + 1.8 * Math.sqrt(n)) * fator()));
+        // fica à ESQUERDA do losango azul / da bolha laranja da mesma cidade (a laranja fica à direita), sem cobrir nenhum dos dois
+        const d = deslocamentoOrigem(c0.id, raio) || (origensNaTela && porOrigem.has(c0.id) && (!foco || foco.has(c0.id)) ? raioOrigem(porOrigem.get(c0.id).total) + raio + 2 : 0);
+        const icone = L.divIcon({ className: 'bolha-origem-wrap', html: `<div class="mv-cand-bolha${varias ? ' varias' : ''}" style="width:${2 * raio}px;height:${2 * raio}px;line-height:${2 * raio - 4}px;font-size:${raio >= 12 ? 11 : 10}px">${n}</div>`, iconSize: [2 * raio, 2 * raio], iconAnchor: [raio + d, raio] });
+        const tip = balao({ cor: COR_CAND, titulo: varias ? `${gr.itens.length} cidades próximas` : `${UI.esc(c0.nome)}/${c0.uf}`, tipo: 'em processo',
+          sub: `<b>${n}</b> ${n === 1 ? 'candidato ainda não admitido' : 'candidatos ainda não admitidos'}${resumoEtapas(lista) ? '<br>' + resumoEtapas(lista) : ''}` + (varias ? '<br>' + gr.itens.slice(0, 5).map(g => `${UI.esc(g.cidade.nome)} (${g.lista.length})`).join(' · ') + (gr.itens.length > 5 ? ' …' : '') : ''),
+          dica: 'clique para ver quem são' });
+        const m = L.marker([c0.lat, c0.lng], { icon: icone, pane: 'origens', keyboard: false }).bindTooltip(tip, { ...TT, offset: [-d, -raio - 2] });
+        m.on('click', () => abrirPainelCandidatos(gr.itens));
+        camadaCand.addLayer(m);
+      }
+    }
+    // Bolha vazada: quem ainda está em processo e é desta cidade (ou das cidades juntas neste zoom)
+    function abrirPainelCandidatos(grupos) {
+      const lista = grupos.flatMap(g => g.lista);
+      const uma = grupos.length === 1 ? grupos[0].cidade : null;
+      if (uma) olharCidade(uma.id);
+      const ordem = { documentos: 0, entrevista: 1, triagem: 2 };
+      const nomeC = id => { const c = Store.cidade(id); return c ? `${UI.esc(c.nome)}/${c.uf}` : ''; };
+      painel.innerHTML = cabecalhoPainel(`<span class="mv-cand-bolha mv-cand-leg">${lista.length}</span>Em processo — ${uma ? UI.esc(uma.nome) : grupos.length + ' cidades próximas'}`,
+        `<b>${lista.length}</b> ${lista.length === 1 ? 'candidato ainda não admitido é' : 'candidatos ainda não admitidos são'} ${uma ? `de ${UI.esc(uma.nome)}/${uma.uf}` : 'destas cidades vizinhas (juntas numa bolha só neste zoom)'}${resumoEtapas(lista) ? ' · ' + resumoEtapas(lista) : ''}`) +
+        (uma ? `<div class="linha" style="gap:6px;margin-bottom:10px;flex-wrap:wrap">${botaoFicha(uma)}</div>` : '') +
+        UI.tabela({
+          vazio: 'Ninguém em processo aqui.',
+          colunas: [
+            { titulo: 'Pessoa', render: x => {
+              const v = x.vaga_id ? Store.vaga(x.vaga_id) : null, rh = x.analista_login ? Store.usuarioPorLogin(x.analista_login) : null;
+              const sub = [UI.esc((v && v.titulo) || x.cargo || ''), uma ? '' : nomeC(x.pessoa.cidade_origem_id)].filter(Boolean).join(' · ');
+              return `<div class="mp-pessoa">${rh ? `<span title="RH: ${UI.esc(rh.nome)}">${UI.avatar(rh, 24)}</span>` : ''}<div><div class="mp-pessoa-nome"><a href="#" class="p-cand" data-nome="${UI.esc(x.pessoa.nome)}" data-proj="${UI.esc(x.projeto_id)}" title="Abrir em Candidatos">${UI.esc(x.pessoa.nome)}</a></div>${sub ? `<div class="muted small">${sub}</div>` : ''}</div></div>`;
+            } },
+            { titulo: 'Etapa', render: x => `<span class="badge badge-azul">${UI.esc(ETAPA_ROT[x.etapa] || x.etapa || '—')}</span>` },
+            { titulo: 'Tipo', render: x => UI.badgeTipo(x.tipo) },
+            ...(lista.some(x => x.distancia_km) ? [{ titulo: 'Dist.', classe: 'direita', render: x => x.distancia_km ? UI.fmtKm(x.distancia_km) : '—' }] : [])
+          ],
+          linhas: lista.slice().sort((a, b) => (ordem[a.etapa] ?? 9) - (ordem[b.etapa] ?? 9) || String(a.pessoa.nome).localeCompare(String(b.pessoa.nome), 'pt-BR')).slice(0, 300)
+        });
+      ligarFechar();
+      // este painel não esconde nada do mapa: tira o aviso de "mostrando só a seleção" e volta a mostrar tudo
+      const av = painel.querySelector('.painel-foco-aviso'); if (av) av.remove();
+      linhasSelecionadas = null; if (foco) aplicarFoco(null); else aplicarModoLinhas();
+      if (uma) { ligarFicha(uma); olharCidade(uma.id); }
+      painel.querySelectorAll('.p-cand').forEach(a => a.addEventListener('click', e => { e.preventDefault();
+        try { sessionStorage.setItem('maparh:cand-busca', a.dataset.nome); localStorage.setItem('maparh:cand-projeto', a.dataset.proj); } catch (er) { /* ok */ }
+        App.ir('candidatos'); }));
+    }
+    if (temNuvemRh) {
+      el.querySelector('#c-cand-wrap').hidden = false;
+      const op = el.querySelector('#c-modo-calor option[value="candidatos"]'); if (op) { op.hidden = false; op.disabled = false; }
+    }
+    caixaCand.addEventListener('change', () => {
+      const on = candLigada();
+      resumoCand.hidden = !on;
+      const lg = el.querySelector('#legenda-cand'); if (lg) lg.hidden = !on;
+      if (!on) { mapa.removeLayer(camadaCand); return; }
+      const pedido = garantirCandidatos();   // antes de desenhar, para o resumo dizer "carregando"
+      camadaCand.addTo(mapa); desenharCandidatos();
+      pedido.then(novo => { if (ativo && novo && candLigada()) desenharCandidatos(); });
+    });
+    // as bolhas vazadas se encostam na laranja: ao ligar/desligar as origens ou trocar o estilo/tamanho, reposiciona
+    for (const id of ['#c-origens', '#c-estilo', '#c-tamanho']) el.querySelector(id).addEventListener('change', () => { if (candLigada()) desenharCandidatos(); });
+
+    // ---------- buscar gente por perto: raio em volta da cidade (ficha da cidade) ----------
+    // Três unidades PDR mais próximas da cidade, com a rota de carro (para saber até onde a pessoa teria de ir)
+    function blocoUnidadesPerto(cid) {
+      if (cid.lat == null) return '';
+      const perto = App.silosFiltrados().filter(s => s.lat != null && s.lng != null).map(s => ({ s, km: Store.distanciaKm(cid, s) })).sort((a, b) => a.km - b.km).slice(0, 3).filter(x => x.km <= 250);
+      if (!perto.length) return '';
+      return `<div class="ficha-secao">Unidades mais próximas <span class="muted small">em linha reta</span></div><div class="mv-unid">` +
+        perto.map(x => `<div class="mv-unid-linha"><span class="mv-unid-nome" title="${UI.esc(x.s.nome)}">🌾 ${UI.esc(x.s.nome)}${x.s.cidade && Store.normalizar(x.s.cidade) !== Store.normalizar(cid.nome) ? ` <span class="muted small">· ${UI.esc(x.s.cidade)}</span>` : ''}</span><b>${x.km < 1 ? 'na cidade' : UI.fmtKm(x.km)}</b><a href="${urlRota(cid, x.s)}" target="_blank" rel="noopener" title="Caminho de carro de ${UI.esc(cid.nome)} até a unidade, com o tempo de viagem">rota ↗</a></div>`).join('') + '</div>';
+    }
+    let indiceSine = null, indiceSineDe = null;   // 'UF|nome' das cidades com agência (refeito se a lista de agências mudar)
+    function temSine(c) {
+      const ags = Store.agenciasSine();
+      if (indiceSineDe !== ags || !indiceSine || indiceSine.size0 !== ags.length) { indiceSine = new Set(ags.map(a => `${ufAgencia(a)}|${Store.normalizar(a.cidade)}`)); indiceSine.size0 = ags.length; indiceSineDe = ags; }
+      return indiceSine.has(`${c.uf}|${Store.normalizar(c.nome)}`);
+    }
+    function mostrarRaio(cid, km) {
+      const alvo = painel.querySelector('#ficha-raio');
+      if (!alvo || cid.lat == null) return;
+      painel.querySelectorAll('.mv-raio-bt').forEach(b => { const on = +b.dataset.km === km; b.classList.toggle('btn-primario', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      camadaRaio.clearLayers();
+      const circ = L.circle([cid.lat, cid.lng], { radius: km * 1000, pane: 'destaque', interactive: false, color: '#1d4ed8', weight: 2, dashArray: '7 6', fillColor: '#3b82f6', fillOpacity: 0.07 });
+      camadaRaio.addLayer(circ);
+      const topo = L.latLng(cid.lat, cid.lng).toBounds(km * 2000).getNorth();
+      camadaRaio.addLayer(L.marker([topo, cid.lng], { pane: 'rotulos', interactive: false, keyboard: false, icon: L.divIcon({ className: 'rotulo-micro', html: `<span class="mv-raio-rot">${km} km de ${UI.esc(cid.nome)}</span>`, iconSize: [0, 0], iconAnchor: [0, 0] }) }));
+      // o raio serve para ver o entorno: volta a mostrar tudo (bolhas e losangos das cidades vizinhas)
+      const av = painel.querySelector('.painel-foco-aviso'); if (av) av.remove();
+      linhasSelecionadas = null; if (foco) aplicarFoco(null); else aplicarModoLinhas();
+      const estreita = telaEstreita();
+      mapa.fitBounds(L.latLng(cid.lat, cid.lng).toBounds(km * 2000), estreita ? { padding: [10, 10] } : { paddingTopLeft: [painel.offsetWidth + 24, 56], paddingBottomRight: [(el.querySelector('#controles').offsetWidth || 0) + 24, 24] });
+      const pintar = () => {
+        if (!painel.contains(alvo)) return;
+        const cand = candidatosPorCidade();
+        const todas = [];
+        for (const c of Store.cidades()) {
+          if (c.id === cid.id || c.lat == null) continue;
+          if (Math.abs(c.lat - cid.lat) > km / 100) continue;   // 1 grau de latitude ≈ 111 km: descarta o grosso sem fazer a conta
+          const d = Store.distanciaKm(cid, c);
+          if (d <= km) todas.push({ c, d, contr: (porOrigem.get(c.id) || { total: 0 }).total, proc: cand.grupos.has(c.id) ? cand.grupos.get(c.id).lista.length : 0, sine: temSine(c) });
+        }
+        todas.sort((a, b) => a.d - b.d);
+        // primeiro as cidades que já deram gente (contratada ou em processo), da mais perto para a mais longe; depois as que só têm SINE
+        const uteis = todas.filter(x => x.contr || x.proc || x.sine).sort((a, b) => (b.contr || b.proc ? 1 : 0) - (a.contr || a.proc ? 1 : 0) || a.d - b.d), resto = todas.filter(x => !(x.contr || x.proc || x.sine));
+        const tContr = uteis.reduce((n, x) => n + x.contr, 0), tProc = uteis.reduce((n, x) => n + x.proc, 0), nSine = uteis.filter(x => x.sine).length;
+        const elo = x => `<a href="#" class="mv-raio-cid" data-id="${UI.esc(x.c.id)}" title="Abrir a ficha de ${UI.esc(x.c.nome)}">${UI.esc(x.c.nome)}${x.c.uf !== cid.uf ? '/' + x.c.uf : ''}</a>`;
+        alvo.innerHTML = `<div class="mv-raio-resumo">Até <b>${km} km</b>: <b>${todas.length}</b> ${todas.length === 1 ? 'cidade' : 'cidades'} · <b>${UI.fmtNum(tContr)}</b> já ${tContr === 1 ? 'veio' : 'vieram'} delas` +
+          (temNuvemRh ? ` · <b>${UI.fmtNum(tProc)}</b> em processo` : '') + ` · <b>${nSine}</b> com SINE</div>` +
+          (uteis.length ? UI.tabela({
+            colunas: [
+              { titulo: 'Cidade', render: elo },
+              { titulo: 'Dist.', classe: 'direita', render: x => UI.fmtKm(x.d) },
+              { titulo: 'Já vieram', classe: 'direita', render: x => x.contr ? `<b>${x.contr}</b>` : '<span class="muted">—</span>' },
+              ...(temNuvemRh ? [{ titulo: 'Em processo', classe: 'direita', render: x => x.proc ? `<b>${x.proc}</b>` : '<span class="muted">—</span>' }] : []),
+              { titulo: 'SINE', classe: 'direita', render: x => x.sine ? '<span class="sine-mini" title="Tem agência do SINE">S</span>' : '<span class="muted">—</span>' }
+            ],
+            linhas: uteis.slice(0, 40)
+          }) + (uteis.length > 40 ? `<div class="muted small" style="margin-top:4px">Mostrando as 40 mais próximas de ${uteis.length}.</div>` : '')
+            : '<div class="muted small">Nenhuma cidade deste raio tem contratação, candidato em processo ou agência do SINE ainda.</div>') +
+          (resto.length ? `<details class="mv-raio-resto"><summary class="small">${uteis.length ? 'Mais' : 'Ver as'} ${resto.length} ${resto.length === 1 ? 'cidade' : 'cidades'} no raio, ainda sem ninguém</summary><div class="mv-raio-chips">${resto.slice(0, 120).map(x => `<span>${elo(x)} <span class="muted">${Math.round(x.d)} km</span></span>`).join('')}</div></details>` : '');
+        alvo.querySelectorAll('.mv-raio-cid').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const c = Store.cidade(a.dataset.id); if (c) abrirPainelCidade(c, {}); }));
+      };
+      pintar();
+      garantirCandidatos().then(novo => { if (ativo && novo) pintar(); });
+    }
+
+    // ---------- medir distância: dois cliques no mapa (linha reta + rota de carro) ----------
+    let medindo = false, pontosMedida = [];
+    const camadaMedida = L.layerGroup().addTo(mapa);
+    const btMedir = el.querySelector('#c-medir'), avisoMedir = el.querySelector('#mv-medir-aviso');
+    const avisarMedida = txt => { avisoMedir.textContent = txt || ''; avisoMedir.hidden = !txt; };
+    function nomeNoPonto(ll) {
+      try {
+        const ufs = Malha.ufsCarregadas().filter(uf => Malha.malhaPronta(uf));
+        const m = ufs.length ? Malha.municipioNoPontoCarregado(ll.lat, ll.lng, ufs) : null;
+        return m ? `${m.nome}/${m.uf}` : '';
+      } catch (e) { return ''; }
+    }
+    function pararMedida() {
+      medindo = false; pontosMedida = []; camadaMedida.clearLayers();
+      mapa.getContainer().classList.remove('mapa-medindo');
+      btMedir.textContent = 'Medir distância'; btMedir.classList.remove('btn-primario'); btMedir.setAttribute('aria-pressed', 'false');
+      avisarMedida('');
+    }
+    function iniciarMedida() {
+      fecharPainel();
+      medindo = true; pontosMedida = []; camadaMedida.clearLayers();
+      mapa.getContainer().classList.add('mapa-medindo');   // os marcadores deixam o clique passar para o mapa
+      btMedir.textContent = 'Parar de medir'; btMedir.classList.add('btn-primario'); btMedir.setAttribute('aria-pressed', 'true');
+      avisarMedida('Medir distância: clique no ponto de partida · Esc para sair');
+    }
+    function cliqueMedida(e) {
+      if (pontosMedida.length >= 2) { pontosMedida = []; camadaMedida.clearLayers(); }
+      pontosMedida.push(e.latlng);
+      camadaMedida.addLayer(L.circleMarker(e.latlng, { pane: 'destaque', radius: 5, color: '#fff', weight: 2, fillColor: '#0f172a', fillOpacity: 1, interactive: false }));
+      if (pontosMedida.length === 1) { const n = nomeNoPonto(e.latlng); avisarMedida(`${n ? 'Partida: ' + n + ' · a' : 'A'}gora clique no destino`); return; }
+      const [a, b] = pontosMedida, km = Store.distanciaKm(a, b);
+      const na = nomeNoPonto(a), nb = nomeNoPonto(b);
+      camadaMedida.addLayer(L.polyline([a, b], { pane: 'destaque', color: '#0f172a', weight: 2.5, dashArray: '7 6', interactive: false }));
+      camadaMedida.addLayer(L.popup({ autoClose: false, closeOnClick: false, closeButton: false, className: 'mv-medida-pop', offset: [0, -4] })
+        .setLatLng(b)
+        .setContent(`<div class="mv-medida"><b>${km < 10 ? km.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' km' : UI.fmtKm(km)}</b> em linha reta${na && nb ? `<div class="muted small">${UI.esc(na)} ➜ ${UI.esc(nb)}</div>` : ''}<a href="${urlRota(a, b)}" target="_blank" rel="noopener" title="Abre o Google Maps com o caminho de carro e o tempo de viagem">Rota de carro ↗</a></div>`));
+      avisarMedida('Clique de novo para medir outro trecho · Esc para sair');
+    }
+    btMedir.addEventListener('click', () => { if (medindo) pararMedida(); else iniciarMedida(); });
+
+    // ---------- imprimir o mapa como está na tela (com a legenda e o filtro no cabeçalho) ----------
+    // O mapa é impresso no tamanho que tem na tela e encolhido para caber numa folha A4 deitada (o Leaflet não se redesenha na impressão).
+    let limparImpressao = null;
+    el.querySelector('#c-imprimir').addEventListener('click', () => {
+      if (limparImpressao) limparImpressao();
+      const r = wrapMapa.getBoundingClientRect();
+      const z = Math.min(1, 1040 / r.width, 640 / r.height);
+      const agora = new Date();
+      el.querySelector('#mv-imp-cab').innerHTML = `<b>Mapa de contratações</b><span>${UI.esc(App.descricaoFiltro())}</span><span>${UI.fmtNum(regs.length)} contratação(ões) · impresso em ${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${App.usuario && App.usuario.nome ? ' por ' + UI.esc(App.usuario.nome) : ''}</span>`;
+      wrapMapa.style.setProperty('--mv-imp-w', Math.round(r.width) + 'px');
+      wrapMapa.style.setProperty('--mv-imp-h', Math.round(r.height) + 'px');
+      wrapMapa.style.setProperty('--mv-imp-z', z.toFixed(3));
+      document.body.classList.add('mapa-imprimindo');
+      const folha = document.createElement('style');
+      folha.textContent = '@page { size: A4 landscape; margin: 8mm; }';
+      document.head.appendChild(folha);
+      limparImpressao = () => { document.body.classList.remove('mapa-imprimindo'); folha.remove(); window.removeEventListener('afterprint', limparImpressao); limparImpressao = null; };
+      window.addEventListener('afterprint', limparImpressao);
+      setTimeout(() => { if (ativo) window.print(); else if (limparImpressao) limparImpressao(); }, 60);
+    });
+
     // ---------- mapa de calor ----------
+    function atualizarLegendaCalor() {
+      const alvo = el.querySelector('#legenda-calor');
+      if (!alvo) return;
+      const on = el.querySelector('#c-calor').checked && !foco;
+      alvo.hidden = !on;
+      if (!on) return;
+      const modo = el.querySelector('#c-modo-calor').value;
+      alvo.innerHTML = `<div class="legenda-secao">Mapa de calor</div><div class="mv-calor-escala"><span>pouca gente</span><i></i><span>muita gente</span></div>` +
+        `<div class="muted small">${modo === 'candidatos' ? 'Candidatos em processo, pela cidade de onde são' : modo === 'atuacao' ? 'Contratados, pela cidade onde trabalham' : 'Contratados, pela cidade de onde vêm'}</div>`;
+    }
     function montarCalor() {
       if (camadas.calor) { mapa.removeLayer(camadas.calor); camadas.calor = null; }
-      if (!el.querySelector('#c-calor').checked) return;
+      if (!el.querySelector('#c-calor').checked) { atualizarLegendaCalor(); return; }
       if (typeof L.heatLayer !== 'function') { UI.toast('Mapa de calor indisponível (biblioteca não carregou).', 'aviso'); return; }
       const modo = el.querySelector('#c-modo-calor').value;
-      const fonte = modo === 'atuacao'
+      const fonte = modo === 'candidatos'
+        ? [...candidatosPorCidade().grupos.values()].map(g => ({ lat: g.cidade.lat, lng: g.cidade.lng, total: g.lista.length }))
+        : modo === 'atuacao'
         ? [...porAtuacao.values()].map(a => ({ lat: a.cidade.lat, lng: a.cidade.lng, total: a.total }))
         : [...porOrigem.values()].map(g => ({ lat: g.cidade.lat, lng: g.cidade.lng, total: g.total }));
-      if (!fonte.length) { UI.toast(modo === 'atuacao' ? 'Não há cidades de atuação (só atuação móvel) no filtro atual.' : 'Sem dados para o mapa de calor.', 'aviso'); return; }
+      atualizarLegendaCalor();
+      if (modo === 'candidatos') garantirCandidatos().then(novo => { if (ativo && novo) montarCalor(); });
+      if (!fonte.length && modo === 'candidatos' && buscandoCand) return;   // ainda carregando: redesenha quando chegar
+      if (!fonte.length) { UI.toast(modo === 'candidatos' ? 'Nenhum candidato em processo com cidade de origem neste filtro.' : modo === 'atuacao' ? 'Não há cidades de atuação (só atuação móvel) no filtro atual.' : 'Sem dados para o mapa de calor.', 'aviso'); return; }
       const max = Math.max(...fonte.map(x => x.total));
       camadas.calor = L.heatLayer(fonte.map(x => [x.lat, x.lng, x.total / max]), { radius: 35, blur: 25, maxZoom: 9, max: 1.0, minOpacity: 0.35 }).addTo(mapa);
     }
@@ -1515,9 +1782,11 @@ Paginas.mapa = {
       (qtdSemCidade ? `<div class="legenda-aviso small"><b>${UI.fmtNum(qtdSemCidade)}</b> contratação(ões) sem cidade reconhecida não aparecem no mapa. Corrija a cidade no cadastro ou baixe a lista do IBGE em Cidades.</div>` : '') +
       `<div id="legenda-falta" hidden><div class="legenda-secao">Falta contratar (vagas aprovadas)</div><div class="mpn-escala"><span>falta tudo</span><i></i><span>completo</span></div>` +
       item('<span class="rotulo-falta mpn-rot-ex">faltam n (l/m)</span>', 'Distrito pintado pela parte do pedido já admitida; a etiqueta diz quantos faltam (locais/móveis)') + `</div>` +
+      `<div id="legenda-calor" hidden></div>` +
       `<div class="legenda-secao">Em cada cidade</div>` +
       item('<span class="marc-atuacao mini"><span>n</span></span>', '<b>Trabalham aqui</b> — quantas pessoas trabalham nesta cidade. Clique: quem são e de onde vêm') +
       `<div id="legenda-origens"></div>` +
+      `<div id="legenda-cand" hidden>${item('<span class="mv-cand-bolha mv-cand-leg">n</span>', '<b>Em processo</b> — candidatos ainda não admitidos que são desta cidade (bolha vazada). Clique: quem são e em que etapa estão')}</div>` +
       `<div class="legenda-secao">Ligações</div>` +
       (projetosNaTela.length ? item(`<span class="legenda-traco" style="color:${UI.esc(projetosNaTela.length === 1 ? projetosNaTela[0].cor : '#475569')}"></span>`, '<b>De onde vêm ➜ onde trabalham</b>, na cor do projeto; a seta aponta para o trabalho. Clique na linha para ver o trajeto') +
         (projetosNaTela.length > 1 ? `<div class="legenda-projetos">${projetosNaTela.map(p => `<span title="${UI.esc(Store.rotuloProjeto(p))}">${bola(p.cor || COR_ATUACAO, 9)}${UI.esc(p.nome)}</span>`).join('')}</div>` : '') : '') +
@@ -1708,6 +1977,7 @@ Paginas.mapa = {
         if (estilo === 'bolhas') desenharOrigens();
         renderSilos();
         if (el.querySelector('#c-sine').checked) montarCamadaSine();
+        if (candLigada()) desenharCandidatos();
         atualizarSetas();
         ajustarRotulos();
       });
@@ -1737,6 +2007,7 @@ Paginas.mapa = {
 
     return () => {
       ativo = false;
+      if (limparImpressao) limparImpressao();
       document.removeEventListener('maparh:presenca', aoPresenca);
       if (rafZoom) cancelAnimationFrame(rafZoom);
       document.removeEventListener('fullscreenchange', aoMudarTelaCheia);

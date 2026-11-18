@@ -74,7 +74,7 @@ Paginas.vagas = {
     function pendencias(v) {
       if (!v.aprovada || fechada(v)) return [];
       const l = [];
-      if (noFoco.atrasadas(v)) l.push({ tipo: 'atrasadas', cls: 'ruim', txt: `atrasada ${qtd(v.diasAtraso, 'dia', 'dias')}` });
+      if (noFoco.atrasadas(v)) l.push({ tipo: 'atrasadas', cls: 'ruim', txt: `atrasada ${qtd(v.diasAtraso, 'dia', 'dias')}`, acao: podeEditar ? 'prazo' : '', rot: 'Nova data', sec: true });
       if (noFoco.vence7(v)) { const n = diasAte(v.dataNecessidade); l.push({ tipo: 'vence7', cls: 'alerta', txt: n === 0 ? 'precisa para hoje' : `vence em ${qtd(n, 'dia', 'dias')}` }); }
       if (noFoco.semdiv(v)) l.push({ tipo: 'semdiv', cls: 'alerta', txt: `sem divulgação${v.diasAberta ? ` há ${qtd(v.diasAberta, 'dia', 'dias')}` : ''}`, acao: 'divulgar', rot: 'Divulgar' });
       if (noFoco.semcand(v)) { const d = diasUltimaDivulgacao(v); l.push({ tipo: 'semcand', cls: 'alerta', txt: `ninguém em processo${d ? ` · divulgada há ${qtd(d, 'dia', 'dias')}` : ''}`, acao: 'divulgar', rot: 'Divulgar de novo' }); }
@@ -109,6 +109,52 @@ Paginas.vagas = {
       if (!nomes.length && v.recrutador) nomes.push(v.recrutador);
       return [...new Set(nomes.filter(Boolean))];
     }
+    // ---------- carga de cada RH (para dividir as vagas com justiça) ----------
+    // admin e gestor veem; o RH (analista) só enxerga as vagas dele, então não faz sentido
+    const verCarga = App.usuario.perfil !== 'analista';
+    let cargaAberta = verCarga && guardado('maparh:vagas-carga') === '1';
+    // por login: vagas em andamento, pessoas que faltam, atrasadas e candidatos parados
+    function cargaPorRh(vagas) {
+      const por = new Map(), sem = { vagas: 0, faltam: 0 };
+      const pega = l => { let a = por.get(l); if (!a) { a = { login: l, u: Store.usuarioPorLogin(l), vagas: 0, faltam: 0, atrasadas: 0, parados: 0 }; por.set(l, a); } return a; };
+      for (const v of vagas.filter(naAba.abertas)) {
+        const f = v.contagemCarregada ? v.faltam : v.quantidade;
+        if (!(v.responsaveis || []).length) { sem.vagas++; sem.faltam += f; continue; }
+        for (const l of v.responsaveis) { const a = pega(l); a.vagas++; a.faltam += f; if (v.atrasada) a.atrasadas++; a.parados += parados(v); }
+      }
+      return { por, sem };
+    }
+    function desenharCarga(todas) {
+      const box = q('#vg-carga'), btn = q('#vg-carga-btn');
+      if (!box) return;
+      if (btn) { btn.classList.toggle('on', cargaAberta); btn.setAttribute('aria-expanded', cargaAberta); }
+      if (!cargaAberta) { box.hidden = true; box.innerHTML = ''; return; }
+      const { por, sem } = cargaPorRh(todas);
+      // quem é da equipe e está sem vaga também aparece (é quem pode receber a próxima)
+      for (const u of Store.equipeRh()) if (!por.has(u.login)) por.set(u.login, { login: u.login, u, vagas: 0, faltam: 0, atrasadas: 0, parados: 0 });
+      const l = [...por.values()].sort((a, b) => b.faltam - a.faltam || b.vagas - a.vagas || String(a.u ? a.u.nome : a.login).localeCompare(String(b.u ? b.u.nome : b.login), 'pt-BR'));
+      const max = Math.max(1, ...l.map(a => a.faltam));
+      box.hidden = false;
+      box.innerHTML = `<div class="vgn-carga-cab"><b>Carga por RH</b><span class="muted small">vagas em andamento${App.filtros.projetoId ? ' neste projeto' : ''}; vaga com mais de um RH conta para cada um</span><button type="button" class="btn-link" data-carga-fechar>Fechar</button></div>
+        <div class="vgn-carga-lista">${l.map(a => { const nome = a.u ? a.u.nome : a.login, inativo = a.u && a.u.ativo === false;
+          return `<div class="vgn-carga-linha ${a.vagas ? '' : 'livre'}">
+            <span class="vgn-carga-rh">${UI.avatar(a.u || { nome }, 24)}<b title="${UI.esc(nome)}">${UI.esc(nome)}</b>${inativo ? '<span class="vg-alerta">inativo</span>' : ''}</span>
+            <span class="vgn-carga-num"><b>${a.vagas}</b> ${a.vagas === 1 ? 'vaga' : 'vagas'}</span>
+            <span class="vgn-carga-barra" title="${UI.esc(`${nome}: faltam ${a.faltam} ${a.faltam === 1 ? 'pessoa' : 'pessoas'} nas vagas dele`)}"><i style="width:${Math.round(100 * a.faltam / max)}%"></i><em>faltam <b>${a.faltam}</b></em></span>
+            <span class="vgn-carga-al">${a.atrasadas ? `<span class="vgn-tag ruim">${qtd(a.atrasadas, 'atrasada', 'atrasadas')}</span>` : ''}${a.parados ? `<span class="vgn-tag">${qtd(a.parados, 'parado', 'parados')}</span>` : ''}${!a.vagas ? '<span class="muted small">sem vaga agora</span>' : ''}</span>
+            <span class="vgn-carga-acao">${a.vagas ? `<button type="button" class="btn btn-pequeno" data-carga-rh="${UI.esc(Store.normalizar(nome))}">Ver vagas</button>` : ''}</span>
+          </div>`; }).join('')}
+          ${sem.vagas ? `<div class="vgn-carga-linha vgn-carga-sem"><span class="vgn-carga-rh"><b>Sem RH responsável</b></span><span class="vgn-carga-num"><b>${sem.vagas}</b> ${sem.vagas === 1 ? 'vaga' : 'vagas'}</span><span class="vgn-carga-barra"><i style="width:${Math.round(100 * Math.min(sem.faltam, max) / max)}%"></i><em>faltam <b>${sem.faltam}</b></em></span><span class="vgn-carga-al"></span><span class="vgn-carga-acao"><button type="button" class="btn btn-pequeno" data-carga-rh="(sem)">Ver vagas</button></span></div>` : ''}
+        </div>`;
+    }
+    // resumo curto da carga de um RH, para quem escolhe o responsável (aprovar / pedir vaga)
+    let cargaGeral = null;
+    function cargaTexto(login) {
+      if (!cargaGeral) cargaGeral = cargaPorRh(Store.vagasVisiveis(App.usuario)).por;
+      const a = cargaGeral.get(login);
+      return a && a.vagas ? `${qtd(a.vagas, 'vaga', 'vagas')} · faltam ${a.faltam}` : 'sem vaga agora';
+    }
+
     function ordenar(l) {
       return l.slice().sort((a, b) => fechada(a) - fechada(b) || b.atrasada - a.atrasada
         || ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade]
@@ -123,9 +169,10 @@ Paginas.vagas = {
           <label class="cad-proj">Responsável (RH)<select id="vg-recrutador" style="min-width:190px"></select></label>
           <label class="cad-proj vg-busca-rot">Procurar<input class="busca nao-imprimir" id="vg-busca" placeholder="Cargo, distrito, quem pediu ou RH…"></label>
           <span class="espaco"></span>
-          <div class="linha nao-imprimir">${podeEditar ? '<button class="btn btn-primario" id="vg-nova">+ Pedir vaga</button>' : ''}</div>
+          <div class="linha nao-imprimir">${verCarga ? `<button type="button" class="btn" id="vg-carga-btn" aria-expanded="${cargaAberta}" aria-controls="vg-carga" title="Quantas vagas e quantas pessoas a contratar cada RH tem agora">Carga por RH</button>` : ''}${podeEditar ? '<button class="btn btn-primario" id="vg-nova">+ Pedir vaga</button>' : ''}</div>
         </div>
         <div class="vg-resumo2" id="vg-resumo"></div>
+        <div class="vgn-carga nao-imprimir" id="vg-carga" hidden></div>
         <div class="vgn-pend nao-imprimir" id="vg-pend" hidden></div>
         <div class="abas vg-abas" id="vg-abas"></div>
         <b id="vg-titulo" hidden></b>
@@ -167,12 +214,14 @@ Paginas.vagas = {
           <button type="button" class="vgn-pend-tit" data-pend-toggle aria-expanded="${!pendFechado}" title="${pendFechado ? 'Abrir' : 'Recolher'}"><i>${pendFechado ? '▸' : '▾'}</i><b>${eu ? 'Minhas vagas: o que falta fazer' : 'O que falta fazer nas vagas'}</b><span class="aba-num">${itens.length}</span></button>
           <div class="vgn-chips">${chips}</div>
         </div>` + (pendFechado ? '' : `<div class="vgn-pend-lista">${mostrar.map(({ v, p }) => {
-          const a = p.find(x => x.acao && (x.acao !== 'divulgar' || podeMexer(v)) && (x.acao !== 'candidatos' || podeVerCandidatos));
+          // até duas ações: a principal (divulgar, ver candidatos, escolher RH) e "Nova data" quando a vaga está atrasada
+          const validas = p.filter(x => x.acao && (x.acao !== 'divulgar' || podeMexer(v)) && (x.acao !== 'candidatos' || podeVerCandidatos));
+          const acoes = [...validas.filter(x => !x.sec).slice(0, 1), ...validas.filter(x => x.sec).slice(0, 1)];
           return `<div class="vgn-pend-linha" data-id="${v.id}">
             <button type="button" class="vgn-pend-vaga" data-ir title="Ir para a vaga na lista"><b>${UI.esc(v.titulo)}</b><span>${UI.esc(ondeTexto(v) || 'sem distrito')}</span></button>
             <span class="vgn-pend-falta">${v.contagemCarregada ? `faltam <b>${v.faltam}</b> de ${v.quantidade}` : `${qtd(v.quantidade, 'pessoa', 'pessoas')}`}</span>
             <span class="vgn-pend-itens">${p.map(x => `<span class="vgn-tag ${x.cls}">${UI.esc(x.txt)}</span>`).join('')}</span>
-            <span class="vgn-pend-acao">${a ? `<button type="button" class="btn btn-pequeno ${a.acao === 'divulgar' ? 'btn-primario' : ''}" data-acao="${a.acao}">${a.rot}</button>` : ''}</span>
+            <span class="vgn-pend-acao">${acoes.map(a => `<button type="button" class="btn btn-pequeno ${a.acao === 'divulgar' ? 'btn-primario' : ''}" data-acao="${a.acao}" ${a.acao === 'prazo' ? 'title="Mudar a data em que a pessoa precisa estar trabalhando (fica anotado na vaga)"' : ''}>${a.rot}</button>`).join('')}</span>
           </div>`; }).join('')}${itens.length > LIM ? `<button type="button" class="btn-link vgn-pend-mais" data-pend-tudo>${pendTudo ? 'Mostrar menos' : `Mostrar as outras ${itens.length - LIM}`}</button>` : ''}</div>`);
     }
     function desenhar() {
@@ -200,6 +249,8 @@ Paginas.vagas = {
 
       q('#vg-abas').innerHTML = ABAS.map(([id, rot]) => `<button class="aba ${aba === id ? 'ativa' : ''} ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'vg-aba-alerta' : ''}" data-aba="${id}" ${id === 'aguardando' && podeAprovar && base.filter(naAba[id]).length ? 'title="Pedidos esperando a sua decisão"' : ''}>${rot} <span class="aba-num">${UI.fmtNum(base.filter(naAba[id]).length)}</span></button>`).join('');
 
+      cargaGeral = null;
+      desenharCarga(todas);
       desenharPendencias(base);
       let lista = base.filter(naAba[aba]);
       if (foco && noFoco[foco]) lista = lista.filter(noFoco[foco]);
@@ -297,7 +348,10 @@ Paginas.vagas = {
       if (v.aprovada && podeVerCandidatos && !principal.includes('candidatos')) menu.push(it('candidatos', 'Ver candidatos'));
       if (emAberto) menu.push(it('procurar', 'Procurar candidatos na internet'));
       menu.push(it('mapa', 'Ver no mapa'));
+      menu.push(it('historico', 'Histórico da vaga'));
       if (podeEditar) menu.push(it('editar', 'Editar o pedido'));
+      if (podeEditar && !fechada(v)) menu.push(it('prazo', v.dataNecessidade ? 'Mudar a data (precisa até)' : 'Definir a data (precisa até)'));
+      if (podeEditar) menu.push(it('duplicar', 'Duplicar (pedir outra igual)'));
       if (podeEditar && !fechada(v)) menu.push(it('cancelar', 'Cancelar a vaga', 'perigo'));
       if (podeEditar && fechada(v)) menu.push(it('reabrir', v.aprovada ? 'Reabrir' : 'Pedir de novo'));
       if (ehAdmin) menu.push(it('excluir', 'Excluir', 'perigo'));
@@ -349,6 +403,9 @@ Paginas.vagas = {
       else if (acao === 'candidatos') { try { if (b && b.dataset.etapa) sessionStorage.setItem('maparh:cand-seg', b.dataset.etapa); } catch (err) { /* ok */ } localStorage.setItem('maparh:cand-vaga', v.id); localStorage.setItem('maparh:cand-projeto', v.projetoId); App.ir('candidatos'); }
       else if (acao === 'procurar') { if (v.cidade) UI.modalBuscaCandidatos(v.cidade.nome, v.cidade.uf, v.titulo); }
       else if (acao === 'editar') formVaga(v);
+      else if (acao === 'duplicar') formVaga(null, v);
+      else if (acao === 'prazo') mudarPrazo(v);
+      else if (acao === 'historico') historico(v);
       else if (acao === 'obs') observacoes(v);
       else if (acao === 'mapa') { App.filtros.projetoId = v.projetoId; sessionStorage.setItem('maparh:mapa-foco', JSON.stringify({ cidadeId: v.cidadeId })); App.aoMudarFiltros(); App.ir('mapa'); }
       else if (acao === 'cancelar') mudarStatus(v, 'cancelada');
@@ -381,11 +438,24 @@ Paginas.vagas = {
     q('#vg-recrutador').addEventListener('change', e => { recrutador = e.target.value; try { sessionStorage.setItem('maparh:vagas-recrutador', recrutador); } catch (err) { /* idem */ } desenhar(); });
     q('#vg-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value.trim(); desenhar(); }, 200));
     if (podeEditar) q('#vg-nova').addEventListener('click', () => formVaga(null));
+    const lembrarCarga = () => { try { sessionStorage.setItem('maparh:vagas-carga', cargaAberta ? '1' : '0'); } catch (err) { /* ok */ } };
+    if (q('#vg-carga-btn')) q('#vg-carga-btn').addEventListener('click', () => { cargaAberta = !cargaAberta; lembrarCarga(); desenhar(); });
+    q('#vg-carga').addEventListener('click', e => {
+      if (e.target.closest('[data-carga-fechar]')) { cargaAberta = false; lembrarCarga(); return desenhar(); }
+      const b = e.target.closest('[data-carga-rh]'); if (!b) return;
+      // filtra a lista pelo RH escolhido, na aba Em andamento
+      recrutador = b.dataset.cargaRh; foco = ''; aba = 'abertas';
+      try { sessionStorage.setItem('maparh:vagas-recrutador', recrutador); localStorage.setItem('maparh:vagas-status', aba); } catch (err) { /* ok */ }
+      desenhar();
+      const t = q('#vg-abas'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
 
     // escolha de vários RHs: clica para marcar/desmarcar; o primeiro marcado é o principal
     function seletorRhs(sel) {
       const equipe = Store.equipeRh();
-      return `<div class="vg-rhs" data-rhs>${equipe.map(u => `<button type="button" class="vg-rh-op ${sel.includes(u.login) ? 'on' : ''}" data-rh="${UI.esc(u.login)}">${UI.avatar(u, 22)}<span>${UI.esc(u.nome)}</span><i class="vg-rh-principal">${sel[0] === u.login ? 'principal' : ''}</i></button>`).join('')}</div>`;
+      // cada RH mostra quanto já tem nas mãos, para dividir as vagas com justiça
+      cargaGeral = null;
+      return `<div class="vg-rhs" data-rhs>${equipe.map(u => `<button type="button" class="vg-rh-op ${sel.includes(u.login) ? 'on' : ''}" data-rh="${UI.esc(u.login)}" title="${UI.esc(u.nome + ': ' + cargaTexto(u.login) + ' (vagas em andamento)')}">${UI.avatar(u, 22)}<span class="vgn-rh-op-txt"><span>${UI.esc(u.nome)}</span><small class="vgn-rh-carga">${UI.esc(cargaTexto(u.login))}</small></span><i class="vg-rh-principal">${sel[0] === u.login ? 'principal' : ''}</i></button>`).join('')}</div>`;
     }
     function ligarSeletorRhs(box, sel, aoMudar) {
       box.addEventListener('click', e => {
@@ -449,10 +519,14 @@ Paginas.vagas = {
     }
 
     // ---------- formulário (pedir vaga / editar) ----------
-    function formVaga(v) {
+    // copia: vaga usada como ponto de partida de um pedido novo (Duplicar / Começar de uma vaga anterior)
+    function formVaga(v, copia) {
       const projetos = App.projetosVisiveis().filter(p => p.ativo || (v && v.projetoId === p.id));
       if (!projetos.length) { UI.toast('Crie primeiro um projeto (estado/ano) em Cadastros → Projetos.', 'aviso'); return; }
-      const projetoIni = v ? v.projetoId : (App.filtros.projetoId || projetos[0].id);
+      const projetoIni = v ? v.projetoId : projetos.some(p => p.id === App.filtros.projetoId) ? App.filtros.projetoId
+        : copia && projetos.some(p => p.id === copia.projetoId) ? copia.projetoId : projetos[0].id;
+      // vagas que servem de ponto de partida: as mais recentes de qualquer projeto que a pessoa enxerga
+      const anteriores = v ? [] : Store.vagasVisiveis(App.usuario).filter(x => x.titulo).sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || ''))).slice(0, 80);
       const val = x => UI.esc(x == null ? '' : x);
       const nomes = Store.usuarios().filter(u => u.ativo !== false).map(u => u.nome).filter(Boolean);
       // o pedido completo (quem pede e para quando) é cobrado ao pedir e enquanto a vaga não foi aprovada; vaga antiga pode ficar sem
@@ -466,10 +540,13 @@ Paginas.vagas = {
       let linhasDist = v && v.porDistrito.length ? v.porDistrito.map(x => ({ distritoId: x.distrito.id, locais: x.locais, moveis: x.moveis })) : [];
       if (v && !linhasDist.length) { const reg = Store.distritoDaCidade(v.cidadeId); if (reg) linhasDist = [{ distritoId: reg.distrito.id, locais: v.tipo === 'MOVEL' ? 0 : v.quantidade, moveis: v.tipo === 'MOVEL' ? v.quantidade : 0 }]; }
       const temAnuncio = v && (v.descricao || v.requisitos || v.salario || v.jornada || v.beneficios);
+      const rotAnterior = x => `${x.titulo} · ${ondeTexto(x) || 'sem distrito'} · ${x.projeto ? Store.rotuloProjeto(x.projeto) : '—'} · ${Store.STATUS_VAGA[x.status] || x.status}${x.criadoEm ? ' · ' + UI.fmtData(x.criadoEm) : ''}`;
       const corpo = `
+        ${anteriores.length ? `<div class="vgn-copiar"><label>Começar de uma vaga anterior <span class="muted" style="font-weight:400">(copia cargo, distritos, RHs e anúncio; a data fica em branco)</span><select id="v-copiar"><option value="">Não, começar do zero</option>${anteriores.map(x => `<option value="${x.id}" ${copia && copia.id === x.id ? 'selected' : ''}>${UI.esc(rotAnterior(x))}</option>`).join('')}</select></label></div>` : ''}
         <div class="pre-form-titulo">O pedido</div>
         <div class="form-linha">
           <label style="grid-column:1/-1">Cargo<input id="v-titulo" placeholder="Ex.: Operador de secador, Auxiliar de armazém" value="${val(v && v.titulo)}"></label>
+          <div class="vgn-modelo" id="v-modelo" hidden></div>
           <label>Projeto (estado · ano)<select id="v-projeto">${projetos.map(p => `<option value="${p.id}" ${p.id === projetoIni ? 'selected' : ''}>${UI.esc(Store.rotuloProjeto(p))}</option>`).join('')}</select></label>
           <label>Quem está pedindo<input id="v-solicitante" value="${val(v ? v.solicitante : App.usuario.nome)}"></label>
           <div><span class="vg-rot">Prioridade</span><div class="vg-prio" id="v-prioridade">${Object.entries(Store.PRIORIDADES).map(([k, r]) => `<label class="vg-prio-${k}"><input type="radio" name="v-prio" value="${k}" ${(v ? v.prioridade : 'normal') === k ? 'checked' : ''}><span>${r}</span></label>`).join('')}</div></div>
@@ -480,7 +557,7 @@ Paginas.vagas = {
         <div class="pre-form-titulo">Onde e quantas pessoas</div>
         <div class="vg-dist-add"><select id="v-dist-novo"></select></div>
         <div id="v-dist-lista"></div>
-        <details class="vg-anuncio" ${temAnuncio ? 'open' : ''}>
+        <details class="vg-anuncio" id="v-anuncio-box" ${temAnuncio ? 'open' : ''}>
           <summary>Dados para o anúncio (opcional)</summary>
           <div class="form-linha">
             <label style="grid-column:1/-1">Atividades<textarea id="v-descricao" rows="3" placeholder="O que a pessoa vai fazer">${val(v && v.descricao)}</textarea></label>
@@ -556,8 +633,151 @@ Paginas.vagas = {
       UI.sugestoes(g('#v-solicitante'), () => nomes);
       const dicaData = () => { const d = g('#v-necessidade').value; if (!d) { g('#v-necessidade-dica').textContent = ''; return; } const n = diasAte(d); g('#v-necessidade-dica').textContent = n < 0 ? `já passou (${-n} dia${n === -1 ? '' : 's'})` : n === 0 ? 'é hoje' : `daqui a ${n} dia${n === 1 ? '' : 's'}`; };
       g('#v-necessidade').addEventListener('input', dicaData); dicaData();
+
+      // ----- modelo do anúncio do cargo (Cadastros → Cargos): usar no pedido ou guardar o texto deste pedido como modelo -----
+      const valores = () => Object.fromEntries(CAMPOS_MODELO.map(([k]) => [k, g('#v-' + k).value.trim()]));
+      function atualizarModelo() {
+        const box = g('#v-modelo'), nome = g('#v-titulo').value.trim(), cg = nome ? Store.cargoPorNome(nome) : null;
+        const mod = modeloDoCargo(cg), atual = valores();
+        const vazios = mod ? CAMPOS_MODELO.filter(([k]) => !atual[k] && mod[k]) : [];
+        const temAtual = Object.values(atual).some(Boolean);
+        const igual = mod && CAMPOS_MODELO.every(([k]) => atual[k] === (mod[k] || ''));
+        let html = '';
+        if (mod && vazios.length) html = `<span>O cargo <b>${UI.esc(cg.nome)}</b> tem anúncio pronto (${vazios.map(x => x[1]).join(', ')}).</span><button type="button" class="btn btn-pequeno btn-primario" data-modelo-usar>Usar o modelo do cargo</button>`;
+        else if (cg && temAtual && !igual) html = `<span class="muted">${mod ? `O anúncio está diferente do modelo do cargo <b>${UI.esc(cg.nome)}</b>.` : `O cargo <b>${UI.esc(cg.nome)}</b> ainda não tem anúncio pronto.`}</span><button type="button" class="btn-link" data-modelo-guardar>${mod ? 'Trocar o modelo do cargo por este texto' : 'Guardar este anúncio como modelo do cargo'}</button>`;
+        else if (!cg && nome && Store.cargos().length) html = `<span class="muted">Cargo sem cadastro: a Documentação cobra a lista padrão de documentos. Para ter documentos e anúncio próprios, cadastre em Cadastros → Cargos e documentos.</span>`;
+        box.hidden = !html; box.innerHTML = html;
+      }
+      g('#v-modelo').addEventListener('click', async e => {
+        const cg = Store.cargoPorNome(g('#v-titulo').value.trim()); if (!cg) return;
+        if (e.target.closest('[data-modelo-usar]')) {
+          const mod = modeloDoCargo(cg) || {}; let n = 0;
+          for (const [k] of CAMPOS_MODELO) { const el = g('#v-' + k); if (!el.value.trim() && mod[k]) { el.value = mod[k]; n++; } }
+          g('#v-anuncio-box').open = true;
+          UI.toast(`${n === 1 ? '1 campo do anúncio preenchido' : n + ' campos do anúncio preenchidos'} com o modelo do cargo. Confira antes de enviar.`, 'sucesso', 4000);
+          return atualizarModelo();
+        }
+        if (e.target.closest('[data-modelo-guardar]')) {
+          if (modeloDoCargo(cg) && !await UI.confirmar(`Trocar o anúncio pronto do cargo "${cg.nome}" pelo texto deste pedido? As próximas vagas desse cargo vão usar o texto novo.`, { titulo: 'Modelo do cargo', textoOk: 'Trocar' })) return;
+          try { guardarModeloCargo(cg, valores()); UI.toast(`Anúncio guardado como modelo do cargo ${cg.nome}.`, 'sucesso'); } catch (err) { UI.toast(err.message, 'erro'); }
+          atualizarModelo();
+        }
+      });
+      ['input', 'change', 'blur'].forEach(ev => g('#v-titulo').addEventListener(ev, atualizarModelo));
+      CAMPOS_MODELO.forEach(([k]) => g('#v-' + k).addEventListener('input', UI.debounce(atualizarModelo, 250)));
+
+      // ----- começar de uma vaga anterior (ou Duplicar): copia cargo, distritos, RHs, prioridade e anúncio -----
+      function aplicarCopia(x) {
+        const raw = Store.vaga(x.id) || x;
+        g('#v-titulo').value = raw.titulo || '';
+        for (const k of ['descricao', 'requisitos', 'salario', 'jornada', 'beneficios', 'contato']) g('#v-' + k).value = raw[k] || '';
+        const pr = m.corpo.querySelector(`input[name="v-prio"][value="${raw.prioridade || 'normal'}"]`); if (pr) pr.checked = true;
+        const ufs = ufAtual();
+        let dist = (Array.isArray(raw.distritos) ? raw.distritos : []).map(d => ({ distritoId: d.distritoId, locais: +d.locais || 0, moveis: +d.moveis || 0 }));
+        if (!dist.length && raw.cidadeId) { const reg = Store.distritoDaCidade(raw.cidadeId); if (reg) dist = [{ distritoId: reg.distrito.id, locais: raw.tipo === 'MOVEL' ? 0 : raw.quantidade, moveis: raw.tipo === 'MOVEL' ? raw.quantidade : 0 }]; }
+        const cabe = dist.filter(d => { const dd = Store.distrito(d.distritoId); return dd && (!dd.uf || ufs.includes(dd.uf)); });
+        linhasDist = cabe;
+        // RHs: só quem ainda está na equipe
+        const equipeLogins = new Set(equipe.map(u => u.login));
+        selRh.splice(0, selRh.length, ...(x.responsaveis || []).filter(l => equipeLogins.has(l)));
+        const box = g('[data-rhs]');
+        if (box) box.querySelectorAll('[data-rh]').forEach(b => { b.classList.toggle('on', selRh.includes(b.dataset.rh)); b.querySelector('.vg-rh-principal').textContent = selRh[0] === b.dataset.rh ? 'principal' : ''; });
+        g('#v-necessidade').value = ''; dicaData();
+        g('#v-anuncio-box').open = !!(raw.descricao || raw.requisitos || raw.salario || raw.jornada || raw.beneficios || raw.contato);
+        desenharDist(); atualizarModelo();
+        const fora = dist.length - cabe.length;
+        UI.toast(`Dados de "${raw.titulo}" copiados${fora ? `; ${fora === 1 ? '1 distrito ficou' : fora + ' distritos ficaram'} de fora (outro estado)` : ''}. Informe a data e confira as quantidades.`, 'info', 5000);
+        setTimeout(() => g('#v-necessidade').focus(), 30);
+      }
+      const selCopia = g('#v-copiar');
+      if (selCopia) selCopia.addEventListener('change', async () => {
+        const x = anteriores.find(a => a.id === selCopia.value); if (!x) return;
+        const preenchido = g('#v-titulo').value.trim() || linhasDist.length || Object.values(valores()).some(Boolean);
+        if (preenchido && !await UI.confirmar(`Trocar o que já foi preenchido pelos dados de "${x.titulo}"?`, { titulo: 'Começar de uma vaga anterior', textoOk: 'Trocar' })) { selCopia.value = ''; return; }
+        aplicarCopia(x);
+      });
       desenharDist();
-      setTimeout(() => g('#v-titulo').focus(), 60);
+      if (copia) aplicarCopia(copia);
+      else atualizarModelo();
+      if (!copia) setTimeout(() => g('#v-titulo').focus(), 60);
+    }
+    // modelo de anúncio guardado no cadastro do cargo ({ descricao, requisitos, salario, jornada, beneficios })
+    const CAMPOS_MODELO = [['descricao', 'atividades'], ['requisitos', 'requisitos'], ['salario', 'salário'], ['jornada', 'jornada'], ['beneficios', 'benefícios']];
+    function modeloDoCargo(cg) {
+      const a = cg && cg.anuncio; if (!a) return null;
+      const o = Object.fromEntries(CAMPOS_MODELO.map(([k]) => [k, String(a[k] || '').trim()]));
+      return Object.values(o).some(Boolean) ? o : null;
+    }
+    function guardarModeloCargo(cg, anuncio) {
+      const c = Store.salvarCargo({ id: cg.id, nome: cg.nome, documentos: cg.documentos }, App.usuario);
+      c.anuncio = Object.fromEntries(CAMPOS_MODELO.map(([k]) => [k, String(anuncio[k] || '').trim()]));
+      c.atualizadoEm = Store.agora();
+      Store.salvar();
+    }
+
+    // ---------- mudar a data em que a pessoa precisa estar trabalhando (fica anotado na vaga) ----------
+    function objDaVaga(v, mudar) {
+      const r = Store.vaga(v.id); if (!r) throw new Error('Vaga não encontrada.');
+      return { id: r.id, titulo: r.titulo, projetoId: r.projetoId, distritos: Array.isArray(r.distritos) && r.distritos.length ? r.distritos : undefined,
+        cidadeId: r.cidadeId, tipo: r.tipo, quantidade: r.quantidade, unidade: r.unidade, descricao: r.descricao, requisitos: r.requisitos, salario: r.salario,
+        jornada: r.jornada, beneficios: r.beneficios, contato: r.contato, prazo: r.prazo, ...mudar };
+    }
+    function mudarPrazo(v) {
+      const antes = v.dataNecessidade || '';
+      const sug = (() => { const d = new Date(RH.hoje() + 'T12:00:00'); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })();
+      const pd = UI.modal({ titulo: `${antes ? 'Mudar a data' : 'Definir a data'}: ${v.titulo}`, largura: '460px',
+        corpo: `<p class="muted small" style="margin-top:0">${antes ? `Hoje a vaga precisa de gente até <b>${fmtDia(antes)}</b>${v.atrasada ? ` (atrasada ${qtd(v.diasAtraso, 'dia', 'dias')})` : ''}.` : 'A vaga ainda não tem data.'} A mudança fica registrada nas observações da vaga.</p>
+          <label>Nova data<input type="date" id="vp-data" value="${UI.esc(antes && diasAte(antes) >= 0 ? antes : sug)}"><span class="muted small" id="vp-dica"></span></label>
+          <label style="margin-top:10px">Motivo <span class="muted" style="font-weight:400">(opcional)</span><input id="vp-motivo" placeholder="Ex.: colheita atrasou por causa da chuva; gestor pediu mais uma semana"></label>`,
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Salvar data', classe: 'btn-primario', acao: md => {
+          const nova = md.corpo.querySelector('#vp-data').value, motivo = md.corpo.querySelector('#vp-motivo').value.trim();
+          if (!nova) throw new Error('Escolha a nova data.');
+          if (nova === antes) throw new Error('A data é a mesma de antes.');
+          Store.salvarVaga(objDaVaga(v, { dataNecessidade: nova }), App.usuario);
+          const txt = `Data "precisa até" ${antes ? `mudou de ${fmtDia(antes)} para ${fmtDia(nova)}` : `definida para ${fmtDia(nova)}`}${motivo ? '. Motivo: ' + motivo : ''}.`;
+          if (App.nuvem() && Nuvem.rh.anotarVaga && podeMexer(v)) Nuvem.rh.anotarVaga(v.id, txt).catch(e => UI.toast('A data foi salva, mas a anotação não: ' + e.message, 'aviso', 6000));
+          UI.toast('Data salva.', 'sucesso'); App.recarregar();
+        } }] });
+      const inp = pd.corpo.querySelector('#vp-data');
+      const dica = () => { const d = inp.value; const n = d ? diasAte(d) : null; pd.corpo.querySelector('#vp-dica').textContent = n == null ? '' : n < 0 ? `já passou (${qtd(-n, 'dia', 'dias')})` : n === 0 ? 'é hoje' : `daqui a ${qtd(n, 'dia', 'dias')}`; };
+      inp.addEventListener('input', dica); dica();
+      setTimeout(() => inp.focus(), 50);
+    }
+
+    // ---------- histórico da vaga: tudo o que já aconteceu, do pedido até hoje ----------
+    function historico(v) {
+      const r = Store.vaga(v.id) || v, ev = [];
+      const nomeDe = l => { const u = l && Store.usuarioPorLogin(l); return u ? u.nome : (l || ''); };
+      const add = (em, por, txt, cls) => { if (em) ev.push({ em, por, txt, cls: cls || '' }); };
+      add(r.criadoEm, r.criadoPor, `Pedido criado${r.solicitante ? ` (pedido por ${r.solicitante})` : ''}`, 'criar');
+      const ap = r.aprovacao || {};
+      if (ap.pedidoEm && ap.aumento) add(ap.pedidoEm, null, `Aumento pedido de ${ap.aumento.de} para ${ap.aumento.para} pessoas: voltou para aprovação`, 'alerta');
+      if (ap.situacao === 'aprovada' && ap.em) add(ap.em, ap.por, 'Vaga aprovada', 'ok');
+      if (ap.situacao === 'recusada' && ap.em) add(ap.em, ap.por, `Pedido recusado${ap.motivo ? ': ' + ap.motivo : ''}`, 'ruim');
+      for (const [id, d] of Object.entries(r.divulgacao || {})) { const c = Store.CANAIS.find(k => k.id === id); if (d && d.em) add(d.em, d.por, `Divulgada em ${c ? c.nome : id}`, 'div'); }
+      for (const a of r.anotacoes || []) ev.push({ em: a.em, por: a.por, nome: a.nome, txt: a.texto, cls: 'obs' });
+      // registros do sistema (edições e mudanças de situação): só quando o cargo não se repete em outra vaga, para não misturar
+      const mesmoNome = Store.vagas().filter(x => Store.normalizar(x.titulo) === Store.normalizar(r.titulo)).length;
+      if (mesmoNome === 1) {
+        const pre = Store.normalizar('Vaga ' + r.titulo);
+        for (const a of Store.auditoria()) {
+          if (!/^vaga\.(editar|status)$/.test(a.acao) || !Store.normalizar(a.detalhes).startsWith(pre)) continue;
+          if (r.criadoEm && a.quando < r.criadoEm) continue;
+          const mq = /de (\d+) para (\d+)/.exec(a.detalhes);
+          const txt = a.acao === 'vaga.status' ? 'Situação: ' + String(a.detalhes).split(': ').slice(1).join(': ')
+            : 'Pedido editado' + (mq ? ` (de ${mq[1]} para ${mq[2]} pessoas${/voltou para aprova/.test(a.detalhes) ? ', voltou para aprovação' : ''})` : '');
+          add(a.quando, a.usuario !== '—' ? a.usuario : null, txt, a.acao === 'vaga.status' ? 'status' : 'editar');
+        }
+      } else if (r.atualizadoEm && r.atualizadoEm !== r.criadoEm) add(r.atualizadoEm, null, 'Última alteração do pedido', 'editar');
+      ev.sort((a, b) => String(b.em).localeCompare(String(a.em)));
+      const cab = [`<b>${UI.esc(Store.STATUS_VAGA[v.status] || v.status)}</b>`, v.diasAberta != null ? `aberta há ${qtd(v.diasAberta, 'dia', 'dias')}` : '',
+        v.dataNecessidade ? `precisa até ${fmtDia(v.dataNecessidade)}${v.atrasada ? ` (atrasada ${qtd(v.diasAtraso, 'dia', 'dias')})` : ''}` : 'sem data',
+        v.contagemCarregada && v.aprovada ? `${v.admitidosValidos || 0} de ${v.quantidade} admitidos` : qtd(v.quantidade, 'pessoa pedida', 'pessoas pedidas')].filter(Boolean).join(' · ');
+      UI.modal({ titulo: `Histórico: ${v.titulo}${ondeTexto(v) ? ' — ' + ondeTexto(v) : ''}`, largura: '620px',
+        corpo: `<div class="vgn-hist-cab">${cab}</div>${ev.length ? `<ol class="vgn-hist">${ev.map(x => { const nome = x.nome || nomeDe(x.por);
+          return `<li class="vgn-hist-${x.cls}"><span class="vgn-hist-quando">${UI.fmtDataHora(x.em)}</span><div><div class="vgn-hist-txt">${UI.esc(x.txt)}</div>${nome ? `<div class="muted small">${UI.esc(nome)}</div>` : ''}</div></li>`; }).join('')}</ol>` : '<div class="muted small">Nada registrado ainda.</div>'}
+          <p class="muted small" style="margin-bottom:0">O andamento de cada candidato fica no histórico da ficha dele, em Candidatos.</p>`,
+        botoes: [{ texto: 'Fechar' }] });
     }
 
     // ---------- anúncio pronto, um formato para cada lugar ----------

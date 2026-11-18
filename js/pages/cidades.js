@@ -6,6 +6,7 @@ Paginas.cidades = {
     let busca = '', uf = '', soEmUso = false;
 
     el.innerHTML = `
+      ${UI.dicaNovato('cidades', 'Quase nunca é preciso cadastrar cidade: a lista oficial do IBGE já vem com os 5.570 municípios. Use a <b>busca</b> abaixo para conferir uma cidade; só cadastre à mão se ela realmente não aparecer.')}
       <div class="grade grade-2 mb">
         <div class="card">
           <h2>Lista completa de municípios (IBGE)</h2>
@@ -39,6 +40,7 @@ Paginas.cidades = {
           <select id="cid-uf" style="width:auto">${UI.opcoesUF('')}</select>
           <label style="margin:0;display:flex;gap:6px;align-items:center;font-weight:500"><input type="checkbox" id="cid-uso"> Somente cidades em uso</label>
           <span class="espaco"></span><span class="muted small" id="cid-total"></span>
+          <button class="btn btn-pequeno" id="cid-exportar" title="Baixa a lista filtrada (todas as linhas, não só as 200 da tela)">Exportar planilha</button>
         </div>
         <div id="cid-lista"></div>
       </div>`;
@@ -117,12 +119,20 @@ Paginas.cidades = {
     const bManual = el.querySelector('#btn-manual');
     if (bManual) bManual.addEventListener('click', () => abrirForm(null));
 
+    UI.ligarDicas(el);
     el.querySelector('#cid-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; renderLista(); }, 150));
+    el.querySelector('#cid-exportar').addEventListener('click', () => {
+      const { lista, usoOrig, usoAtu } = filtrar();
+      if (!lista.length) { UI.toast('Nenhuma cidade na lista para exportar.', 'aviso'); return; }
+      UI.baixarCSV('cidades.csv', [['CIDADE', 'UF', 'LATITUDE', 'LONGITUDE', 'ORIGEM', 'COMO ORIGEM', 'COMO ATUACAO']]
+        .concat(lista.map(c => [c.nome, c.uf, c.lat.toFixed(5).replace('.', ','), c.lng.toFixed(5).replace('.', ','), (ORIGENS[c.origem] || [c.origem])[0], usoOrig.get(c.id) || 0, usoAtu.get(c.id) || 0])));
+      Store.auditar('relatorio.exportar', `Cidades (${lista.length})`, App.usuario);
+    });
     el.querySelector('#cid-uf').addEventListener('change', e => { uf = e.target.value; renderLista(); });
     el.querySelector('#cid-uso').addEventListener('change', e => { soEmUso = e.target.checked; renderLista(); });
 
     const ORIGENS = { seed: ['base inicial', 'badge-cinza'], ibge: ['IBGE', 'badge-verde'], geocode: ['internet', 'badge-azul'], manual: ['manual', 'badge-amarelo'] };
-    function renderLista() {
+    function filtrar() {
       let lista = Store.cidades();
       if (uf) lista = lista.filter(c => c.uf === uf);
       if (busca.trim()) { const n = Store.normalizar(busca); lista = lista.filter(c => Store.normalizar(c.nome).includes(n)); }
@@ -133,9 +143,35 @@ Paginas.cidades = {
         if (!Store.ehMovel(r.atuacao)) { usoAtu.set(r.atuacao, (usoAtu.get(r.atuacao) || 0) + 1); uso.set(r.atuacao, true); }
       }
       if (soEmUso) lista = lista.filter(c => uso.has(c.id));
+      return { lista, usoOrig, usoAtu, uso };
+    }
+    function renderLista() {
+      const f = filtrar();
+      const { usoOrig, usoAtu, uso } = f;
+      let lista = f.lista;
       const total = lista.length;
       lista = lista.slice(0, 200);
       el.querySelector('#cid-total').textContent = `${UI.fmtNum(total)} cidade(s)${total > 200 ? ' — mostrando as 200 primeiras' : ''}`;
+      if (!total) {
+        // nada achado: ensina o próximo passo (grafia, outro estado, IBGE, cadastrar à mão)
+        const t = busca.trim();
+        const outrasUF = t && uf ? [...new Set(Store.buscarCidades(t, '', 20).map(c => c.uf))].filter(x => x !== uf) : [];
+        const aprox = t ? Store.cidadeAproximada(t, uf) : null;
+        const dicas = [];
+        if (aprox) dicas.push(`Você quis dizer <a href="#" data-acao-buscar="${UI.esc(aprox.nome)}"><b>${UI.esc(aprox.nome)}/${aprox.uf}</b></a>?`);
+        if (outrasUF.length) dicas.push(`Existe em <b>${outrasUF.slice(0, 6).join(', ')}</b> — troque o estado do filtro.`);
+        if (soEmUso) dicas.push('O filtro <b>Somente cidades em uso</b> está ligado.');
+        if (!Store.temIBGE()) dicas.push('A lista completa do IBGE ainda não foi carregada (botão <b>Baixar agora</b>, no alto).');
+        el.querySelector('#cid-lista').innerHTML = UI.estadoVazio({ compacto: true,
+          titulo: t ? `Nenhuma cidade "${t}"${uf ? ' em ' + uf : ''}` : 'Nenhuma cidade com estes filtros',
+          texto: dicas.join('<br>') || 'Confira a grafia (sem acento também funciona).',
+          botoes: podeEditar && t && !aprox ? [{ acao: 'cadastrar', texto: `Cadastrar "${t}" à mão` }] : [] });
+        const ab = el.querySelector('[data-acao-buscar]');
+        if (ab) ab.addEventListener('click', e => { e.preventDefault(); busca = ab.dataset.acaoBuscar; el.querySelector('#cid-busca').value = busca; renderLista(); });
+        const bc = el.querySelector('#cid-lista [data-acao="cadastrar"]');
+        if (bc) bc.addEventListener('click', () => abrirForm(null, { nome: t, uf }));
+        return;
+      }
       el.querySelector('#cid-lista').innerHTML = UI.tabela({
         vazio: 'Nenhuma cidade encontrada.',
         colunas: [
@@ -159,15 +195,25 @@ Paginas.cidades = {
       }));
     }
 
-    function abrirForm(c) {
-      UI.modal({
+    // Cidade já cadastrada (mesmo nome e UF) ou com grafia muito parecida: evita duplicar e evita sobrescrever a do IBGE
+    function conferirDuplicada(nome, ufv) {
+      nome = String(nome || '').trim();
+      if (!nome || !ufv) return null;
+      const igual = Store.resolverCidade(nome, ufv);
+      if (igual) return { cidade: igual, igual: true };
+      const parecida = Store.cidadeAproximada(nome, ufv);
+      return parecida ? { cidade: parecida, igual: false } : null;
+    }
+    function abrirForm(c, ini = {}) {
+      const md = UI.modal({
         titulo: c ? `Ajustar coordenadas — ${c.nome}/${c.uf}` : 'Cadastrar cidade manualmente',
         largura: '480px',
         corpo: `
           <div class="form-linha">
-            <label>Cidade<input id="c-nome" value="${UI.esc(c ? c.nome : '')}" ${c ? 'disabled' : ''}></label>
-            <label>UF<select id="c-uf" ${c ? 'disabled' : ''}>${UI.opcoesUF(c ? c.uf : '')}</select></label>
+            <label>Cidade<input id="c-nome" value="${UI.esc(c ? c.nome : ini.nome || '')}" ${c ? 'disabled' : ''}></label>
+            <label>UF<select id="c-uf" ${c ? 'disabled' : ''}>${UI.opcoesUF(c ? c.uf : ini.uf || '')}</select></label>
           </div>
+          ${c ? '' : '<div id="c-dup" class="ajuda-inline"></div>'}
           <div class="form-linha">
             <label>Latitude<input id="c-lat" type="number" step="0.0001" value="${c ? c.lat : ''}" placeholder="-28.5122"></label>
             <label>Longitude<input id="c-lng" type="number" step="0.0001" value="${c ? c.lng : ''}" placeholder="-50.9339"></label>
@@ -177,12 +223,33 @@ Paginas.cidades = {
           { texto: 'Cancelar' },
           { texto: 'Salvar', classe: 'btn-primario', acao: (m) => {
             const q = s => m.corpo.querySelector(s);
+            if (!c) {
+              const dup = conferirDuplicada(q('#c-nome').value, q('#c-uf').value);
+              if (dup && dup.igual) throw new Error(`${dup.cidade.nome}/${dup.cidade.uf} já está cadastrada. Use "Ajustar coordenadas dela" para corrigir a posição.`);
+            }
             Store.salvarCidade({ nome: c ? c.nome : q('#c-nome').value, uf: c ? c.uf : q('#c-uf').value, lat: q('#c-lat').value, lng: q('#c-lng').value, origem: 'manual' });
             Store.auditar('cidade.salvar', `${c ? c.nome + '/' + c.uf : q('#c-nome').value + '/' + q('#c-uf').value} (manual)`, App.usuario);
             UI.toast('Cidade salva.', 'sucesso'); renderLista();
           } }
         ]
       });
+      if (!c) {
+        const nomeInp = md.corpo.querySelector('#c-nome'), ufSel = md.corpo.querySelector('#c-uf'), box = md.corpo.querySelector('#c-dup');
+        const salvarBtn = md.el.querySelector('.modal-rodape .btn-primario');
+        const conferir = () => {
+          const dup = conferirDuplicada(nomeInp.value, ufSel.value);
+          salvarBtn.disabled = !!(dup && dup.igual);
+          if (!dup) { box.innerHTML = ''; return; }
+          const d = dup.cidade, origem = (ORIGENS[d.origem] || [d.origem])[0];
+          box.innerHTML = dup.igual
+            ? `<span class="status-erro"><b>${UI.esc(d.nome)}/${d.uf}</b> já está cadastrada (${UI.esc(origem)}).</span> <button type="button" class="btn-link" id="c-usar">Ajustar coordenadas dela</button>`
+            : `<span class="status-espera">Já existe <b>${UI.esc(d.nome)}/${d.uf}</b> (${UI.esc(origem)}) — é a mesma?</span> <button type="button" class="btn-link" id="c-usar">Sim, ajustar essa</button>`;
+          box.querySelector('#c-usar').addEventListener('click', () => { md.fechar(); abrirForm(d); });
+        };
+        nomeInp.addEventListener('input', UI.debounce(conferir, 150));
+        ufSel.addEventListener('change', conferir);
+        conferir();
+      }
       document.getElementById('c-buscar').addEventListener('click', async e => {
         e.preventDefault();
         const nome = c ? c.nome : document.getElementById('c-nome').value.trim(), ufv = c ? c.uf : document.getElementById('c-uf').value;

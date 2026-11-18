@@ -32,7 +32,26 @@ Paginas.distritos = {
       return (p && p.uf) || (Store.projetos()[0] || {}).uf || 'RS';
     }
 
+    let soPendencias = false;
+    // problemas do cadastro que atrapalham vaga/mapa: sem estado, sem microrregião, micro sem cidade polo
+    function pendenciasDe(d) {
+      const p = [];
+      if (!d.uf) p.push('sem estado');
+      const micros = d.micros || [];
+      if (!micros.length) p.push('sem microrregião');
+      const semPolo = micros.filter(m => !m.poloCidadeId || !Store.cidade(m.poloCidadeId)).length;
+      if (semPolo) p.push(semPolo === 1 ? '1 microrregião sem cidade polo' : semPolo + ' microrregiões sem cidade polo');
+      return p;
+    }
+    // vagas que usam o distrito (pedido por distrito): abertas travam a exclusão
+    function vagasDoDistrito(id) {
+      const todas = Store.vagas().filter(v => Array.isArray(v.distritos) && v.distritos.some(x => x.distritoId === id));
+      const abertas = todas.filter(v => !['preenchida', 'cancelada', 'recusada'].includes(v.status));
+      return { todas, abertas };
+    }
+
     el.innerHTML = `
+      ${UI.dicaNovato('distritos', 'Monte assim: <b>1.</b> crie o distrito (ex.: Lagoa Vermelha) → <b>2.</b> adicione as microrregiões, cada uma com a <b>cidade polo</b> e as cidades atendidas. Tem tudo numa planilha? Use <b>Importar planilha</b>. Cada cidade fica em uma microrregião só — o sistema avisa se já estiver em outra.')}
       <div class="dist-topo">
         <p class="muted">Um <b>distrito</b> reúne <b>microrregiões</b>; cada microrregião tem uma <b>cidade polo</b> (sede) e as cidades atendidas.
           Cada cidade pertence a uma única microrregião. As cores aparecem no <a href="#/mapa">mapa</a>, pintando os limites dos municípios.</p>
@@ -46,7 +65,18 @@ Paginas.distritos = {
       <div class="dist-resumo" id="dist-resumo"></div>
       <div id="dist-lista"></div>`;
 
+    UI.ligarDicas(el);
     el.querySelector('#dist-busca').addEventListener('input', UI.debounce(e => { busca = e.target.value; renderLista(); }, 150));
+    // barra de resumo: pendências do cadastro e recolher/abrir todos
+    el.querySelector('#dist-resumo').addEventListener('click', e => {
+      if (e.target.closest('[data-pend]')) { soPendencias = !soPendencias; return renderLista(); }
+      const rt = e.target.closest('[data-recolher]');
+      if (rt) {
+        if (rt.dataset.recolher === 'todos') Store.distritos().forEach(d => recolhidos.add(d.id)); else recolhidos.clear();
+        try { sessionStorage.setItem('maparh:dist-recolhidos', JSON.stringify([...recolhidos])); } catch (err) { /* segue */ }
+        renderLista();
+      }
+    });
     el.querySelector('#btn-exportar').addEventListener('click', exportarCSV);
     const bNovo = el.querySelector('#btn-novo'); if (bNovo) bNovo.addEventListener('click', () => abrirFormDistrito(null));
     const bImp = el.querySelector('#btn-importar'); if (bImp) bImp.addEventListener('click', abrirImportacao);
@@ -60,8 +90,14 @@ Paginas.distritos = {
       const cont = el.querySelector('#dist-lista');
       const totalMicros = lista.reduce((n, d) => n + (d.micros || []).length, 0);
       const totalCidades = lista.reduce((n, d) => n + Store.cidadesDoDistrito(d).length, 0);
+      const comPend = lista.filter(d => pendenciasDe(d).length);
+      if (!comPend.length) soPendencias = false;
+      const todosRecolhidos = lista.length && lista.every(d => recolhidos.has(d.id));
       el.querySelector('#dist-resumo').innerHTML = lista.length
-        ? `<span>${pl(lista.length, 'distrito', 'distritos')}</span><span>${pl(totalMicros, 'microrregião', 'microrregiões')}</span><span>${pl(totalCidades, 'cidade vinculada', 'cidades vinculadas')}</span>`
+        ? `<span>${pl(lista.length, 'distrito', 'distritos')}</span><span>${pl(totalMicros, 'microrregião', 'microrregiões')}</span><span>${pl(totalCidades, 'cidade vinculada', 'cidades vinculadas')}</span>` +
+          (comPend.length ? `<button type="button" class="dist-pend-btn ${soPendencias ? 'ativo' : ''}" data-pend aria-pressed="${soPendencias}" title="${soPendencias ? 'Mostrar todos os distritos' : 'Mostrar só os distritos com algo a acertar'}">&#9888; ${comPend.length === 1 ? '1 distrito precisa de ajuste' : comPend.length + ' distritos precisam de ajuste'}${soPendencias ? ' · mostrar todos' : ''}</button>`
+            : '<span class="dist-ok">&#10003; cadastro completo</span>') +
+          `<span class="espaco"></span><button type="button" class="btn-link" data-recolher="${todosRecolhidos ? 'nenhum' : 'todos'}">${todosRecolhidos ? 'Abrir todos' : 'Recolher todos'}</button>`
         : '';
       if (!lista.length) {
         cont.innerHTML = `
@@ -78,7 +114,7 @@ Paginas.distritos = {
         return;
       }
       const termo = Store.normalizar(busca);
-      const visiveis = lista.map(d => filtrarDistrito(d, termo)).filter(Boolean);
+      const visiveis = lista.filter(d => !soPendencias || pendenciasDe(d).length).map(d => filtrarDistrito(d, termo)).filter(Boolean);
       if (!visiveis.length) {
         cont.innerHTML = `<div class="card vazio">Nada encontrado para "${UI.esc(busca)}".</div>`;
         return;
@@ -109,6 +145,7 @@ Paginas.distritos = {
               <span class="dist-sobre">Distrito${d.uf ? ' · ' + UI.esc(Store.UFS[d.uf] || d.uf) : ''}${d.uf ? '' : ' · <span class="status-erro" title="Defina o estado em Editar">sem estado definido</span>'}</span>
               <h3>${UI.esc(d.nome)}</h3>
               ${d.descricao ? `<span class="muted small">${UI.esc(d.descricao)}</span>` : ''}
+              ${(() => { const pend = pendenciasDe(d).filter(x => x !== 'sem estado'); return pend.length ? `<span class="dist-pend">&#9888; ${UI.esc(pend.join(' · '))}</span>` : ''; })()}
             </div>
             <div class="dist-numeros">${numeros.map(n => `<span>${n}</span>`).join('')}</div>
             <div class="dist-acoes nao-imprimir">
@@ -184,14 +221,29 @@ Paginas.distritos = {
     }
     async function excluirDistrito(d) {
       const n = Store.cidadesDoDistrito(d).length;
-      if (await UI.confirmar(`Excluir o distrito "${d.nome}" com ${(d.micros || []).length} microrregião(ões) e ${n} cidade(s) vinculada(s)? As cidades continuam cadastradas; só deixam de ser coloridas no mapa.`, { textoOk: 'Excluir distrito', perigo: true })) {
+      // vaga em aberto pede gente para este distrito: excluir deixaria o pedido sem destino (e travaria a edição da vaga)
+      const vg = vagasDoDistrito(d.id);
+      if (vg.abertas.length) {
+        UI.modal({ titulo: `Não dá para excluir ${d.nome}`, largura: '520px',
+          corpo: `<p style="margin-top:0">${vg.abertas.length === 1 ? '1 vaga em aberto pede' : vg.abertas.length + ' vagas em aberto pedem'} pessoas para este distrito:</p>
+            <ul>${vg.abertas.slice(0, 6).map(v => `<li>${UI.esc(v.titulo)}${Store.projeto(v.projetoId) ? ` <span class="muted">· ${UI.esc(Store.projeto(v.projetoId).nome)}</span>` : ''}</li>`).join('')}${vg.abertas.length > 6 ? `<li class="muted">e mais ${vg.abertas.length - 6}</li>` : ''}</ul>
+            <p class="muted small" style="margin-bottom:0">Tire o distrito dessas vagas (ou feche as vagas) em <b>Vagas</b> e depois exclua. Se só quer mudar o nome ou as cidades, use <b>Editar</b>.</p>`,
+          botoes: [{ texto: 'Fechar' }, { texto: 'Abrir Vagas', classe: 'btn-primario', acao: () => App.ir('vagas') }] });
+        return;
+      }
+      const avisoFechadas = vg.todas.length ? ` ${vg.todas.length === 1 ? '1 vaga já encerrada usou' : vg.todas.length + ' vagas já encerradas usaram'} este distrito e vão ficar sem o nome dele no histórico.` : '';
+      if (await UI.confirmar(`Excluir o distrito "${d.nome}" com ${(d.micros || []).length} microrregião(ões) e ${n} cidade(s) vinculada(s)? As cidades continuam cadastradas; só deixam de ser coloridas no mapa.${avisoFechadas}`, { textoOk: 'Excluir distrito', perigo: true })) {
         Store.excluirDistrito(d.id, App.usuario);
         UI.toast(`Distrito "${d.nome}" excluído.`, 'sucesso');
         renderLista();
       }
     }
     async function excluirMicro(d, m) {
-      if (await UI.confirmar(`Excluir a microrregião "${m.nome}" (${(m.cidadeIds || []).length} cidades) do distrito "${d.nome}"?`, { textoOk: 'Excluir', perigo: true })) {
+      // a última microrregião (ou a que tem a cidade polo do distrito) segura as vagas abertas: sem ela o distrito fica sem cidade
+      const vg = vagasDoDistrito(d.id);
+      const ultima = (d.micros || []).length === 1;
+      const extra = vg.abertas.length && ultima ? ` Atenção: é a única microrregião e ${vg.abertas.length === 1 ? '1 vaga aberta usa' : vg.abertas.length + ' vagas abertas usam'} este distrito — ele ficará sem cidades e essas vagas não poderão ser editadas até você cadastrar outra.` : '';
+      if (await UI.confirmar(`Excluir a microrregião "${m.nome}" (${(m.cidadeIds || []).length} cidades) do distrito "${d.nome}"?${extra}`, { textoOk: 'Excluir', perigo: true })) {
         Store.excluirMicro(d.id, m.id, App.usuario);
         UI.toast(`Microrregião "${m.nome}" excluída.`, 'sucesso');
         renderLista();
@@ -216,6 +268,7 @@ Paginas.distritos = {
       const corpo = document.createElement('div');
       corpo.innerHTML = `
         <label>Nome do distrito<input id="d-nome" value="${UI.esc(d ? d.nome : '')}" placeholder="Ex.: Lagoa Vermelha"></label>
+        <div id="d-nome-aviso" class="ajuda-inline" style="margin:-6px 0 10px"></div>
         <div class="form-linha">
           <label>Estado (UF) das cidades<select id="d-uf">${UI.opcoesUF(d ? d.uf : ufPadrao())}</select>
             <span class="ajuda-inline">As cidades das microrregiões são buscadas neste estado.</span></label>
@@ -233,7 +286,19 @@ Paginas.distritos = {
       const aoMudarCor = () => { mostrarTons(); const ch = corpo.querySelector('#d-recolorir'); if (ch && d && corpo.querySelector('#d-cor').value.toLowerCase() !== String(d.cor).toLowerCase()) ch.checked = true; };
       corpo.querySelector('#d-cor').addEventListener('input', aoMudarCor);
       corpo.querySelector('#d-cor').addEventListener('change', aoMudarCor);
-      UI.modal({
+      // nome igual/parecido com outro distrito: avisa enquanto digita e oferece abrir o que já existe
+      let mdDist = null;
+      const conferirNome = () => {
+        const box = corpo.querySelector('#d-nome-aviso');
+        const par = UI.nomesParecidos(corpo.querySelector('#d-nome').value, Store.distritos().filter(x => !d || x.id !== d.id));
+        if (!par.length) { box.innerHTML = ''; return; }
+        const x = par[0].item;
+        box.innerHTML = (par[0].igual ? `<span class="status-erro">Já existe o distrito <b>${UI.esc(x.nome)}</b>` : `<span class="status-espera">Parecido com <b>${UI.esc(x.nome)}</b>`) +
+          ` (${UI.esc(x.uf || 'sem estado')}, ${(x.micros || []).length} microrregião(ões)).</span> <button type="button" class="btn-link" id="d-abrir-existente">Abrir esse</button>`;
+        box.querySelector('#d-abrir-existente').addEventListener('click', () => { if (mdDist) mdDist.fechar(); abrirFormDistrito(x); });
+      };
+      corpo.querySelector('#d-nome').addEventListener('input', UI.debounce(conferirNome, 150));
+      mdDist = UI.modal({
         titulo: d ? `Editar distrito — ${d.nome}` : 'Novo distrito',
         corpo, largura: '540px', fecharAoClicarFora: false,
         botoes: [

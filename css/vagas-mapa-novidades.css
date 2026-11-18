@@ -107,3 +107,76 @@ button.vg-et.vgn-et-parado:hover { border-color: #d97706; }
 @media (min-width: 901px) { .mapa-controles { max-height: calc(100% - 152px); } }
 /* quadro "o que falta" mais enxuto */
 .vgn-pend-linha { padding-top: 5px; padding-bottom: 5px; }
+.vgn-pend-acao { gap: 6px; }
+
+/* ---- v152: carga por RH ---- */
+#vg-carga-btn.on { border-color: var(--primaria); background: var(--primaria-suave, #eff6ff); color: var(--primaria-escura, var(--primaria)); }
+.vgn-carga { border-bottom: 1px solid var(--borda); background: #fff; padding: 10px 20px 12px; }
+.vgn-carga-cab { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: 14px; }
+.vgn-carga-cab .btn-link { margin-left: auto; font-size: 13px; }
+.vgn-carga-lista { display: grid; gap: 4px; }
+.vgn-carga-linha { display: grid; grid-template-columns: minmax(150px, 1.2fr) 78px minmax(120px, 1.6fr) minmax(0, 1.2fr) 92px; align-items: center; gap: 12px; padding: 5px 10px; border: 1px solid var(--borda); border-radius: 8px; background: #f8fafc; }
+.vgn-carga-linha.livre { background: #fff; }
+.vgn-carga-sem { border-style: dashed; }
+.vgn-carga-rh { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; }
+.vgn-carga-rh b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vgn-carga-num { font-size: 12.5px; color: #334155; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vgn-carga-num b { font-size: 15px; color: var(--texto); }
+.vgn-carga-barra { position: relative; display: block; height: 22px; border-radius: 6px; background: #e2e8f0; overflow: hidden; }
+.vgn-carga-barra i { position: absolute; inset: 0 auto 0 0; background: #bfdbfe; border-radius: 6px; }
+.vgn-carga-barra em { position: relative; display: block; padding: 0 8px; line-height: 22px; font-style: normal; font-size: 12.5px; color: #1e3a8a; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vgn-carga-al { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.vgn-carga-acao { display: flex; justify-content: flex-end; }
+@media (max-width: 900px) {
+  .vgn-carga { padding: 10px 12px; }
+  .vgn-carga-linha { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
+  .vgn-carga-barra { grid-column: 1 / -1; }
+  .vgn-carga-al { grid-column: 1 / -1; }
+  .vgn-carga-al:empty { display: none; }
+  .vgn-carga-acao { grid-column: 1 / -1; justify-content: flex-start; }
+  .vgn-carga-acao:empty { display: none; }
+}
+
+/* carga no seletor de RHs (aprovar / pedir vaga) */
+.vg-rh-op .vgn-rh-op-txt { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; text-align: left; }
+.vg-rh-op .vgn-rh-carga { font-size: 11px; font-weight: 400; color: var(--muted); }
+.vg-rh-op.on .vgn-rh-carga { color: var(--primaria-escura, var(--primaria)); }
+
+/* ---- pedir vaga: começar de uma vaga anterior e modelo do cargo ---- */
+.vgn-copiar { margin: -2px 0 12px; padding: 10px 12px; border: 1px dashed #bfdbfe; border-radius: 8px; background: #f8fbff; }
+.vgn-copiar select { width: 100%; }
+.vgn-modelo { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: -4px; padding: 7px 10px; border-radius: 8px; background: #f1f6ff; border: 1px solid #dbeafe; font-size: 13px; }
+.vgn-modelo[hidden] { display: none; }
+
+/* ---- histórico da vaga ---- */
+.vgn-hist-cab { margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; background: #f8fafc; border: 1px solid var(--borda); font-size: 13px; }
+.vgn-hist { list-style: none; margin: 0 0 12px; padding: 0 0 0 4px; max-height: 55vh; overflow-y: auto; }
+.vgn-hist li { position: relative; display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 12px; padding: 7px 0 7px 16px; border-left: 2px solid #e2e8f0; }
+.vgn-hist li::before { content: ''; position: absolute; left: -6px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; border: 2px solid #fff; }
+.vgn-hist-quando { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+.vgn-hist-txt { font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vgn-hist-ok::before { background: var(--sucesso, #16a34a) !important; }
+.vgn-hist-ruim::before { background: #dc2626 !important; }
+.vgn-hist-alerta::before { background: #d97706 !important; }
+.vgn-hist-div::before, .vgn-hist-criar::before { background: var(--primaria) !important; }
+@media (max-width: 600px) { .vgn-hist li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* ================= CARGOS (v152) ================= */
+.cg-grade.cgn-grade { grid-template-columns: minmax(170px, 260px) minmax(0, 1fr) minmax(110px, 190px) auto; }
+.cgn-vagas { display: block; font-size: 12px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.cgn-modelo { font-size: 13px; }
+.cgn-modelo small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.cgn-ok { font-weight: 600; color: #15803d; }
+.cgn-sem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 20px 12px; padding: 10px 12px; border: 1px solid #fde68a; background: #fffbeb; border-radius: 8px; color: #92400e; font-size: 13.5px; }
+.cgn-sem > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.cgn-sem-lista { display: flex; flex-wrap: wrap; gap: 6px; }
+.cgn-sem-item { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 999px; background: #fff; border: 1px solid #fde68a; color: var(--texto); }
+.cgn-sem-item small { color: var(--muted); }
+.cgn-anuncio { margin-top: 14px; }
+@media (max-width: 800px) {
+  .cg-grade.cgn-grade { grid-template-columns: minmax(0, 1fr) auto; }
+  .cg-grade.cgn-grade.cg-cab { display: none; }
+  .cgn-grade .cg-docs, .cgn-grade .cgn-modelo { grid-column: 1 / -1; }
+  .cgn-grade .cg-acoes { grid-row: 1; grid-column: 2; }
+  .cgn-sem { margin: 0 12px 12px; }
+}

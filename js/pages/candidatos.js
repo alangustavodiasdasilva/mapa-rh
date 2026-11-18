@@ -515,6 +515,55 @@ Paginas.candidatos = {
     const classeEstado = (campo, v) => RH.pronto({ dinamica: 'ok', aso: 'ok', treinamento: 'ok', [campo]: v }) ? 'ok' : (['reprovado', 'inapto'].includes(v) ? 'ruim' : (v === 'pendente' ? 'pend' : 'meio'));
     const qtd = (n, um, varios) => `${UI.fmtNum(n)} ${n === 1 ? um : varios}`;
 
+    // ---------- esquecidos: em andamento e sem movimento (anotação ou alteração) há 8+ dias ----------
+    // Quem tem entrevista marcada para hoje ou depois está esperando a data: não conta como esquecido.
+    const DIAS_ESQUECIDO = 8;
+    const esperandoData = p => p.etapa === 'entrevista' && !!(p.entrevista && p.entrevista.data) && p.entrevista.data >= RH.hoje();
+    const semMovimento = p => diasDesde(ultimoMovimento(p)) || 0;
+    const esquecido = p => emAndamento(p) && ORDEM.includes(p.etapa) && !esperandoData(p) && semMovimento(p) >= DIAS_ESQUECIDO;
+    // faixa de idade para a barrinha do cabeçalho da coluna: em dia (0–3), atenção (4–7), esquecido (8+)
+    const faixaIdade = p => esperandoData(p) ? 'ok' : semMovimento(p) >= DIAS_ESQUECIDO ? 'ruim' : semMovimento(p) >= 4 ? 'meio' : 'ok';
+    let soEsquecidos = false;   // Quadro mostrando só os esquecidos
+    let motivoF = '';           // Lista > Não seguiram: filtro por motivo ("Por que saíram")
+
+    // ---------- desfazer na hora: depois de mudar a etapa ou tirar do processo, 10 s para voltar atrás ----------
+    let timerDesfazer = 0;
+    function fecharDesfazer() { clearTimeout(timerDesfazer); const b = document.getElementById('rhe-desfazer'); if (b) b.remove(); }
+    function ofereceDesfazer(texto, voltarAtras) {
+      fecharDesfazer();
+      const b = document.createElement('div');
+      b.id = 'rhe-desfazer'; b.className = 'rhe-desf'; b.setAttribute('role', 'status');
+      b.innerHTML = `<span class="rhe-desf-tx"></span><button type="button" class="rhe-desf-b">Desfazer</button><button type="button" class="rhe-desf-x" aria-label="Fechar">×</button>`;
+      b.querySelector('.rhe-desf-tx').textContent = texto;
+      b.querySelector('.rhe-desf-x').addEventListener('click', fecharDesfazer);
+      b.querySelector('.rhe-desf-b').addEventListener('click', async () => {
+        fecharDesfazer();
+        try { await voltarAtras(); } catch (err) { UI.toast(err.message, 'erro', 6000); }
+      });
+      document.body.appendChild(b);
+      timerDesfazer = setTimeout(fecharDesfazer, 10000);
+    }
+
+    // ---------- motivos de saída padronizados (separados por quem decidiu) ----------
+    const MOTIVOS_SAIDA = [
+      ['desistiu', 'Não respondeu / sem contato'], ['desistiu', 'Não compareceu à entrevista'], ['desistiu', 'Aceitou outra proposta / já está trabalhando'],
+      ['desistiu', 'Salário ou benefícios'], ['desistiu', 'Distância, alojamento ou viagem'], ['desistiu', 'Desistiu (outro motivo)'],
+      ['reprovado', 'Reprovado na triagem'], ['reprovado', 'Reprovado na entrevista'], ['reprovado', 'Documentação'], ['reprovado', 'Inapto no ASO'],
+      ['reprovado', 'Reprovado no treinamento'], ['reprovado', 'Vaga preenchida ou cancelada'], ['reprovado', 'Reprovado (outro motivo)']];
+    // select com "Escolha o motivo…" (obrigatório) e os motivos em dois grupos
+    const selectMotivo = sel => `<select id="ns-mot" required><option value="">Escolha o motivo…</option>${[['desistiu', 'A pessoa desistiu'], ['reprovado', 'A empresa não seguiu']].map(([s, g]) =>
+      `<optgroup label="${g}">${MOTIVOS_SAIDA.filter(x => x[0] === s).map(([sit, m]) => `<option value="${sit}|${m}" ${m === sel ? 'selected' : ''}>${m}</option>`).join('')}</optgroup>`).join('')}</select>`;
+    // lê o motivo da janela; "outro motivo" pede o detalhe
+    function lerMotivo(md) {
+      const v = md.corpo.querySelector('#ns-mot').value, det = md.corpo.querySelector('#ns-obs').value.trim();
+      if (!v) { md.corpo.querySelector('#ns-mot').focus(); throw new Error('Escolha o motivo.'); }
+      const [sit, mot] = v.split('|');
+      if (/outro motivo/.test(mot) && !det) { md.corpo.querySelector('#ns-obs').focus(); throw new Error('Em "outro motivo", escreva o detalhe.'); }
+      return { sit, motivo: mot + (det ? ' — ' + det : '') };
+    }
+    // motivo sem o detalhe (para agrupar em "Por que saíram")
+    const motivoBase = p => String(p.motivo_saida || '').split(' — ')[0].trim() || 'Sem motivo anotado';
+
     el.innerHTML = `
       <div class="card sem-padding cd-pagina">
         <div class="cad-barra cd-barra">
@@ -619,7 +668,9 @@ Paginas.candidatos = {
       semdata: { rotulo: 'Sem data marcada', teste: p => naEtapa(p, 'entrevista') && !(p.entrevista && p.entrevista.data), segs: ['entrevista'] },
       semresultado: { rotulo: 'Passou sem resultado', teste: p => naEtapa(p, 'entrevista') && !!(p.entrevista && p.entrevista.data) && p.entrevista.data < RH.hoje() && (p.entrevista.resultado || 'aguardando') === 'aguardando', segs: ['entrevista'] },
       // mesma pessoa cadastrada duas vezes (CPF ou telefone igual)
-      duplicados: { rotulo: 'Possível duplicado', teste: p => temDuplicado(p), segs: ['triagem', 'entrevista', 'documentos'] }
+      duplicados: { rotulo: 'Possível duplicado', teste: p => temDuplicado(p), segs: ['triagem', 'entrevista', 'documentos'] },
+      // ninguém mexe há 8+ dias (anotação ou alteração); entrevista marcada para frente não conta
+      esquecidos: { rotulo: `Sem movimento há ${DIAS_ESQUECIDO}+ dias`, teste: p => esquecido(p), segs: ['triagem', 'entrevista', 'documentos'] }
     };
     const pendDaEtapa = (k, s) => !!PEND[k] && (PEND[k].segs || ['documentos']).includes(s);
     // ---------- chegada no campo ----------
@@ -641,6 +692,7 @@ Paginas.candidatos = {
         else if (semana !== 'todas') l = l.filter(p => p.chegada_data && RH.segundaDaSemana(p.chegada_data) === semana);
       }
       if (pend && pendDaEtapa(pend, seg) && !semPend) l = l.filter(PEND[pend].teste);
+      if (seg === 'fora' && motivoF && !semPend) l = l.filter(p => motivoBase(p) === motivoF);
       return l;
     }
     function desenharFiltros() {
@@ -694,12 +746,13 @@ Paginas.candidatos = {
       const aguardam = ab.filter(semResposta).length, semConf = amanhaSemConfirmar(ab).length;
       const comAdm = b.filter(p => emAndamento(p) || p.situacao === 'admitido'), chHoje = comAdm.filter(chegaHoje).length, chVenc = comAdm.filter(chegadaVencida).length;
       const asoHoje = ab.filter(PEND.asohoje.teste).length, asoPassou = ab.filter(PEND.asoatraso.teste).length, treAmanha = ab.filter(PEND.treamanha.teste).length;
-      const dups = ab.filter(temDuplicado).length;
+      const dups = ab.filter(temDuplicado).length, esq = ab.filter(esquecido).length;
       const itens = [entHoje && `<button type="button" data-hoje="agenda"><b>${entHoje}</b> ${entHoje === 1 ? 'entrevista hoje' : 'entrevistas hoje'}</button>`,
         semRes && `<button type="button" data-hoje="agenda" class="ruim"><b>${semRes}</b> sem resultado</button>`,
         semConf && `<button type="button" data-hoje="confirmar" class="meio" title="Abre o lembrete para cada uma, uma por vez"><b>${semConf}</b> ${semConf === 1 ? 'entrevista amanhã sem confirmação' : 'entrevistas amanhã sem confirmação'}</button>`,
         aguardam && `<button type="button" data-hoje="pend:semresposta" class="meio" title="Mandou o 1º contato há 2 dias ou mais e a pessoa não respondeu"><b>${aguardam}</b> aguardando resposta</button>`,
         triVelha && `<button type="button" data-hoje="pend:parados3:triagem" class="meio"><b>${triVelha}</b> na triagem há 3+ dias</button>`,
+        esq && `<button type="button" data-hoje="esquecidos" class="ruim" title="Em andamento e sem nenhuma anotação ou alteração há ${DIAS_ESQUECIDO} dias ou mais: mostra só eles no Quadro"><b>${esq}</b> ${esq === 1 ? 'esquecido' : 'esquecidos'} (${DIAS_ESQUECIDO}+ dias parado${esq === 1 ? '' : 's'})</button>`,
         chHoje && `<button type="button" data-hoje="pend:chegahoje" title="Chegada no campo marcada para hoje"><b>${chHoje}</b> ${chHoje === 1 ? 'chega hoje' : 'chegam hoje'}</button>`,
         chVenc && `<button type="button" data-hoje="pend:chegavencida" class="ruim" title="A data de chegada passou e ninguém marcou se chegou ou faltou"><b>${chVenc}</b> ${chVenc === 1 ? 'chegada passada sem confirmação' : 'chegadas passadas sem confirmação'}</button>`,
         asoHoje && `<button type="button" data-hoje="pend:asohoje"><b>${asoHoje}</b> ASO hoje</button>`,
@@ -782,6 +835,7 @@ Paginas.candidatos = {
       const semMov = diasDesde(ultimoMovimento(p));
       if (aberto && p.etapa === 'documentos' && semMov >= 7) alertas.push(`sem movimento há ${semMov} dias`);
       if (aberto && p.etapa === 'documentos' && chegaDepoisDoPrazo(p)) alertas.push('chegada depois do prazo da vaga');
+      if (p.etapa === 'entrevista' && esquecido(p)) alertas.push(`sem movimento há ${semMov} dias`);
       if (conf) alertas.push(`mesmo horário que ${conf.pessoa.nome.split(' ')[0]}`);
       let doc = '';
       const ent = p.entrevista || {};
@@ -870,19 +924,30 @@ Paginas.candidatos = {
       // Não seguiram: os mais recentes primeiro, 30 no Quadro (o resto na Lista)
       const fora = b.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu').sort((x, y) => String(y.etapa_em || '').localeCompare(String(x.etapa_em || '')) || porNome(x, y));
       const rot = { ...ETAPAS, admitido: 'Admitidos' };
+      // idade de cada coluna (antes do filtro de esquecidos): em dia / atenção / esquecido
+      const idade = {};
+      for (const k of ORDEM) { const c = { ok: 0, meio: 0, ruim: 0 }; col[k].forEach(p => { c[faixaIdade(p)]++; }); idade[k] = c; }
+      const totEsq = ORDEM.reduce((n, k) => n + idade[k].ruim, 0);
+      if (soEsquecidos && !totEsq) soEsquecidos = false;
+      if (soEsquecidos) for (const k of ORDEM) col[k] = col[k].filter(esquecido).sort((x, y) => semMovimento(y) - semMovimento(x) || porNome(x, y));
+      const barraIdade = k => { const c = idade[k], t = c.ok + c.meio + c.ruim; if (!t) return '';
+        const seg2 = (f, rotulo) => c[f] ? `<i class="rhe-id-${f}" style="flex:${c[f]}" title="${c[f]} ${rotulo}"></i>` : '';
+        return `<div class="rhe-idade"><div class="rhe-idade-barra" role="img" aria-label="${c.ok} em dia, ${c.meio} entre 4 e 7 dias sem movimento, ${c.ruim} há ${DIAS_ESQUECIDO} dias ou mais">${seg2('ok', 'em dia (até 3 dias sem movimento)')}${seg2('meio', 'de 4 a 7 dias sem movimento')}${seg2('ruim', `há ${DIAS_ESQUECIDO}+ dias sem movimento`)}</div>${c.ruim ? `<button type="button" class="rhe-esq-b ${soEsquecidos ? 'on' : ''}" data-so-esq aria-pressed="${soEsquecidos}" title="${soEsquecidos ? 'Voltar a ver todos' : `Mostrar só quem está há ${DIAS_ESQUECIDO}+ dias sem movimento`}">${c.ruim} esquecido${c.ruim > 1 ? 's' : ''}</button>` : '<span class="rhe-esq-ok">em dia</span>'}</div>`; };
+      const avisoEsq = soEsquecidos ? `<div class="cd-aviso rhe-esq-aviso"><span>Mostrando só os <b>${totEsq} esquecidos</b>: em andamento e sem nenhuma anotação ou alteração há ${DIAS_ESQUECIDO} dias ou mais (os mais parados primeiro).</span><button type="button" class="btn btn-pequeno" data-so-esq>Ver todos</button></div>` : '';
       // com busca: se a etapa mostrada no celular ficou vazia, pula para a primeira que achou alguém
       if (!colMob || !col[colMob] || (busca && !col[colMob].length)) colMob = ['triagem', 'entrevista', 'documentos', 'admitido'].find(k => col[k].length) || colMob || 'triagem';
-      q('#cd-corpo').innerHTML = `<div class="cd-col-sel">${['triagem', 'entrevista', 'documentos', 'admitido'].map(k => `<button type="button" data-col="${k}" class="${k === colMob ? 'ativa' : ''}">${rot[k]} <b>${k === 'admitido' ? totalAdm : col[k].length}</b></button>`).join('')}</div>
+      q('#cd-corpo').innerHTML = `${avisoEsq}<div class="cd-col-sel">${['triagem', 'entrevista', 'documentos', 'admitido'].map(k => `<button type="button" data-col="${k}" class="${k === colMob ? 'ativa' : ''}">${rot[k]} <b>${k === 'admitido' ? totalAdm : col[k].length}</b></button>`).join('')}</div>
         <div class="cd-quadro" data-col="${colMob}">${['triagem', 'entrevista', 'documentos', 'admitido'].map((k, i) => `<div class="coluna cd-coluna" data-etapa="${k}">
           <div class="coluna-cab" title="${UI.esc(DICAS[k])}"><span class="passo-num">${i + 1}</span> ${rot[k]}${k === 'documentos' && col.documentos.some(pronta) ? ` <button type="button" class="cd-prontos" data-ver-prontos title="Ver na Lista quem já pode ser admitido">${col.documentos.filter(pronta).length} pronto${col.documentos.filter(pronta).length > 1 ? 's' : ''} para admitir</button>` : ''}${k === 'admitido' ? ` <span class="muted small cd-adm-sub">últimos ${DIAS_ADM} dias</span>` : ''} <span class="aba-num" ${k === 'admitido' ? 'title="Total de admitidos neste filtro"' : ''}>${k === 'admitido' ? totalAdm : col[k].length}</span></div>
+          ${(k !== 'admitido' && barraIdade(k)) || '<div class="rhe-idade rhe-idade-vazia" aria-hidden="true"></div>'}
           <div class="cd-coluna-lista">${k === 'admitido'
             ? (admNaColuna.map(cartao).join('') || `<div class="coluna-vazia"><b>${totalAdm ? `Ninguém admitido nos últimos ${DIAS_ADM} dias` : busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
               + (totalAdm ? `<div class="cd-adm-rodape">${col.admitido.length > admNaColuna.length ? `+${col.admitido.length - admNaColuna.length} desta semana · ` : ''}${totalAdm === 1 ? '1 admitido' : totalAdm + ' admitidos'} no total${Store.pode(eu, 'cadastro') ? '<button type="button" class="btn btn-pequeno" data-ir-contratacoes>Ver todos em Contratações →</button>' : ''}</div>` : '')
             : (col[k].slice(0, verMais[k] || POR_COLUNA).map(cartao).join('') || `<div class="coluna-vazia"><b>${busca || vagaId || distritoId || analista ? 'Ninguém neste filtro' : 'Ninguém aqui'}</b><div class="small">${DICAS[k]}</div></div>`)
               + (col[k].length > (verMais[k] || POR_COLUNA) ? `<button type="button" class="cd-ver-mais" data-ver-mais="${k}">Mostrar mais ${Math.min(POR_COLUNA, col[k].length - (verMais[k] || POR_COLUNA))} de ${col[k].length - (verMais[k] || POR_COLUNA)} restantes</button>` : '')}</div>
         </div>`).join('')}</div>
-        ${podeEditar ? '<div class="cd-solta-fora" data-solta="fora">Solte aqui quem <b>não segue</b> no processo (reprovado ou desistiu)</div>' : ''}
-        ${fora.length ? `<details class="cd-fora"><summary>Não seguiram no processo (${fora.length})</summary><div class="kanban kanban-reprovados">${fora.slice(0, 30).map(cartao).join('')}</div>${fora.length > 30 ? `<button type="button" class="cd-ver-mais" data-seg="fora" data-ir-lista>Ver todos os ${fora.length} na Lista</button>` : ''}</details>` : ''}`;
+        ${podeEditar && !soEsquecidos ? '<div class="cd-solta-fora" data-solta="fora">Solte aqui quem <b>não segue</b> no processo (reprovado ou desistiu)</div>' : ''}
+        ${fora.length && !soEsquecidos ?`<details class="cd-fora"><summary>Não seguiram no processo (${fora.length})</summary><div class="kanban kanban-reprovados">${fora.slice(0, 30).map(cartao).join('')}</div>${fora.length > 30 ? `<button type="button" class="cd-ver-mais" data-seg="fora" data-ir-lista>Ver todos os ${fora.length} na Lista</button>` : ''}</details>` : ''}`;
     }
 
     // ---------- LISTA: conferência de uma etapa por vez ----------
@@ -900,7 +965,7 @@ Paginas.candidatos = {
       // filtros de pendência da etapa (os "soLink" só aparecem quando vieram do Início)
       const pendsSeg = Object.entries(PEND).filter(([k, f]) => pendDaEtapa(k, seg) && (!f.soLink || pend === k));
       if (pendsSeg.some(([k, f]) => pend === k || todos.some(f.teste))) {
-        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${pendsSeg.map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc', 'asoatraso', 'faltaram', 'chegavencida', 'semresultado'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}" aria-pressed="${pend === k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
+        sub += `<div class="cd-pends"><button type="button" class="cd-pend ${!pend ? 'ativa' : ''}" data-pend="">Todos <b>${todos.length}</b></button>${pendsSeg.map(([k, f]) => { const n = todos.filter(f.teste).length; return n || pend === k ? `<button type="button" class="cd-pend ${pend === k ? 'ativa' : ''} ${['menores', 'barradas', 'docsrec', 'semcpf', 'semnasc', 'asoatraso', 'faltaram', 'chegavencida', 'semresultado', 'esquecidos'].includes(k) ? 'cd-pend-ruim' : k === 'prontas' ? 'cd-pend-bom' : ''}" data-pend="${k}" aria-pressed="${pend === k}">${f.rotulo} <b>${n}</b></button>` : ''; }).join('')}</div>`;
       }
       if (seg === 'documentos' || seg === 'admitido') {
         const cont = new Map(); let sem = 0;
@@ -908,6 +973,16 @@ Paginas.candidatos = {
         if (semana !== 'todas' && semana !== 'sem' && !cont.has(semana)) semana = 'todas';
         const fim = s => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 6); return RH.fmtDia(d.toISOString().slice(0, 10)); };
         if (cont.size) sub += `<label class="cd-filtro cd-filtro-sem">Chegada<select id="cd-semana"><option value="todas">Qualquer data</option>${[...cont.keys()].sort().map(s => `<option value="${s}" ${s === semana ? 'selected' : ''}>${RH.fmtDia(s)} a ${fim(s)} (${cont.get(s)})</option>`).join('')}${sem ? `<option value="sem" ${semana === 'sem' ? 'selected' : ''}>Sem data (${sem})</option>` : ''}</select></label>`;
+      }
+      // Não seguiram: por que saíram (motivo padronizado, sem o detalhe) e em que etapa pararam; clicar filtra
+      if (seg === 'fora' && todos.length) {
+        const cont = new Map(); for (const p of todos) cont.set(motivoBase(p), (cont.get(motivoBase(p)) || 0) + 1);
+        if (motivoF && !cont.has(motivoF)) motivoF = '';
+        const des = todos.filter(p => p.situacao === 'desistiu').length, porEt = ORDEM.map(k => [k, todos.filter(p => p.etapa === k).length]).filter(x => x[1]);
+        const pct = n => Math.round(100 * n / todos.length) + '%';
+        sub += `<div class="rhe-motivos"><span class="rhe-motivos-rot">Por que saíram</span><button type="button" class="cd-pend ${!motivoF ? 'ativa' : ''}" data-motivo="">Todos <b>${todos.length}</b></button>${[...cont.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR')).map(([m, n]) =>
+          `<button type="button" class="cd-pend ${motivoF === m ? 'ativa' : ''} ${m === 'Sem motivo anotado' ? 'rhe-sem-mot' : ''}" data-motivo="${UI.esc(m)}" aria-pressed="${motivoF === m}" title="${pct(n)} de quem saiu">${UI.esc(m)} <b>${n}</b></button>`).join('')}</div>
+          <div class="rhe-motivos-resumo muted small">Desistiram: <b>${des}</b> · Empresa não seguiu: <b>${todos.length - des}</b> · Pararam em: ${porEt.map(([k, n]) => `${ETAPAS[k]} ${n} (${pct(n)})`).join(', ')}</div>`;
       }
       // admitidos: a lista da tela vai pronta para a folha/DP (cola no Excel)
       if (seg === 'admitido' && podeEditar && lista.length) {
@@ -924,15 +999,19 @@ Paginas.candidatos = {
       else lista.sort((x, y) => ts(desdeEtapa(y)) - ts(desdeEtapa(x)));
       const limite = verMais.lista || 50, vis = lista.slice(0, limite);
       // seleção em lote: só nas etapas em andamento, e só dentro da etapa na tela
-      const loteOk = podeEditar && ['triagem', 'entrevista', 'documentos'].includes(seg);
+      const loteOk = podeEditar && ['triagem', 'entrevista', 'documentos', 'fora'].includes(seg);
       for (const i of [...marcados]) if (!lista.some(p => p.id === i)) marcados.delete(i);
       const todosMarcados = loteOk && vis.length && vis.every(p => marcados.has(p.id));
-      const barraLote = loteOk && marcados.size ? `<div class="cd-lote"><b>${qtd(marcados.size, 'selecionado', 'selecionados')}</b>
+      const barraLote = !(loteOk && marcados.size) ? '' : seg === 'fora' ? `<div class="cd-lote"><b>${qtd(marcados.size, 'selecionado', 'selecionados')}</b>
+          <button class="btn btn-pequeno btn-primario" data-lote="retomar" title="Cada pessoa volta para a etapa em que parou">Retomar</button>
+          <button class="btn btn-pequeno" data-lote="avisar" title="Abre o WhatsApp de uma pessoa por vez, com a mensagem &quot;Não seguiu no processo&quot;">Avisar pelo WhatsApp</button>
+          <button class="btn-link" data-lote="limpar">Limpar seleção</button></div>`
+        : `<div class="cd-lote"><b>${qtd(marcados.size, 'selecionado', 'selecionados')}</b>
           ${seg !== 'documentos' ? `<button class="btn btn-pequeno btn-primario" data-lote="avancar">Avançar para ${ETAPAS[ORDEM[ORDEM.indexOf(seg) + 1]]}</button>` : ''}
           <button class="btn btn-pequeno" data-lote="mensagem" title="Abre o WhatsApp de uma pessoa por vez, com o texto pronto">Mandar mensagem</button>
           ${veTudo ? '<button class="btn btn-pequeno" data-lote="direcionar">Direcionar para um RH</button>' : ''}
           <button class="btn btn-pequeno" data-lote="fora">Não seguem</button>
-          <button class="btn-link" data-lote="limpar">Limpar seleção</button></div>` : '';
+          <button class="btn-link" data-lote="limpar">Limpar seleção</button></div>`;
       // colunas por etapa
       const rhCol = veTudo ? ['RH'] : [];
       const COLS = {
@@ -1030,21 +1109,46 @@ Paginas.candidatos = {
 
     // ---------- ações em lote (Lista) ----------
     async function emLote(acao) {
-      const sel = linhas.filter(p => marcados.has(p.id) && emAndamento(p));
+      const selTodos = linhas.filter(p => marcados.has(p.id)), sel = selTodos.filter(emAndamento);
       if (acao === 'limpar') { marcados.clear(); return desenhar(); }
+      // "Não seguiram": retomar várias de uma vez ou avisar pelo WhatsApp, uma por vez
+      const saidos = selTodos.filter(p => p.situacao === 'reprovado' || p.situacao === 'desistiu');
+      if (acao === 'avisar') return mensagemEmLote(saidos, 'naoseguiu');
+      if (acao === 'retomar') {
+        if (!saidos.length || !await UI.confirmar(`Retomar ${qtd(saidos.length, 'pessoa', 'pessoas')}? Cada uma volta para a etapa em que parou.`, { titulo: 'Retomar o processo', textoOk: 'Retomar' })) return;
+        let ok = 0; const erros = [];
+        for (const p of saidos) {
+          try { await Nuvem.rh.atualizar(p.id, { situacao: 'em_andamento', motivo_saida: null }); Object.assign(p, { situacao: 'em_andamento', motivo_saida: null }); ok++; }
+          catch (err) { erros.push(`${p.pessoa.nome}: ${/unica_aberta|duplicate/.test(err.message) ? 'já tem outro processo em andamento' : err.message}`); }
+        }
+        marcados.clear(); desenhar();
+        if (ok) UI.toast(`${qtd(ok, 'pessoa voltou', 'pessoas voltaram')} para o processo.`, 'sucesso', 4000);
+        if (erros.length) UI.toast(`Não foi possível retomar: ${erros.join(' · ')}`, 'erro', 9000);
+        return;
+      }
       if (!sel.length) return;
       if (acao === 'direcionar') { analista = ''; return direcionarIds(sel.map(p => p.id)); }
       if (acao === 'mensagem') return mensagemEmLote(sel);
       if (acao === 'fora') {
         UI.modal({ titulo: `${qtd(sel.length, 'pessoa não segue', 'pessoas não seguem')} no processo`, largura: '460px',
-          corpo: `<label>Motivo (vale para todos)<select id="ns-mot">${MOTIVOS_SAIDA.map(([sit, m]) => `<option value="${sit}|${m}">${m}</option>`).join('')}</select></label>
-            <label style="margin-top:10px">Detalhe (opcional)<input id="ns-obs" placeholder="Ex.: vaga preenchida por outro candidato"></label>
+          corpo: `<label>Motivo (vale para todos)${selectMotivo('')}</label>
+            <label style="margin-top:10px">Detalhe <span class="muted small">(obrigatório em "outro motivo")</span><input id="ns-obs" placeholder="Ex.: vaga preenchida por outro candidato"></label>
             <p class="muted small" style="margin-bottom:0">Saem do quadro e ficam em "Não seguiram", com o motivo anotado no histórico de cada um. Dá para retomar depois.</p>`,
           botoes: [{ texto: 'Cancelar' }, { texto: 'Confirmar', classe: 'btn-primario', acao: async md => {
-            const [sit, mot] = md.corpo.querySelector('#ns-mot').value.split('|'), det = md.corpo.querySelector('#ns-obs').value.trim(), motivo = mot + (det ? ' — ' + det : '');
+            const { sit, motivo } = lerMotivo(md), antes = sel.map(p => [p, p.motivo_saida || null]);
             await Nuvem.rh.atualizarVarios(sel.map(p => p.id), { situacao: sit, motivo_saida: motivo }); sel.forEach(p => { p.situacao = sit; p.motivo_saida = motivo; });
-            marcados.clear(); desenhar(); UI.toast(`${qtd(sel.length, 'pessoa guardada', 'pessoas guardadas')} em "Não seguiram".`, 'sucesso');
+            marcados.clear(); desenhar();
+            ofereceDesfazer(`${qtd(sel.length, 'pessoa guardada', 'pessoas guardadas')} em "Não seguiram".`, async () => {
+              await Nuvem.rh.atualizarVarios(sel.map(p => p.id), { situacao: 'em_andamento', motivo_saida: null });
+              antes.forEach(([p]) => { p.situacao = 'em_andamento'; p.motivo_saida = null; });
+              desenhar(); UI.toast(`Desfeito: ${qtd(sel.length, 'pessoa voltou', 'pessoas voltaram')} para o processo.`, 'sucesso');
+            });
             Promise.all(sel.map(p => anotarAuto(p, `Não segue no processo: ${motivo}`))).then(desenhar);   // histórico de cada um, sem segurar a janela
+            // oferece avisar todos pelo WhatsApp (uma pessoa por vez, com o texto pronto)
+            const comTel = sel.filter(p => linkWhats(p.pessoa)).length;
+            if (comTel) setTimeout(() => UI.modal({ titulo: 'Avisar quem saiu?', largura: '440px',
+              corpo: `<p style="margin-top:0">Quer avisar ${comTel === sel.length ? (sel.length === 1 ? 'a pessoa' : `as ${sel.length} pessoas`) : `${qtd(comTel, 'pessoa', 'pessoas')} (as que têm telefone)`} pelo WhatsApp? Abre uma por vez com a mensagem "Não seguiu no processo" pronta.</p>`,
+              botoes: [{ texto: 'Agora não' }, { texto: 'Avisar pelo WhatsApp', classe: 'btn-primario', acao: () => { setTimeout(() => mensagemEmLote(sel, 'naoseguiu'), 0); } }] }), 0);
           } }] });
         return;
       }
@@ -1059,8 +1163,15 @@ Paginas.candidatos = {
       if (!await UI.confirmar(soEnt ? `Avançar ${qtd(n, 'pessoa', 'pessoas')} para a Entrevista? ${n === 1 ? 'Ela entra' : 'Elas entram'} SEM DATA marcada: depois é só agendar cada uma na Agenda de entrevistas.`
         : `Avançar ${qtd(n, 'pessoa', 'pessoas')} para a etapa seguinte? ${Object.entries(grupos).map(([k, l]) => `${l.length} → ${ETAPAS[k]}`).join(', ')}.`, { textoOk: 'Avançar' })) return;
       try {
+        const etapaAntes = new Map(Object.values(grupos).flat().map(p => [p, p.etapa]));
         for (const [k, l] of Object.entries(grupos)) { await Nuvem.rh.atualizarVarios(l.map(p => p.id), { etapa: k }); l.forEach(p => { p.etapa = k; }); }
-        marcados.clear(); UI.toast(`${qtd(n, 'pessoa avançou', 'pessoas avançaram')} de etapa.${soEnt ? ' Agende as entrevistas na lista "sem data marcada", embaixo da Agenda.' : ''}`, 'sucesso', soEnt ? 6000 : 3500);
+        marcados.clear();
+        if (soEnt) UI.toast('Agende as entrevistas na lista "sem data marcada", embaixo da Agenda.', 'info', 6000);
+        ofereceDesfazer(`${qtd(n, 'pessoa avançou', 'pessoas avançaram')} de etapa.`, async () => {
+          const porEtapa = {}; etapaAntes.forEach((e, p) => { (porEtapa[e] = porEtapa[e] || []).push(p); });
+          for (const [e, l] of Object.entries(porEtapa)) { await Nuvem.rh.atualizarVarios(l.map(p => p.id), { etapa: e }); l.forEach(p => { p.etapa = e; }); }
+          desenhar(); UI.toast(`Desfeito: ${qtd(n, 'pessoa voltou', 'pessoas voltaram')} para a etapa anterior.`, 'sucesso');
+        });
         if (soEnt) { semanaAg = null; mudarVista('agenda'); } else desenhar();
       } catch (err) { UI.toast(err.message, 'erro', 6000); await carregar(); }
     }
@@ -1127,10 +1238,19 @@ Paginas.candidatos = {
     }
 
     // ---------- mudanças de etapa ----------
-    async function gravar(p, campos, msg) {
-      const antes = Object.fromEntries(Object.keys(campos).map(k => [k, p[k]]));
+    const emAndamentoTexto = (a, p) => emAndamento(p) ? `para ${ETAPAS[p.etapa] || p.etapa}` : 'para "Não seguiram"';
+    // op.desfazer: em vez do aviso comum, mostra a barra "Desfazer" (volta os mesmos campos para o que eram)
+    async function gravar(p, campos, msg, op = {}) {
+      const antes = Object.fromEntries(Object.keys(campos).map(k => [k, p[k] === undefined ? null : p[k]]));
       Object.assign(p, campos); desenhar();
-      try { await Nuvem.rh.atualizar(p.id, campos); if (msg) UI.toast(msg, 'sucesso', 3000); return true; }
+      try {
+        await Nuvem.rh.atualizar(p.id, campos);
+        if (op.desfazer && ativo) ofereceDesfazer(msg || 'Alterado.', async () => {
+          if (await gravar(p, antes, null)) UI.toast(`${p.pessoa.nome}: desfeito, voltou ${emAndamentoTexto(antes, p)}.`, 'sucesso', 3500);
+        });
+        else if (msg) UI.toast(msg, 'sucesso', 3000);
+        return true;
+      }
       catch (err) { Object.assign(p, antes); desenhar(); UI.toast(/unica_aberta|duplicate/.test(err.message) ? 'Esta pessoa já tem outro processo em andamento neste projeto.' : err.message, 'erro', 6000); return false; }
     }
     const avancar = p => { const i = ORDEM.indexOf(p.etapa); if (i < 0 || i >= ORDEM.length - 1) return; if (ORDEM[i + 1] === 'documentos') return enquadrar(p); if (ORDEM[i + 1] === 'entrevista') return agendar(p, false); gravar(p, { etapa: ORDEM[i + 1] }, `${p.pessoa.nome}: ${ETAPAS[ORDEM[i + 1]]}.`); };
@@ -1148,7 +1268,7 @@ Paginas.candidatos = {
             <div id="ag-conf" style="grid-column:1/-1"></div>
             <label style="grid-column:1/-1">Mensagem para a pessoa<textarea id="ag-msg" rows="3"></textarea></label>
           </div>`,
-        botoes: [{ texto: 'Cancelar' }].concat(remarcar ? [] : [{ texto: 'Agendar depois', classe: 'btn-secundario', acao: async () => { if (p.etapa !== 'entrevista') await gravar(p, { etapa: 'entrevista' }, `${p.pessoa.nome}: Entrevista (sem data ainda).`); } }],
+        botoes: [{ texto: 'Cancelar' }].concat(remarcar ? [] : [{ texto: 'Agendar depois', classe: 'btn-secundario', acao: async () => { if (p.etapa !== 'entrevista') await gravar(p, { etapa: 'entrevista' }, `${p.pessoa.nome}: Entrevista (sem data ainda).`, { desfazer: true }); } }],
           [{ texto: linkWhats(p.pessoa) ? 'Agendar e mandar WhatsApp' : 'Agendar', classe: 'btn-primario', acao: async md => {
             const g = s => md.corpo.querySelector(s), data = g('#ag-data').value;
             if (!data) { g('#ag-data').focus(); throw new Error('Escolha a data da entrevista.'); }
@@ -1213,14 +1333,14 @@ Paginas.candidatos = {
             <label>Tipo<select id="en-tipo"><option value="LOCAL">Local (mora na região)</option><option value="MOVEL">Móvel (vem de fora)</option></select></label>
             <div class="cd-sugestao" id="en-sug" style="grid-column:1/-1"></div>
           </div>`,
-        botoes: [{ texto: 'Cancelar' }, { texto: 'Definir depois', classe: 'btn-secundario', acao: async () => { await gravar(p, Object.assign({ etapa: 'documentos' }, emAndamento(p) ? {} : { situacao: 'em_andamento' }), `${p.pessoa.nome}: Documentação (destino a definir).`); } },
+        botoes: [{ texto: 'Cancelar' }, { texto: 'Definir depois', classe: 'btn-secundario', acao: async () => { await gravar(p, Object.assign({ etapa: 'documentos' }, emAndamento(p) ? {} : { situacao: 'em_andamento' }), `${p.pessoa.nome}: Documentação (destino a definir).`, { desfazer: true }); } },
           { texto: 'Ir para a Documentação', classe: 'btn-primario', acao: async md => {
             const g = s => md.corpo.querySelector(s), vg = vagaDe(g('#en-vaga').value), dId = g('#en-dist').value || null;
             const r = dId && origem ? Store.distritoMaisProximo(origem, [dId]) : null;
             const campos = { etapa: 'documentos', vaga_id: vg ? vg.id : null, distrito_id: dId, tipo: g('#en-tipo').value, distancia_km: r ? Math.round(r.km * 10) / 10 : null };
             if (vg && !p.cargo) campos.cargo = vg.titulo;
             if (!emAndamento(p)) campos.situacao = 'em_andamento';
-            if (!await gravar(p, campos, `${p.pessoa.nome}: Documentação${dId ? ' · ' + Store.distrito(dId).nome : ''}.`)) return false;
+            if (!await gravar(p, campos, `${p.pessoa.nome}: Documentação${dId ? ' · ' + Store.distrito(dId).nome : ''}.`, { desfazer: true })) return false;
           } }] });
       const g = s => m.corpo.querySelector(s);
       let mexeuTipo = false;
@@ -1295,17 +1415,20 @@ Paginas.candidatos = {
         pintarDistritos(i);
       });
     }
-    const voltar = p => { const i = ORDEM.indexOf(p.etapa); if (i > 0) gravar(p, { etapa: ORDEM[i - 1] }, `${p.pessoa.nome} voltou para ${ETAPAS[ORDEM[i - 1]]}.`); };
+    const voltar = p => { const i = ORDEM.indexOf(p.etapa); if (i > 0) gravar(p, { etapa: ORDEM[i - 1] }, `${p.pessoa.nome} voltou para ${ETAPAS[ORDEM[i - 1]]}.`, { desfazer: true }); };
     // motivoIni: motivo já escolhido (ex.: "não respondeu", vindo da sugestão do cartão)
     function naoSeguiu(p, motivoIni) {
-      const marcado = m => motivoIni ? m === motivoIni : (p.entrevista && p.entrevista.resultado === 'reprovado' && m === 'Reprovado na entrevista') || (p.entrevista && p.entrevista.resultado === 'faltou' && m === 'Não compareceu à entrevista');
+      // motivo já sabido: o que veio de fora, o resultado da entrevista ou o ASO/treinamento
+      const ent = p.entrevista || {};
+      const ini = motivoIni || (ent.resultado === 'reprovado' ? 'Reprovado na entrevista' : ent.resultado === 'faltou' ? 'Não compareceu à entrevista'
+        : p.aso === 'inapto' ? 'Inapto no ASO' : p.treinamento === 'reprovado' ? 'Reprovado no treinamento' : '');
       UI.modal({ titulo: `${p.pessoa.nome} não segue no processo`, largura: '460px',
-        corpo: `<label>Motivo<select id="ns-mot">${MOTIVOS_SAIDA.map(([sit, m]) => `<option value="${sit}|${m}" ${marcado(m) ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-          <label style="margin-top:10px">Detalhe (opcional)<input id="ns-obs" placeholder="Ex.: não tem disponibilidade para viajar"></label>
-          <p class="muted small" style="margin-bottom:0">A pessoa sai do quadro e fica guardada em "Não seguiram". Dá para retomar depois.</p>`,
+        corpo: `<label>Motivo${selectMotivo(ini)}</label>
+          <label style="margin-top:10px">Detalhe <span class="muted small">(obrigatório em "outro motivo")</span><input id="ns-obs" placeholder="Ex.: não tem disponibilidade para viajar"></label>
+          <p class="muted small" style="margin-bottom:0">A pessoa sai do quadro e fica guardada em "Não seguiram", parada na ${UI.esc((ETAPAS[p.etapa] || '').toLowerCase())}. O motivo entra no resumo "Por que saíram". Dá para retomar depois.</p>`,
         botoes: [{ texto: 'Cancelar' }, { texto: 'Confirmar', classe: 'btn-primario', acao: async md => {
-          const [sit, mot] = md.corpo.querySelector('#ns-mot').value.split('|'), det = md.corpo.querySelector('#ns-obs').value.trim(), motivo = mot + (det ? ' — ' + det : '');
-          if (!await gravar(p, { situacao: sit, motivo_saida: motivo })) return false;
+          const { sit, motivo } = lerMotivo(md), mot = motivo.split(' — ')[0];
+          if (!await gravar(p, { situacao: sit, motivo_saida: motivo }, `${p.pessoa.nome}: não segue (${mot}).`, { desfazer: true })) return false;
           anotarAuto(p, `Não segue no processo: ${motivo}`);
           // depois de guardar: oferece avisar a pessoa
           setTimeout(() => avisarSaida(p), 0);
@@ -1317,8 +1440,6 @@ Paginas.candidatos = {
         corpo: `<p style="margin-top:0"><b>${UI.esc(p.pessoa.nome)}</b> saiu do processo.${tem ? ' Quer avisar a pessoa pelo WhatsApp? A mensagem já vem pronta.' : ' Ela está sem telefone válido, então não dá para avisar pelo WhatsApp.'}</p>`,
         botoes: [{ texto: tem ? 'Agora não' : 'Fechar' }].concat(tem ? [{ texto: 'Avisar pelo WhatsApp', classe: 'btn-primario', acao: () => { setTimeout(() => mandarMensagem(p, 'naoseguiu'), 0); } }] : []) });
     }
-    const MOTIVOS_SAIDA = [['reprovado', 'Reprovado na triagem'], ['reprovado', 'Reprovado na entrevista'], ['desistiu', 'Não compareceu à entrevista'], ['desistiu', 'Não respondeu / sem contato'],
-      ['desistiu', 'Salário ou benefícios'], ['desistiu', 'Distância, alojamento ou viagem'], ['reprovado', 'Documentação'], ['desistiu', 'Desistiu (outro motivo)'], ['reprovado', 'Reprovado (outro motivo)']];
     // anotação automática no histórico (quem e quando ficam gravados pelo banco); falha aqui não desfaz a ação
     async function anotarAuto(p, texto) { try { p.anotacoes = await Nuvem.rh.anotar(p.id, texto); } catch (e) { console.warn('anotação automática', e); } }
     // ---------- chegada no campo: selo e botões rápidos (cartão e Lista) ----------
@@ -1374,7 +1495,9 @@ Paginas.candidatos = {
     async function encerrar(p, perguntarSoUmaVez) {
       const motivo = barradaEm(p); if (!motivo) return;
       if (!await UI.confirmar(`${p.pessoa.nome} ficou como ${motivo}. Encerrar o processo agora? A pessoa sai do andamento e fica guardada em "Não seguiram".${perguntarSoUmaVez ? ' Se cancelar, ela continua na lista, sem poder ser admitida, com o botão Encerrar.' : ''}`, { titulo: 'Encerrar processo', textoOk: 'Encerrar' })) return;
-      gravar(p, { situacao: 'reprovado' }, 'Processo encerrado. Está em "Não seguiram".');
+      // motivo padronizado (antes ficava em branco e não entrava no resumo "Por que saíram")
+      const mot = p.aso === 'inapto' ? 'Inapto no ASO' : 'Reprovado no treinamento';
+      if (await gravar(p, { situacao: 'reprovado', motivo_saida: mot }, `${p.pessoa.nome}: processo encerrado (${mot.toLowerCase()}).`, { desfazer: true })) anotarAuto(p, `Não segue no processo: ${mot}`);
     }
     async function salvarDocs(p, mapa) {
       const antes = { documentos: p.documentos, documentos_pendentes: p.documentos_pendentes, dinamica: p.dinamica };
@@ -1476,7 +1599,7 @@ Paginas.candidatos = {
       if (k === 'admitido') return admitir(p);
       if (k === 'documentos' && !(emAndamento(p) && p.etapa === 'documentos')) return enquadrar(p);
       const campos = { etapa: k }; if (!emAndamento(p)) campos.situacao = 'em_andamento';
-      gravar(p, campos, `${p.pessoa.nome}: ${ETAPAS[k]}.`);
+      gravar(p, campos, `${p.pessoa.nome}: ${ETAPAS[k]}.`, { desfazer: true });
     });
     q('#cd-corpo').addEventListener('click', e => {
       if (e.target.closest('[data-direcionar]')) { e.stopPropagation(); return direcionar(); }
@@ -1490,7 +1613,9 @@ Paginas.candidatos = {
       if (e.target.closest('[data-avaliar-lote]')) return RhSafra.emLote(admitidosDaTela().filter(p => !p.avaliacao_recontrataria && RhSafra.podeAvaliar(p, eu)), () => desenhar());
       if (e.target.closest('[data-copiar-folha]')) return copiarParaFolha(daLista().slice().sort((x, y) => String(y.admitido_em || '').localeCompare(String(x.admitido_em || '')) || x.pessoa.nome.localeCompare(y.pessoa.nome, 'pt-BR')));
       const vm = e.target.closest('[data-ver-mais]'); if (vm) { const k = vm.dataset.verMais, passo = k === 'lista' ? 50 : k === 'agenda' ? 40 : POR_COLUNA; verMais[k] = (verMais[k] || passo) + passo; return desenhar(); }
-      const sg = e.target.closest('[data-seg]'); if (sg) { seg = sg.dataset.seg; pend = ''; marcados.clear(); verMais.lista = 50; return desenhar(); }
+      const mf = e.target.closest('[data-motivo]'); if (mf) { motivoF = mf.dataset.motivo; marcados.clear(); return desenhar(); }
+      if (e.target.closest('[data-so-esq]')) { soEsquecidos = !soEsquecidos; return desenhar(); }
+      const sg = e.target.closest('[data-seg]'); if (sg) { seg = sg.dataset.seg; pend = ''; motivoF = ''; marcados.clear(); verMais.lista = 50; return desenhar(); }
       const pn = e.target.closest('[data-pend]'); if (pn) { pend = pn.dataset.pend; marcados.clear(); return desenhar(); }
       const ir = e.target.closest('[data-ir]'); if (ir) { analista = ir.closest('[data-rh]').dataset.rh; const d = ir.dataset.ir; seg = d === 'pend' ? 'documentos' : d; pend = d === 'pend' ? 'pendentes' : ''; return mudarVista('lista'); }
       const mk = e.target.closest('[data-marca]');
@@ -1516,7 +1641,7 @@ Paginas.candidatos = {
       else if (a === 'cobrar') mandarMensagem(p, 'cobrar'); else if (a === 'nao-respondeu') naoSeguiu(p, MOTIVO_SEM_RESPOSTA);
       else if (a === 'confirmou' || a === 'confirmou-desfazer') marcarConfirmou(p, a === 'confirmou' ? 'sim' : '');
       else if (a === 'chegou') marcarChegada(p, 'chegou'); else if (a === 'faltou-campo') marcarChegada(p, 'faltou'); else if (a === 'reserva') chamarReserva(p);
-      else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${p.pessoa.nome} voltou para o processo.`);
+      else if (a === 'fora') naoSeguiu(p); else if (a === 'retomar') gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${p.pessoa.nome} voltou para o processo (${ETAPAS[p.etapa] || p.etapa}).`, { desfazer: true });
       else if (a === 'admitir') admitir(p); else if (a === 'encerrar') encerrar(p, false); else if (a === 'desfazer') desfazerAdmissao(p);
       else if (a === 'dup') { e.stopPropagation(); const o = linhas.find(x => x.id === b.dataset.dup); if (o) formulario(o); }
       else if (a === 'nao-dup') { e.stopPropagation(); const o = linhas.find(x => x.id === b.dataset.dup); if (o) { b.disabled = true; marcarNaoDuplicado(p, o).then(okk => { if (!okk) b.disabled = false; }); } }
@@ -2449,6 +2574,7 @@ Paginas.candidatos = {
       const b = e.target.closest('[data-hoje]'); if (!b) return;
       if (b.dataset.hoje === 'agenda') { semanaAg = null; return mudarVista('agenda'); }
       if (b.dataset.hoje === 'triagem') { seg = 'triagem'; pend = ''; return mudarVista('lista'); }
+      if (b.dataset.hoje === 'esquecidos') { soEsquecidos = true; return mudarVista('quadro'); }
       if (b.dataset.hoje === 'confirmar') return mensagemEmLote(amanhaSemConfirmar(base().filter(emAndamento)), 'lembrete');
       if (b.dataset.hoje.startsWith('pend:')) {
         // pend:<filtro>[:<etapa>]; sem etapa, vai para a primeira etapa do filtro que tem alguém
@@ -2511,6 +2637,6 @@ Paginas.candidatos = {
     });
     const aoFecharJanela = new MutationObserver(() => { if (pendenteRedesenho && ativo && !document.querySelector('.modal-overlay')) { pendenteRedesenho = false; desenhar(); } });
     aoFecharJanela.observe(document.body, { childList: true });
-    return () => { ativo = false; aoFecharJanela.disconnect(); aoRedesenhar.disconnect(); manterFoco.disconnect(); document.removeEventListener('keydown', aoTeclar); document.removeEventListener('maparh:presenca', agendarOlhando); };
+    return () => { ativo = false; fecharDesfazer(); aoFecharJanela.disconnect(); aoRedesenhar.disconnect(); manterFoco.disconnect(); document.removeEventListener('keydown', aoTeclar); document.removeEventListener('maparh:presenca', agendarOlhando); };
   }
 };

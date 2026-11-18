@@ -12,6 +12,8 @@ Paginas.cadastro = {
     }
     let projetoId = App.filtros.projetoId && projetos.some(p => p.id === App.filtros.projetoId) ? App.filtros.projetoId : projetos[0].id;
     let busca = '', pessoas = null, erro = '', limite = 100;
+    let cargoF = '';               // filtro pelo cargo (a faixa "Por cargo")
+    let ord = { k: 'adm', inv: false };   // ordem da lista: clicar no título da coluna (de novo inverte)
     let rapido = '', ondeF = '';   // filtro rápido (os totais do topo) e "onde trabalha"
 
     el.innerHTML = `
@@ -26,6 +28,7 @@ Paginas.cadastro = {
           <button class="btn nao-imprimir" id="btn-exportar">Exportar planilha</button>
         </div>
         <div class="ct-resumo" id="ct-resumo"></div>
+        <div class="ct-cargos nao-imprimir" id="ct-cargos" hidden></div>
         <div id="ct-corpo"></div>
       </div>`;
 
@@ -35,7 +38,7 @@ Paginas.cadastro = {
       projetoId = e.target.value;
       App.filtros.projetoId = projetoId; try { localStorage.setItem('maparh:filtros', JSON.stringify(App.filtros)); } catch (er) { /* ok */ }
       App.atualizarFiltroProjetos(); App.atualizarFiltroDistrito(); App.atualizarFiltroUF();
-      ondeF = ''; rapido = '';
+      ondeF = ''; rapido = ''; cargoF = '';
       carregar();
     });
     q('#cad-onde').addEventListener('change', e => { ondeF = e.target.value; limite = 100; desenhar(); });
@@ -44,7 +47,7 @@ Paginas.cadastro = {
     // avaliação de fim de safra e planilha do DP (funções em candidatos.js, que carrega antes)
     const Safra = window.RhSafra || null;
     const podeAvaliar = p => !!(Safra && Safra.podeAvaliar(p, App.usuario));
-    const descFiltros = () => [rapido && RAPIDOS[rapido] ? RAPIDOS[rapido].rot : '', ondeF ? (ondeF === '(sem)' ? 'sem lugar definido' : 'em ' + ondeF) : '', busca ? 'busca "' + busca + '"' : '',
+    const descFiltros = () => [rapido && RAPIDOS[rapido] ? RAPIDOS[rapido].rot : '', ondeF ? (ondeF === '(sem)' ? 'sem lugar definido' : 'em ' + ondeF) : '', cargoF ? 'cargo ' + cargoF : '', busca ? 'busca "' + busca + '"' : '',
       App.filtros.tipo ? (App.filtros.tipo === 'MOVEL' ? 'móvel' : 'local') : '', App.filtros.distritoId ? 'distrito ' + ((Store.distrito(App.filtros.distritoId) || {}).nome || '') : ''].filter(Boolean).join(', ');
     q('#ct-dp').addEventListener('click', () => { if (!Safra) return UI.toast('Recarregue a página para usar esta planilha.', 'aviso'); Safra.planilhaDP(filtradas(), projetoId, descFiltros()); });
     q('#ct-lote').addEventListener('click', () => { if (Safra) Safra.emLote(filtradas().filter(p => !p.avaliacao_recontrataria && podeAvaliar(p)), () => desenhar()); });
@@ -90,22 +93,36 @@ Paginas.cadastro = {
       faltou: { rot: 'faltaram na chegada', teste: p => p.chegada_status === 'faltou', ruim: true },
       semaval: { rot: 'sem avaliação de fim de safra', teste: p => !p.avaliacao_recontrataria, dica: 'Ainda sem a avaliação "recontrataria?" (Sim, Talvez ou Não), que forma o banco de talentos da próxima safra' }
     };
-    function filtradas(semRapido = false) {
+    const chaveCargo = p => (p.cargo || '').trim() || '(sem cargo)';
+    // ordem da lista: cada coluna tem o seu sentido natural; o desempate é sempre o mais recente e o nome
+    const txt = (a, b2) => String(a || '').localeCompare(String(b2 || ''), 'pt-BR');
+    const ORDENS = {
+      nome: (a, b2) => txt(a.pessoa.nome, b2.pessoa.nome),
+      cargo: (a, b2) => txt(a.cargo, b2.cargo),
+      onde: (a, b2) => txt(ondeTrabalha(a), ondeTrabalha(b2)),
+      adm: (a, b2) => txt(b2.admitido_em, a.admitido_em),
+      // chegada: a mais próxima primeiro; quem não tem data fica no fim (mesmo invertendo)
+      cheg: (a, b2) => txt((a.chegada_data || '') + (a.chegada_hora || ''), (b2.chegada_data || '') + (b2.chegada_hora || ''))
+    };
+    function filtradas(semRapido = false, semCargo = false) {
       const f = App.filtros, b = Store.normalizar(busca), [s, fim] = semanaAtual();
       return (pessoas || []).filter(p => {
         if (f.tipo && p.tipo !== f.tipo) return false;
         if (f.distritoId && p.distrito_id !== f.distritoId) return false;
         if (ondeF && chaveOnde(p) !== ondeF) return false;
+        if (!semCargo && cargoF && chaveCargo(p) !== cargoF) return false;
         if (!semRapido && rapido && RAPIDOS[rapido] && !RAPIDOS[rapido].teste(p, s, fim)) return false;
         if (!b) return true;
         const pe = p.pessoa || {};
         return Store.normalizar([pe.nome, pe.cpf, RH.soDigitos(pe.cpf), p.cargo, nomeCidade(pe.cidade_origem_id), ondeTrabalha(p), nomeRh(p)].join(' ')).includes(b);
-      }).sort((a, b2) => String(b2.admitido_em || '').localeCompare(String(a.admitido_em || '')) || a.pessoa.nome.localeCompare(b2.pessoa.nome, 'pt-BR'));
+      }).sort((a, b2) => (ord.k === 'cheg' ? (!a.chegada_data) - (!b2.chegada_data) : 0) || (ord.inv ? -1 : 1) * ORDENS[ord.k](a, b2)
+        || txt(b2.admitido_em, a.admitido_em) || txt(a.pessoa.nome, b2.pessoa.nome));
     }
 
     function desenhar() {
       const corpo = q('#ct-corpo'), resumo = q('#ct-resumo');
       q('#ct-lote').hidden = true;
+      const fxCargos = q('#ct-cargos'); fxCargos.hidden = true;
       if (erro) { resumo.innerHTML = ''; corpo.innerHTML = `<div class="vazio">${UI.esc(erro)} <button class="btn btn-pequeno" id="ct-tentar">Tentar de novo</button></div>`; q('#ct-tentar').addEventListener('click', carregar); return; }
       if (!pessoas) { resumo.innerHTML = ''; corpo.innerHTML = '<div class="vazio">Carregando…</div>'; return; }
       // "onde trabalha": só os lugares que têm gente neste projeto (com a contagem)
@@ -120,14 +137,26 @@ Paginas.cadastro = {
       const botao = (k, num, rot, extra = '', titulo = '') => `<button type="button" class="ct-rapido ${rapido === k ? 'ativo' : ''} ${extra}" data-rapido="${k}" ${titulo ? `title="${UI.esc(titulo)}"` : ''} aria-pressed="${rapido === k}"><b>${UI.fmtNum(num)}</b>${rot}</button>`;
       resumo.innerHTML = pessoas.length ? botao('', lBase.length, `${lBase.length === 1 ? 'pessoa contratada' : 'pessoas contratadas'} <small>${UI.fmtNum(local)} local · ${UI.fmtNum(lBase.length - local)} móvel</small>`, 'ct-rapido-todos', 'Mostrar todos')
         + Object.entries(RAPIDOS).map(([k, r]) => { const x = n(k); return botao(k, x, r.rot, x && r.ruim ? 'ct-rapido-ruim' : (x ? '' : 'ct-rapido-zero'), r.dica || ''); }).join('') : '';
+      // faixa "Por cargo": quantos de cada cargo (no que sobra dos outros filtros); clicar filtra, clicar de novo solta
+      const contC = new Map();
+      for (const p of filtradas(false, true)) { const k = chaveCargo(p); contC.set(k, (contC.get(k) || 0) + 1); }
+      if (cargoF && !contC.has(cargoF)) cargoF = '';
+      const cargos = [...contC.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'));
+      if (cargos.length > 1 || cargoF) {
+        const MAXC = 8, vis0 = cargos.slice(0, MAXC), resto = cargos.slice(MAXC);
+        if (cargoF && !vis0.some(c => c[0] === cargoF)) vis0.push(cargos.find(c => c[0] === cargoF));
+        fxCargos.hidden = false;
+        fxCargos.innerHTML = `<span class="ct-cargos-rot">Por cargo</span>` + vis0.map(([k, x]) => `<button type="button" class="ct-cargo ${cargoF === k ? 'ativo' : ''}" data-cargo="${UI.esc(k)}" aria-pressed="${cargoF === k}" title="${cargoF === k ? 'Mostrar todos os cargos' : 'Mostrar só este cargo'}">${k === '(sem cargo)' ? 'Sem cargo' : UI.esc(k)} <b>${UI.fmtNum(x)}</b></button>`).join('')
+          + (resto.length ? `<span class="muted small" title="${UI.esc(resto.map(c => c[0] + ' ' + c[1]).join(' · '))}">+ ${resto.length} ${resto.length === 1 ? 'cargo' : 'cargos'}</span>` : '');
+      }
       const l = filtradas();
       if (!pessoas.length) {
         corpo.innerHTML = `<div class="vazio ct-vazio"><b>Ninguém contratado neste projeto ainda.</b><br>Quando o RH admite um candidato em ${podeCandidatos ? '<a href="#/candidatos">Candidatos</a>' : 'Candidatos'}, a pessoa aparece aqui, no Mapa e nos Relatórios.</div>`;
         return;
       }
       if (!l.length) {
-        const motivos = [rapido && `em "${RAPIDOS[rapido].rot}"`, ondeF && (ondeF === '(sem)' ? 'sem lugar definido' : `trabalhando em ${UI.esc(ondeF)}`), busca && 'com essa busca', (App.filtros.tipo || App.filtros.distritoId) && 'com os filtros do topo'].filter(Boolean);
-        corpo.innerHTML = `<div class="vazio">Ninguém ${motivos.join(' ') || 'com esse filtro'}. ${rapido || ondeF ? '<button class="btn btn-pequeno" data-limpar-ct>Ver todos</button>' : ''}</div>`; return;
+        const motivos = [rapido && `em "${RAPIDOS[rapido].rot}"`, cargoF && `no cargo ${UI.esc(cargoF)}`, ondeF && (ondeF === '(sem)' ? 'sem lugar definido' : `trabalhando em ${UI.esc(ondeF)}`), busca && 'com essa busca', (App.filtros.tipo || App.filtros.distritoId) && 'com os filtros do topo'].filter(Boolean);
+        corpo.innerHTML = `<div class="vazio">Ninguém ${motivos.join(' ') || 'com esse filtro'}. ${rapido || ondeF || cargoF ? '<button class="btn btn-pequeno" data-limpar-ct>Ver todos</button>' : ''}</div>`; return;
       }
       const vis = l.slice(0, limite);
       // avaliar em lote: quem está na tela, sem avaliação, que este usuário pode avaliar
@@ -137,7 +166,8 @@ Paginas.cadastro = {
         ? (p.avaliacao_recontrataria ? `<button type="button" class="rhs-selo-b" data-avaliar="${p.id}" title="Mudar a avaliação">${Safra.selo(p, true)}</button>` : `<button type="button" class="btn btn-pequeno" data-avaliar="${p.id}" title="Recontrataria na próxima safra?">Avaliar</button>`)
         : (Safra && Safra.selo(p, true)) || '<span class="muted">—</span>';
       corpo.innerHTML = `<div class="ct-lista ct-lista-aval">
-        <div class="ct-linha ct-cab"><span>Pessoa</span><span>Cargo</span><span>De onde vem → onde trabalha</span><span>Admitido em</span><span>Chegada</span><span>Admitido por</span><span title="Recontrataria na próxima safra?">Fim de safra</span><span></span></div>
+        <div class="ct-linha ct-cab">${[['nome', 'Pessoa', 'nome'], ['cargo', 'Cargo', 'cargo'], ['onde', 'De onde vem → onde trabalha', 'lugar onde trabalha'], ['adm', 'Admitido em', 'data da admissão'], ['cheg', 'Chegada', 'data de chegada']]
+          .map(([k, r, d]) => `<button type="button" class="ct-ord ${ord.k === k ? 'ativo' : ''}" data-ord="${k}" title="Ordenar por ${d}${ord.k === k ? ' (clique para inverter)' : ''}">${r}${ord.k === k ? `<i>${(k === 'adm') !== ord.inv ? '▾' : '▴'}</i>` : ''}</button>`).join('')}<span>Admitido por</span><span title="Recontrataria na próxima safra?">Fim de safra</span><span></span></div>
         ${vis.map(p => {
           const pe = p.pessoa || {}, origem = nomeCidade(pe.cidade_origem_id), onde = ondeTrabalha(p);
           return `<div class="ct-linha" data-id="${p.id}">
@@ -160,8 +190,14 @@ Paginas.cadastro = {
       const b = e.target.closest('[data-rapido]'); if (!b) return;
       rapido = rapido === b.dataset.rapido ? '' : b.dataset.rapido; limite = 100; desenhar();
     });
+    q('#ct-cargos').addEventListener('click', e => {
+      const b = e.target.closest('[data-cargo]'); if (!b) return;
+      cargoF = cargoF === b.dataset.cargo ? '' : b.dataset.cargo; limite = 100; desenhar();
+    });
     q('#ct-corpo').addEventListener('click', e => {
-      if (e.target.closest('[data-limpar-ct]')) { rapido = ''; ondeF = ''; limite = 100; desenhar(); return; }
+      if (e.target.closest('[data-limpar-ct]')) { rapido = ''; ondeF = ''; cargoF = ''; limite = 100; desenhar(); return; }
+      const o = e.target.closest('[data-ord]');
+      if (o) { ord = { k: o.dataset.ord, inv: ord.k === o.dataset.ord ? !ord.inv : false }; limite = 100; desenhar(); const n2 = q(`[data-ord="${ord.k}"]`); if (n2) n2.focus(); return; }
       const av = e.target.closest('[data-avaliar]');
       if (av) { const p = (pessoas || []).find(x => x.id === av.dataset.avaliar); if (p && Safra) Safra.janela(p, () => desenhar()); return; }
       const b = e.target.closest('[data-abrir]'); if (!b) return;
@@ -177,7 +213,7 @@ Paginas.cadastro = {
       const escolha = await new Promise(resolve => {
         let r = null;
         UI.modal({ titulo: 'Exportar contratações', largura: '480px', fecharAoClicarFora: true, aoFechar: () => resolve(r),
-          corpo: `<p style="margin-top:0">A planilha leva dados pessoais de <b>${l.length === 1 ? '1 pessoa' : l.length + ' pessoas'}</b>${rapido || ondeF ? ` (só ${[rapido && RAPIDOS[rapido].rot, ondeF && (ondeF === '(sem)' ? 'sem lugar definido' : 'em ' + UI.esc(ondeF))].filter(Boolean).join(', ')})` : ''}. Como sai o CPF?</p>
+          corpo: `<p style="margin-top:0">A planilha leva dados pessoais de <b>${l.length === 1 ? '1 pessoa' : l.length + ' pessoas'}</b>${rapido || ondeF || cargoF ? ` (só ${[rapido && RAPIDOS[rapido].rot, cargoF && 'cargo ' + UI.esc(cargoF), ondeF && (ondeF === '(sem)' ? 'sem lugar definido' : 'em ' + UI.esc(ondeF))].filter(Boolean).join(', ')})` : ''}. Como sai o CPF?</p>
             <p class="muted small" style="margin-bottom:0">Mascarado mostra só parte do número (ex.: ***.982.247-**). A exportação fica registrada na auditoria.</p>`,
           botoes: [{ texto: 'Cancelar' }, { texto: 'CPF mascarado', classe: 'btn-secundario', acao: () => { r = 'mascarado'; } }, { texto: 'CPF completo', classe: 'btn-primario', acao: () => { r = 'completo'; } }] });
       });
@@ -191,7 +227,17 @@ Paginas.cadastro = {
         linhas.push([pe.nome, cpfDe(pe.cpf), pe.telefone || '', x.cargo || '', x.tipo === 'MOVEL' ? 'MÓVEL' : 'LOCAL', nomeCidade(pe.cidade_origem_id), d ? d.nome : '', nomeCidade(x.cidade_atuacao_id),
           x.distancia_km == null ? '' : Math.round(+x.distancia_km), dia(x.admitido_em), dia(x.chegada_data), x.chegada_hora ? String(x.chegada_hora).slice(0, 5) : '', x.chegada_data ? (CHEGADA_ST[x.chegada_status] || CHEGADA_ST.aguardando).toUpperCase() : '', nomeRh(x), (quemAdmitiu(x) || {}).nome || '',
           RECON[x.avaliacao_recontrataria] || '', x.avaliacao_nota || '', x.avaliacao_obs || '']); });
-      UI.baixarCSV(`contratacoes-${Store.normalizar(p.nome).replace(/ /g, '-')}.csv`, linhas);
+      // planilha do Excel (título, filtro e filtro no cabeçalho); sem a biblioteca (sem internet), cai para o CSV
+      const nomeArq = `contratacoes-${Store.normalizar(p.nome).replace(/ /g, '-')}`;
+      if (typeof XLSX === 'undefined') UI.baixarCSV(nomeArq + '.csv', linhas);
+      else {
+        const filtro = descFiltros(), topo = [[`Safra RH — Contratações · ${p.nome}`], [`${l.length === 1 ? '1 pessoa' : l.length + ' pessoas'}${filtro ? ' · ' + filtro : ''} · gerado em ${UI.fmtDataHora(new Date().toISOString())}`], []];
+        const ws = XLSX.utils.aoa_to_sheet(topo.concat(linhas)), cab = linhas[0];
+        ws['!cols'] = cab.map((c, i) => { let m = String(c).length; for (const r of linhas) { const t = String(r[i] == null ? '' : r[i]).length; if (t > m) m = t; } return { wch: Math.min(44, m + 2) }; });
+        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: topo.length, c: 0 }, e: { r: topo.length + linhas.length - 1, c: cab.length - 1 } }) };
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Contratações');
+        XLSX.writeFile(wb, `${nomeArq}-${RH.hoje()}.xlsx`);
+      }
       Store.auditar('contratacoes.exportar', `Exportou ${l.length} contratação(ões) de ${p.nome}${completo ? ' (CPF completo)' : ' (CPF mascarado)'}`, App.usuario);
     }
 

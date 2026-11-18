@@ -9,6 +9,8 @@ Paginas.relatorios = {
     const km = v => v == null ? '' : Math.round(v);
     let andamento = null;   // andamento dos candidatos (só para "Situação das vagas"), buscado quando o relatório abre
     let indicacoes = null;  // candidatos com nome (só para quem abre Candidatos), para a tabela de indicações
+    // andamento com os filtros de distrito e tipo do topo (o de projeto já vem da busca)
+    const andamentoFiltrado = () => (andamento || []).filter(p => (!App.filtros.distritoId || p.distrito_id === App.filtros.distritoId) && (!App.filtros.tipo || p.tipo === App.filtros.tipo));
     const RELATORIOS = [
       { id: 'origem', nome: 'Contratações por cidade de origem', gerar: (regs) => ({
         colunas: [
@@ -250,6 +252,105 @@ Paginas.relatorios = {
           extra
         };
       } },
+      // Recrutamento por semana: candidaturas novas, admitidos (local/móvel) e chegadas marcadas, das últimas 12 semanas
+      { id: 'semanal', nome: 'Recrutamento por semana', precisaAndamento: true, gerar: () => {
+        const l = andamentoFiltrado();
+        let sem = Analise.semanasRecrutamento(l, { hoje: RH.hoje(), n: 12 });
+        const i0 = sem.findIndex(s => s.novos || s.admitidos || s.chegadas);
+        sem = i0 < 0 ? [] : sem.slice(i0).reverse();   // a semana atual primeiro; sem as semanas vazias do começo
+        const ind = Analise.indicadoresRecrutamento(l);
+        const tot = sem.reduce((t, s) => { t.n += s.novos; t.a += s.admitidos; return t; }, { n: 0, a: 0 });
+        const fechadas = sem.filter(s => !s.atual), media = fechadas.length ? fechadas.reduce((t, s) => t + s.admitidos, 0) / fechadas.length : null;
+        const melhor = sem.slice().sort((a, b) => b.admitidos - a.admitidos)[0];
+        const rot = s => `${RH.fmtDia(s.ini)} a ${RH.fmtDia(s.fim)}`;
+        return {
+          resumo: sem.length ? `<div class="in-rel-resumo">
+              <div><b>${UI.fmtNum(tot.n)}</b>candidaturas novas no período</div>
+              <div><b>${UI.fmtNum(tot.a)}</b>admitidos no período</div>
+              <div><b>${media == null ? '—' : media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</b>admitidos por semana (média das semanas fechadas)</div>
+              <div><b>${melhor && melhor.admitidos ? rot(melhor) : '—'}</b>${melhor && melhor.admitidos ? `melhor semana: ${melhor.admitidos} ${melhor.admitidos === 1 ? 'admitido' : 'admitidos'}` : 'sem admissão no período'}</div>
+              <div><b>${ind.diasAteAdmitir == null ? '—' : Math.round(ind.diasAteAdmitir) + ' d'}</b>da candidatura à admissão (mediana)</div>
+            </div>` : '',
+          colunas: [
+            { titulo: 'Semana', render: s => `${rot(s)}${s.atual ? ' <span class="badge badge-azul">esta semana</span>' : ''}` },
+            { titulo: 'Candidaturas novas', classe: 'direita', render: s => UI.fmtNum(s.novos) },
+            { titulo: 'Admitidos local', classe: 'direita', render: s => UI.fmtNum(s.admLocal) },
+            { titulo: 'Admitidos móvel', classe: 'direita', render: s => UI.fmtNum(s.admMovel) },
+            { titulo: 'Admitidos', classe: 'direita', render: s => `<b>${UI.fmtNum(s.admitidos)}</b>` },
+            { titulo: 'Chegadas marcadas', classe: 'direita', render: s => UI.fmtNum(s.chegadas) }
+          ],
+          linhas: sem,
+          csv: s => [rot(s), s.novos, s.admLocal, s.admMovel, s.admitidos, s.chegadas],
+          cabecalhoCsv: ['SEMANA', 'CANDIDATURAS NOVAS', 'ADMITIDOS LOCAL', 'ADMITIDOS MOVEL', 'ADMITIDOS', 'CHEGADAS MARCADAS'],
+          nota: 'Semana de segunda a domingo, últimas 12. Candidaturas pela data do cadastro, admitidos pela data da admissão, chegadas pela data marcada.',
+          total: `${sem.length === 1 ? '1 semana' : sem.length + ' semanas'}`
+        };
+      } },
+      // Resultado por RH: em ordem alfabética (não é ranking), com a linha da equipe para comparar
+      { id: 'porrh', nome: 'Resultado por RH', precisaAndamento: true, gerar: () => {
+        const l = andamentoFiltrado();
+        const linhas = Analise.resultadoPorRh(l, { hoje: RH.hoje() }).map(a => { const u = a.login && Store.usuarioPorLogin(a.login); return { ...a, nome: u ? u.nome : (a.nome || (a.login ? a.login : 'Sem RH responsável')) }; })
+          .sort((a, b) => (a.login === '') - (b.login === '') || a.nome.localeCompare(b.nome, 'pt-BR'));
+        const ind = Analise.indicadoresRecrutamento(l);
+        const pc = x => x == null ? '—' : Math.round(100 * x) + '%', dd = x => x == null ? '—' : Math.round(x) + ' d';
+        return {
+          resumo: linhas.length ? `<div class="in-rel-resumo">
+              <div><b>${UI.fmtNum(ind.total)}</b>candidatos da equipe</div>
+              <div><b>${UI.fmtNum(ind.emProcesso)}</b>em processo agora</div>
+              <div><b>${UI.fmtNum(ind.admitidos)}</b>admitidos</div>
+              <div><b>${pc(ind.aproveitamento)}</b>aproveitamento da equipe</div>
+              <div><b>${dd(ind.diasAteAdmitir)}</b>da candidatura à admissão (mediana)</div>
+            </div>` : '',
+          colunas: [
+            { titulo: 'RH', render: a => a.login ? UI.esc(a.nome) : `<span class="muted">${UI.esc(a.nome)}</span>` },
+            { titulo: 'Candidatos', classe: 'direita', render: a => UI.fmtNum(a.total) },
+            { titulo: 'Em processo', classe: 'direita', render: a => UI.fmtNum(a.proc) },
+            { titulo: 'Admitidos', classe: 'direita', render: a => `<b>${UI.fmtNum(a.adm)}</b>` },
+            { titulo: 'Últimos 7 dias', classe: 'direita', render: a => UI.fmtNum(a.sem) },
+            { titulo: 'Reprovados', classe: 'direita', render: a => UI.fmtNum(a.rep) },
+            { titulo: 'Desistências', classe: 'direita', render: a => UI.fmtNum(a.des) },
+            { titulo: 'Aproveitamento', classe: 'direita', render: a => a.encerrados < 5 && a.encerrados ? `${pc(a.aproveitamento)} <span class="muted small" title="Poucos casos encerrados: a porcentagem ainda muda muito">(${a.encerrados})</span>` : pc(a.aproveitamento) },
+            { titulo: 'Até admitir', classe: 'direita', render: a => dd(a.dias) }
+          ],
+          linhas,
+          csv: a => [a.nome, a.total, a.proc, a.adm, a.sem, a.rep, a.des, a.aproveitamento == null ? '' : Math.round(100 * a.aproveitamento), a.dias == null ? '' : Math.round(a.dias)],
+          cabecalhoCsv: ['RH', 'CANDIDATOS', 'EM PROCESSO', 'ADMITIDOS', 'ADMITIDOS 7 DIAS', 'REPROVADOS', 'DESISTENCIAS', 'APROVEITAMENTO %', 'DIAS ATE ADMITIR (MEDIANA)'],
+          nota: 'Em ordem alfabética. Aproveitamento = admitidos ÷ quem já encerrou (admitido, reprovado ou desistiu); com menos de 5 casos, o número entre parênteses lembra que ainda muda muito. Quem recebe vaga mais difícil tende a ter número menor: compare com os números da equipe, no topo.',
+          total: `${linhas.filter(a => a.login).length === 1 ? '1 RH' : linhas.filter(a => a.login).length + ' RHs'}`
+        };
+      } },
+      // Saídas: por que e em que etapa as pessoas saíram do processo (reprovados e desistências)
+      { id: 'saidas', nome: 'Saídas por etapa e motivo', precisaAndamento: true, gerar: () => {
+        const l = andamentoFiltrado();
+        const linhas = Analise.saidasPorMotivo(l), ind = Analise.indicadoresRecrutamento(l);
+        const pc = x => x == null ? '—' : Math.round(100 * x) + '%';
+        const ETQ = { triagem: 'triagem', entrevista: 'entrevista', documentos: 'documentação' };
+        const semMotivo = (linhas.find(a => a.motivo === 'não informado') || {}).total || 0, saidas = ind.reprovados + ind.desistencias;
+        return {
+          resumo: saidas ? `<div class="in-rel-resumo">
+              <div><b>${UI.fmtNum(saidas)}</b>${saidas === 1 ? 'pessoa saiu' : 'pessoas saíram'} do processo</div>
+              <div><b>${pc(ind.desistencia)}</b>desistência · ${UI.fmtNum(ind.desistencias)} de ${UI.fmtNum(ind.encerrados)} que encerraram</div>
+              <div><b>${ind.etapaQueMaisDesiste ? ETQ[ind.etapaQueMaisDesiste] : '—'}</b>etapa em que mais desistem</div>
+              <div><b>${pc(ind.comparecimento)}</b>chegaram ao campo · ${UI.fmtNum(ind.faltou)} ${ind.faltou === 1 ? 'faltou' : 'faltaram'}</div>
+              <div><b class="${semMotivo ? 'in-txt-meio' : ''}">${UI.fmtNum(semMotivo)}</b>sem motivo informado</div>
+            </div>` : '',
+          colunas: [
+            { titulo: 'Motivo', render: a => a.motivo === 'não informado' ? '<span class="muted">Não informado</span>' : UI.esc(a.motivo) },
+            { titulo: 'Na triagem', classe: 'direita', render: a => UI.fmtNum(a.triagem) },
+            { titulo: 'Na entrevista', classe: 'direita', render: a => UI.fmtNum(a.entrevista) },
+            { titulo: 'Na documentação', classe: 'direita', render: a => UI.fmtNum(a.documentos) },
+            { titulo: 'Reprovados', classe: 'direita', render: a => UI.fmtNum(a.rep) },
+            { titulo: 'Desistências', classe: 'direita', render: a => UI.fmtNum(a.des) },
+            { titulo: 'Total', classe: 'direita', render: a => `<b>${UI.fmtNum(a.total)}</b>` },
+            { titulo: '% das saídas', classe: 'direita', render: a => UI.fmtPct(a.pct) }
+          ],
+          linhas,
+          csv: a => [a.motivo, a.triagem, a.entrevista, a.documentos, a.rep, a.des, a.total, a.pct.toFixed(1)],
+          cabecalhoCsv: ['MOTIVO', 'NA TRIAGEM', 'NA ENTREVISTA', 'NA DOCUMENTACAO', 'REPROVADOS', 'DESISTENCIAS', 'TOTAL', '% DAS SAIDAS'],
+          nota: 'Quem saiu fica contado na etapa em que estava. O motivo vem do "Não segue" em Candidatos.',
+          total: `${saidas === 1 ? '1 saída' : UI.fmtNum(saidas) + ' saídas'}`
+        };
+      } },
       { id: 'mes', nome: 'Cadastros por mês', gerar: (regs) => ({
         colunas: [{ titulo: 'Mês', render: r => Analise.rotuloMes(r.mes) }, ...colLM],
         linhas: Analise.porMes(regs),
@@ -279,7 +380,8 @@ Paginas.relatorios = {
 
     el.innerHTML = `
       <div class="relatorios-layout">
-        <div class="card lista-relatorios nao-imprimir" style="padding:8px">${RELATORIOS.map(r => `<a href="#" data-id="${r.id}">${UI.esc(r.nome)}</a>`).join('')}</div>
+        <div class="card lista-relatorios nao-imprimir" style="padding:8px">${[['Recrutamento', RELATORIOS.filter(r => r.precisaAndamento)], ['Contratações', RELATORIOS.filter(r => !r.precisaAndamento)]]
+          .map(([g, rs]) => `<div class="in-rel-grupo"><span>${g}</span>${rs.map(r => `<a href="#" data-id="${r.id}">${UI.esc(r.nome)}</a>`).join('')}</div>`).join('')}</div>
         <div class="card" id="rel-conteudo"></div>
       </div>`;
     el.querySelectorAll('.lista-relatorios a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); atual = a.dataset.id; localStorage.setItem('maparh:relatorio', atual); renderRelatorio(); }));
