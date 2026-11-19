@@ -892,7 +892,7 @@ Paginas.candidatos = {
       const arrasta = podeEditar && !adm;
       // o cartão não é um botão inteiro (tem botões dentro): o nome é o botão que abre a ficha
       return `<div class="cand-card cd-card ${estado} ${arrasta ? 'cd-arrasta' : ''}" data-id="${p.id}" ${arrasta ? 'draggable="true"' : ''}>
-        <div class="cd-nome-l"><button type="button" class="cd-nome" data-acao="editar" title="Abrir a ficha de ${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</button>${seloCnh(pe)}${faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim cd-selo-faltou" title="Não chegou ao campo">faltou</span>' : ''}</div>
+        <div class="cd-nome-l">${pe.foto ? `<img class="cd-foto" src="${UI.esc(pe.foto)}" alt="" data-acao="editar">` : ''}<button type="button" class="cd-nome" data-acao="editar" title="Abrir a ficha de ${UI.esc(pe.nome)}">${UI.esc(pe.nome)}</button>${seloCnh(pe)}${faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim cd-selo-faltou" title="Não chegou ao campo">faltou</span>' : ''}</div>
         ${seloJaTrabalhou(p) || (adm && p.avaliacao_recontrataria) ? `<div class="rhs-selos">${seloJaTrabalhou(p)}${adm ? RhSafra.selo(p) : ''}</div>` : ''}
         <div class="cd-meta">${UI.badgeTipo(p.tipo)}${p.cargo ? `<span class="cd-cargo" title="${UI.esc(p.cargo)}">${UI.esc(p.cargo)}</span>` : ''}${km}</div>
         <div class="cd-rota" title="${UI.esc((origem || 'origem não informada') + ' → ' + (dest || 'destino não definido'))}">${origem ? UI.esc(origem) : '<span class="cd-falta">origem?</span>'} <i>→</i> ${dest ? UI.esc(dest) : '<span class="cd-falta">destino?</span>'}</div>
@@ -1696,10 +1696,19 @@ Paginas.candidatos = {
       const mapa = p ? mapaDe(p) : {};                    // estado de cada documento, editado aqui e gravado junto no Salvar
       let docsMexeu = false;
       const tel = RH.soDigitos(pe.telefone);
-      const resumo = p ? [pe.cpf ? RH.fmtCPF(pe.cpf) : '<span class="cd-falta">sem CPF</span>', pe.telefone ? (tel.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${tel}">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)) : '',
-        p.cargo ? UI.esc(p.cargo) : '', p.distrito_id && Store.distrito(p.distrito_id) ? UI.esc(Store.distrito(p.distrito_id).nome) : '', p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 20)}<span>RH ${UI.esc(nomeAnalista(p))}</span></span>` : '',
-        p.fonte ? `<span class="cd-fonte" title="Como soube da vaga${p.indicado_por ? ' · indicado por ' + UI.esc(p.indicado_por) : ''}">${UI.esc(nomeFonte(p.fonte))}${p.fonte === 'indicacao' && p.indicado_por ? ': ' + UI.esc(p.indicado_por) : ''}</span>` : '',
-        faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim">faltou na chegada</span>' : '', seloJaTrabalhou(p)].filter(Boolean).join(' · ') : 'Preencha quem é a pessoa. Os documentos são conferidos depois, na etapa de Documentação.';
+      // topo da ficha: foto (opcional) + o essencial em itens com rótulo + ações; sem linha corrida de "·"
+      let fotoPessoa = pe.foto || null;
+      const it = (rot, val, cls = '') => val ? `<div class="fi-it ${cls}"><span>${rot}</span><b>${val}</b></div>` : '';
+      const destNome = p && p.distrito_id && Store.distrito(p.distrito_id) ? Store.distrito(p.distrito_id).nome : '';
+      const resumo = p ? [
+        it('CPF', pe.cpf ? RH.fmtCPF(pe.cpf) : '<i class="cd-falta">não informado</i>'),
+        it('WhatsApp', pe.telefone ? (tel.length >= 10 ? `<a target="_blank" rel="noopener" href="https://wa.me/55${tel}">${UI.esc(pe.telefone)}</a>` : UI.esc(pe.telefone)) : '<i class="cd-falta">sem telefone</i>'),
+        it('Cargo', p.cargo ? UI.esc(p.cargo) : ''),
+        it('Vai trabalhar em', destNome ? UI.esc(destNome) : ''),
+        it('RH', p.analista_login ? `<span class="com-avatar">${fotoRh(p.analista_login, 18)}<span>${UI.esc(nomeAnalista(p))}</span></span>` : ''),
+        it('Como soube', p.fonte ? `${UI.esc(nomeFonte(p.fonte))}${p.fonte === 'indicacao' && p.indicado_por ? ': ' + UI.esc(p.indicado_por) : ''}` : '')].join('') : '';
+      const selosTopo = p ? [faltouCampo(p) ? '<span class="cd-chip cd-chip-ruim">faltou na chegada</span>' : '', seloJaTrabalhou(p)].filter(Boolean).join(' ') : '';
+      const fotoBox = () => `${UI.avatar({ nome: pe.nome || '?', foto: fotoPessoa }, 64, 'fi-foto')}${!somenteLeitura ? `<div class="fi-foto-acoes"><button type="button" class="btn-link" id="f-foto-trocar">${fotoPessoa ? 'Trocar' : '+ Foto'}</button>${fotoPessoa ? '<button type="button" class="btn-link perigo" id="f-foto-tirar">Tirar</button>' : ''}</div><input type="file" id="f-foto-arq" accept="image/*" hidden>` : ''}`;
       // As etapas no topo são também a navegação da ficha: Triagem → dados da pessoa, Entrevista → entrevista, Documentação → documentos.
       // Azul cheio = etapa em que a pessoa está; contorno = o que está aberto na tela. Mudar de etapa é um botão à parte ("Mover para…").
       const trilha = (et, sit) => {
@@ -1713,7 +1722,11 @@ Paginas.candidatos = {
       const corpo = `
         <div class="fi-cab">
           ${p ? '<div id="fi-olhando"></div>' : ''}
-          <div class="fi-resumo">${resumo}${p && podeEditar && tel.length >= 10 ? ' <button type="button" class="btn btn-pequeno fi-msg" id="f-msg">Mensagem no WhatsApp</button>' : ''}${p ? `<span class="rhn-ferr">${podeEditar && (adm || pronta(p)) ? '<button type="button" class="btn-link" id="rhn-copiar" title="Copia os dados da admissão em texto pronto para mandar à folha/DP">Copiar para a folha</button>' : ''}<button type="button" class="btn-link" id="rhn-imprimir" title="Ficha em uma folha, para imprimir ou salvar em PDF (vale o que está salvo)">Imprimir ficha</button></span>` : ''}</div>
+          <div class="fi-pessoa">
+            <div class="fi-foto-w" id="f-foto-w">${fotoBox()}</div>
+            <div class="fi-pessoa-info">${p ? `<div class="fi-its">${resumo}</div>${selosTopo ? `<div class="fi-selos">${selosTopo}</div>` : ''}` : '<div class="fi-resumo">Preencha quem é a pessoa. A foto é opcional. Os documentos são conferidos depois, na etapa de Documentação.</div>'}</div>
+            ${p ? `<div class="fi-acoes-topo">${podeEditar && tel.length >= 10 ? '<button type="button" class="btn btn-pequeno fi-msg" id="f-msg">Mensagem no WhatsApp</button>' : ''}${podeEditar && (adm || pronta(p)) ? '<button type="button" class="btn btn-pequeno" id="rhn-copiar" title="Copia os dados da admissão em texto pronto para mandar à folha/DP">Copiar para a folha</button>' : ''}<button type="button" class="btn btn-pequeno" id="rhn-imprimir" title="Ficha em uma folha, para imprimir ou salvar em PDF (vale o que está salvo)">Imprimir ficha</button></div>` : ''}
+          </div>
           ${trilha(etapaIni, p ? p.situacao : null)}
         </div>
         ${p ? '<div id="rhn-pend" class="rhn-pend" hidden></div>' : ''}
@@ -1808,7 +1821,7 @@ Paginas.candidatos = {
       if (p && podeEditar && aberto) botoes.push({ texto: 'Não segue no processo', classe: 'btn-secundario fi-esq', acao: () => { setTimeout(() => naoSeguiu(p), 0); } });
       if (p && podeEditar && !aberto && !adm) botoes.push({ texto: 'Retomar o processo', classe: 'btn-secundario fi-esq', acao: async () => { await gravar(p, { situacao: 'em_andamento', motivo_saida: null }, `${pe.nome} voltou para o processo.`); } });
       if (p && podeEditar && adm) botoes.push({ texto: 'Desfazer admissão', classe: 'btn-secundario fi-esq', acao: () => { setTimeout(() => desfazerAdmissao(p), 0); } });
-      const retrato = () => [...m.corpo.querySelectorAll('input, select, textarea')].filter(x => x.id && x.id !== 'f-etapa').map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001') + '|' + notaEntrevista;
+      const retrato = () => [...m.corpo.querySelectorAll('input, select, textarea')].filter(x => x.id && x.id !== 'f-etapa').map(x => x.type === 'checkbox' ? x.checked : x.value).join('\u0001') + '|' + notaEntrevista + '|' + (fotoPessoa || '');
       let retratoIni = null;
       botoes.push({ texto: somenteLeitura ? 'Fechar' : 'Cancelar', acao: async () => somenteLeitura || (!docsMexeu && retrato() === retratoIni && g('#f-etapa').value === (p ? p.etapa : g('#f-etapa').value))
         || await UI.confirmar('Você mexeu na ficha e não salvou. Sair e perder as alterações?', { textoOk: 'Sair sem salvar' }) });
@@ -1843,7 +1856,7 @@ Paginas.candidatos = {
         const tipo = g('#f-tipo').value, etapa = g('#f-etapa').value;
         const origemId = resolver(g('#f-origem'), g('#f-uf').value, 'Cidade onde mora');
         const pessoa = { id: pessoaId, cpf: cpf || null, nome: g('#f-nome').value.trim().replace(/\s+/g, ' '), nascimento: g('#f-nasc').value || null, telefone: RH.fmtTelefone(g('#f-tel').value) || null,
-          email: g('#f-email').value.trim().toLowerCase() || null, cnh: g('#f-cnh').value.trim() || null, cidade_origem_id: origemId, ex_colaborador: g('#f-ex').checked };
+          email: g('#f-email').value.trim().toLowerCase() || null, cnh: g('#f-cnh').value.trim() || null, cidade_origem_id: origemId, ex_colaborador: g('#f-ex').checked, foto: fotoPessoa };
         const rh = g('#f-analista').value, uRh = rh && rh !== 'n:' ? Store.usuarioPorLogin(rh) : null;
         // se a lista de distritos não montou, mantém o que já estava (nunca apaga o distrito por engano)
         const distId = g('#f-distrito').options.length ? (g('#f-distrito').value || null) : (p ? p.distrito_id : null);
@@ -1950,6 +1963,16 @@ Paginas.candidatos = {
       const PAINEL = { triagem: 'dados', entrevista: 'entrevista', documentos: 'docs' };
       const ETAPA_DO_PAINEL = { dados: 'triagem', entrevista: 'entrevista', docs: 'documentos' };
       const tr = g('#f-trilha');
+      // foto (opcional): escolhe do computador/celular, vira uma miniatura pequena; grava junto no Salvar
+      const ligarFoto = () => {
+        const w = g('#f-foto-w'); if (!w) return;
+        w.innerHTML = fotoBox();
+        const arq = g('#f-foto-arq');
+        if (g('#f-foto-trocar')) g('#f-foto-trocar').addEventListener('click', () => arq.click());
+        if (g('#f-foto-tirar')) g('#f-foto-tirar').addEventListener('click', () => { fotoPessoa = null; ligarFoto(); });
+        if (arq) arq.addEventListener('change', async () => { const fx = arq.files && arq.files[0]; if (!fx) return; try { fotoPessoa = await UI.reduzirImagem(fx, 160); ligarFoto(); } catch (err) { UI.toast(err.message, 'erro', 5000); } });
+      };
+      ligarFoto();
       if (g('#f-msg')) g('#f-msg').addEventListener('click', () => mandarMensagem(p));
       if (g('#rhn-copiar')) g('#rhn-copiar').addEventListener('click', () => copiarParaFolha([p]));
       if (g('#rhn-imprimir')) g('#rhn-imprimir').addEventListener('click', () => imprimirFicha(p));
@@ -2241,13 +2264,14 @@ Paginas.candidatos = {
       const pe = p.pessoa, din = dinamicaDe(p), e = p.entrevista || {}, d = p.distrito_id && Store.distrito(p.distrito_id), vg = p.vaga_id ? (vagaDe(p.vaga_id) || Store.vaga(p.vaga_id)) : null;
       const lin = (r, v) => `<tr><th>${r}</th><td>${v ? UI.esc(v) : '<span class="rhn-i-vazio">—</span>'}</td></tr>`;
       const sit = p.situacao === 'admitido' ? `Admitido em ${RH.fmtDataBR(String(p.admitido_em || '').slice(0, 10))}` : emAndamento(p) ? `Em andamento · ${ETAPAS[p.etapa]}` : `${SIT[p.situacao]}${p.motivo_saida ? ': ' + p.motivo_saida : ''}`;
-      const idade = RH.idade(pe.nascimento), pend = pendenciasDe(p), hist = (p.anotacoes || []).slice(-25).reverse();
+      const idade = RH.idade(pe.nascimento);
       const rotDoc = { falta: 'Falta', entregue: 'Entregue', recusado: 'Recusado', dispensado: 'Não se aplica' };
       let box = document.getElementById('rhn-impressao');
       if (!box) { box = document.createElement('div'); box.id = 'rhn-impressao'; document.body.appendChild(box); }
-      box.innerHTML = `<div class="rhn-i-cab"><div><div class="rhn-i-proj">${UI.esc(Store.rotuloProjeto(projeto()))} · Ficha do candidato</div><h1>${UI.esc(pe.nome)}</h1><div class="rhn-i-sit">${UI.esc(sit)}</div></div>
-          <div class="rhn-i-quando">Impresso em ${UI.esc(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}<br>por ${UI.esc(eu.nome)}</div></div>
-        ${pend.length ? `<div class="rhn-i-bloco rhn-i-pend"><h2>Para avançar</h2><ul>${pend.map(x => `<li>${UI.esc(x.texto)}</li>`).join('')}</ul></div>` : ''}
+      box.innerHTML = `<div class="rhn-i-topo"><div class="rhn-i-marca"><img src="logo.svg" alt=""><div><b>Safra RH</b><span>Ficha do candidato · ${UI.esc(Store.rotuloProjeto(projeto()))}</span></div></div>
+          <div class="rhn-i-quando">Impresso em ${UI.esc(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}</div></div>
+        <div class="rhn-i-cab"><div class="rhn-i-foto">${pe.foto ? `<img src="${UI.esc(pe.foto)}" alt="">` : '<span>Foto<br>3x4</span>'}</div>
+          <div><h1>${UI.esc(pe.nome)}</h1><div class="rhn-i-sit">${UI.esc(sit)}</div>${p.cargo ? `<div class="rhn-i-cargo">${UI.esc(p.cargo)}${d ? ' · ' + UI.esc(d.nome) : ''}</div>` : ''}</div></div>
         <div class="rhn-i-duas">
           <div class="rhn-i-bloco"><h2>Dados pessoais</h2><table>${lin('CPF', pe.cpf ? RH.fmtCPF(pe.cpf) : '')}${lin('Nascimento', pe.nascimento ? `${RH.fmtDataBR(String(pe.nascimento).slice(0, 10))}${idade != null ? ` (${idade} anos)` : ''}` : '')}${lin('Telefone', pe.telefone)}${lin('E-mail', pe.email)}${lin('Cidade onde mora', nomeCidade(pe.cidade_origem_id))}${lin('CNH', pe.cnh)}${lin('Ex-colaborador', pe.ex_colaborador ? 'Sim' : 'Não')}${lin('Como soube da vaga', p.fonte ? nomeFonte(p.fonte) + (p.indicado_por ? ': ' + p.indicado_por : '') : '')}</table></div>
           <div class="rhn-i-bloco"><h2>Vaga e destino</h2><table>${lin('Vaga', vg ? vg.titulo : '')}${lin('Cargo', p.cargo)}${lin('Distrito', d ? d.nome : '')}${lin('Tipo', p.tipo === 'MOVEL' ? 'Móvel' : 'Local')}${lin('Cidade onde trabalha', nomeCidade(trabalhoId(p)))}${p.tipo === 'MOVEL' ? lin('Base de contratação', nomeCidade(p.base_id)) : ''}${lin('Unidade', p.unidade)}${lin('RH responsável', nomeAnalista(p))}</table></div>
@@ -2258,7 +2282,7 @@ Paginas.candidatos = {
         </div>
         ${din.total ? `<div class="rhn-i-bloco"><h2>Documentos (${din.total - din.pendentes.length} de ${din.total})</h2><ul class="rhn-i-docs">${din.docs.map(x => `<li class="rhn-i-d-${x.estado}"><span class="rhn-i-caixa">${x.estado === 'entregue' ? '✓' : x.estado === 'dispensado' ? '–' : x.estado === 'recusado' ? '!' : ''}</span>${UI.esc(x.nome)} <em>${rotDoc[x.estado]}</em></li>`).join('')}</ul></div>` : ''}
         ${p.observacao ? `<div class="rhn-i-bloco"><h2>Observação</h2><p>${UI.esc(p.observacao)}</p></div>` : ''}
-        ${hist.length ? `<div class="rhn-i-bloco"><h2>Histórico${(p.anotacoes || []).length > hist.length ? ` (últimos ${hist.length})` : ''}</h2><table class="rhn-i-hist">${hist.map(a => `<tr><th>${UI.esc(UI.fmtDataHora(a.em))}</th><td><b>${UI.esc(a.nome || a.por || '—')}</b> — ${UI.esc(a.texto)}</td></tr>`).join('')}</table></div>` : ''}`;
+        <div class="rhn-i-assin"><div>Assinatura do candidato</div><div>Assinatura do RH${nomeAnalista(p) ? ' · ' + UI.esc(nomeAnalista(p)) : ''}</div></div>`;
       document.body.classList.add('rhn-imprimindo');
       const limpar = () => { document.body.classList.remove('rhn-imprimindo'); window.removeEventListener('afterprint', limpar); };
       window.addEventListener('afterprint', limpar);

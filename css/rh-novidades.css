@@ -183,3 +183,36 @@
 .rhe-motivos .cd-pend { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rhe-motivos .rhe-sem-mot { border-style: dashed; color: var(--muted); }
 .rhe-motivos-resumo { flex: 1 1 100%; }
+
+/* v154 — ficha impressa: marca do sistema, foto 3x4, assinaturas (sem histórico) */
+.rhn-i-topo { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid #1e3a8a; }
+.rhn-i-marca { display: flex; align-items: center; gap: 10px; }
+.rhn-i-marca img { width: 34px; height: 34px; }
+.rhn-i-marca b { display: block; font-size: 16px; color: #1e3a8a; letter-spacing: .01em; }
+.rhn-i-marca span { display: block; font-size: 10.5px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
+#rhn-impressao .rhn-i-cab { justify-content: flex-start; align-items: center; border-bottom: 1px solid #cbd5e1; }
+.rhn-i-foto { width: 84px; height: 108px; flex: none; border: 1px solid #94a3b8; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; text-align: center; color: #94a3b8; font-size: 10px; }
+.rhn-i-foto img { width: 100%; height: 100%; object-fit: cover; }
+.rhn-i-cargo { color: #334155; margin-top: 2px; }
+.rhn-i-assin { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 46px; break-inside: avoid; }
+.rhn-i-assin div { border-top: 1px solid #000; padding-top: 4px; text-align: center; font-size: 10.5px; color: #334155; }
+
+/* v154 — topo da ficha: foto + itens com rótulo + ações */
+.fi-pessoa { display: flex; align-items: flex-start; gap: 14px; padding-bottom: 10px; }
+.fi-foto-w { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 64px; }
+.fi-foto-w .fi-foto { border-radius: 12px; object-fit: cover; box-shadow: 0 0 0 1px var(--borda); }
+.fi-foto-w span.fi-foto { background: #e2e8f0; color: #475569; }
+.fi-foto-acoes { display: flex; gap: 6px; }
+.fi-foto-acoes .btn-link { font-size: 11.5px; }
+.fi-pessoa-info { flex: 1; min-width: 0; }
+.fi-its { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; }
+.fi-it { min-width: 0; }
+.fi-it > span { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.fi-it > b { display: block; font-size: 13.5px; font-weight: 600; color: var(--texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-it > b i { font-style: normal; font-weight: 500; }
+.fi-it .com-avatar { display: inline-flex; align-items: center; gap: 5px; vertical-align: middle; }
+.fi-selos { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.fi-acoes-topo { flex: none; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.fi-acoes-topo .fi-msg { margin: 0; }
+.cd-nome-l .cd-foto { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; cursor: pointer; box-shadow: 0 0 0 1px var(--borda); }
+@media (max-width: 760px) { .fi-pessoa { flex-wrap: wrap; } .fi-acoes-topo { flex-direction: row; flex-wrap: wrap; width: 100%; } }
